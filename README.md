@@ -2,7 +2,8 @@
 
 A plugin for Obsidian that lets you create custom HTML views for your notes based on filter rules. Transform how your notes are displayed by defining custom templates that match specific files.
 
-![output_small](https://github.com/user-attachments/assets/494bd7b9-b0c4-4197-ace7-a01ae287742b)
+![output](https://github.com/user-attachments/assets/f94e92b6-93a0-42eb-a9c7-bad6bc3aa7e2)
+
 
 <!-- *[GIF: Show a note with frontmatter (e.g., a movie note with title, year, rating) being displayed in a custom card view instead of the default markdown view. Show the transition from default view to custom view.]* -->
 
