@@ -4,7 +4,6 @@ A plugin for Obsidian that lets you create custom HTML views for your notes base
 
 ![output](https://github.com/user-attachments/assets/f94e92b6-93a0-42eb-a9c7-bad6bc3aa7e2)
 
-
 <!-- *[GIF: Show a note with frontmatter (e.g., a movie note with title, year, rating) being displayed in a custom card view instead of the default markdown view. Show the transition from default view to custom view.]* -->
 
 The plugin's main feature is **custom views**, which allow you to:
@@ -45,10 +44,6 @@ Then, create a template like this:
 
 Now, any note in a folder containing "Movies" will be displayed using this custom template instead of the default markdown view!
 
-![basic-example](https://raw.githubusercontent.com/anupchavan/obsidian-custom-views/main/gifs/basic-example.gif)
-
-*[GIF: Show creating a new view in settings, adding a filter rule, writing a simple template, and then opening a matching note to see it rendered.]*
-
 ## Features
 
 ### Filter Rules
@@ -66,10 +61,6 @@ Match files using powerful filter rules based on file properties or frontmatter.
 - **Dates**: `on`, `not on`, `before`, `on or before`, `after`, `on or after`, `is empty`, `is not empty`
 - **Lists/Tags**: `contains`, `does not contain`, `is empty`, `is not empty`
 - **Checkboxes**: `is` (true/false)
-
-![filter-rules](https://raw.githubusercontent.com/anupchavan/obsidian-custom-views/main/gifs/filter-rules.gif)
-
-*[GIF: Show the filter builder UI - adding multiple conditions, changing operators, grouping conditions with AND/OR, and showing how the UI adapts based on property types (text input for text, date picker for dates, number input for numbers).]*
 
 ### HTML Templates
 
@@ -90,10 +81,6 @@ Write custom HTML templates using a simple placeholder syntax. Access file prope
 - `{{file.tags[0]}}` - First tag
 - `{{file.tags[1]}}` - Second tag
 - etc.
-
-![template-example](https://raw.githubusercontent.com/anupchavan/obsidian-custom-views/main/gifs/template-example.png)
-
-*[Screenshot: Show a complex template example with multiple placeholders, styling, and the rendered result side-by-side.]*
 
 ### Filter Chains
 
@@ -144,10 +131,6 @@ Transform values using filter chains. Chain multiple filters together using the 
 #### Math
 - `calc:"+10"` - Perform calculation (`+`, `-`, `*`, `/`, `^`)
 
-![filter-chains](https://raw.githubusercontent.com/anupchavan/obsidian-custom-views/main/gifs/filter-chains.gif)
-
-*[GIF: Show editing a template with filter chains, demonstrating date formatting, text transformations, and array operations. Show the before/after of the rendered output.]*
-
 ### View Modes
 
 The plugin works in different view modes based on your settings:
@@ -155,10 +138,6 @@ The plugin works in different view modes based on your settings:
 - **Reading Mode**: Custom views always work in reading mode (preview mode).
 - **Live Preview**: Optionally enable custom views in live preview mode via **Settings → Custom Views → Work in Live Preview**.
 - **Source Mode**: Custom views are disabled in pure source mode (true editor mode).
-
-![view-modes](https://raw.githubusercontent.com/anupchavan/obsidian-custom-views/main/gifs/view-modes.png)
-
-*[Screenshot: Show the same note in different view modes, highlighting which modes show the custom view and which show the default markdown view.]*
 
 ### Multiple Views
 
@@ -168,18 +147,6 @@ You can create multiple custom views. The plugin will use the first matching vie
 - View 1: Movie cards (matches `file.folder contains "Movies"`)
 - View 2: Book cards (matches `file.folder contains "Books"`)
 - View 3: Project dashboards (matches `file.status is "active"`)
-
-![multiple-views](https://raw.githubusercontent.com/anupchavan/obsidian-custom-views/main/gifs/multiple-views.png)
-
-*[Screenshot: Show the settings page with multiple view configurations, and then show different notes matching different views.]*
-
-### Link Navigation
-
-Internal links in your templates work seamlessly. Clicking on `[[wikilinks]]` or markdown links will navigate to the target note, just like in the default Obsidian view.
-
-![link-navigation](https://raw.githubusercontent.com/anupchavan/obsidian-custom-views/main/gifs/link-navigation.gif)
-
-*[GIF: Show clicking on links within a custom view and navigating to other notes.]*
 
 ### Script Support
 
@@ -333,26 +300,6 @@ Filter arguments can be:
 - **Simple values**: `date:"YYYY-MM-DD"`
 - **Multiple arguments**: `replace:"old":"new"` (comma-separated, or use quotes for strings with commas)
 - **Regex patterns**: `replace:"/pattern/flags":"replace"`
-
-## Troubleshooting
-
-### Custom view not showing
-
-1. **Check if plugin is enabled**: Use the command palette to enable custom views.
-2. **Check filter rules**: Ensure your file matches the filter conditions.
-3. **Check view mode**: Custom views only work in reading mode (and live preview if enabled).
-4. **Check view order**: The first matching view is used. Make sure your view appears before other matching views.
-
-### Template not rendering correctly
-
-1. **Check placeholder syntax**: Use `{{file.property}}` format.
-2. **Check property names**: Property names are case-sensitive and must match exactly.
-3. **Check filter syntax**: Filter arguments should be properly quoted if they contain special characters.
-
-### Links not working
-
-- Internal links (`[[wikilinks]]`) should work automatically. If they don't, ensure the target note exists.
-- External links should use standard markdown link syntax: `[text](url)`
 
 ## Contributing
 
