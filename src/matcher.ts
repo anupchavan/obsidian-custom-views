@@ -15,9 +15,9 @@ export function checkRules(group: FilterGroup, file: TFile, frontmatter?: FrontM
 	// Evaluate all conditions in this group
 	const results = group.conditions.map(condition => {
 		if (condition.type === "group") {
-			return checkRules(condition as FilterGroup, file, frontmatter);
+			return checkRules(condition, file, frontmatter);
 		} else {
-			return evaluateFilter(condition as Filter, file, frontmatter);
+			return evaluateFilter(condition, file, frontmatter);
 		}
 	});
 
@@ -37,7 +37,7 @@ export function checkRules(group: FilterGroup, file: TFile, frontmatter?: FrontM
  * @returns True if the condition is met, false otherwise
  */
 function evaluateFilter(filter: Filter, file: TFile, frontmatter?: FrontMatterCache): boolean {
-	let targetValue: any = null;
+	let targetValue: string | number | boolean | string[] | null = null;
 
 	if (filter.field.startsWith("file.")) {
 		if (filter.field === "file.name") targetValue = file.name;
@@ -49,47 +49,63 @@ function evaluateFilter(filter: Filter, file: TFile, frontmatter?: FrontMatterCa
 		else if (filter.field === "file.mtime") targetValue = file.stat.mtime;
 		else if (filter.field === "file.extension") targetValue = file.extension;
 	} else if (frontmatter) {
-		targetValue = frontmatter[filter.field];
+		// Type-safe access to frontmatter field
+		const frontmatterRecord = frontmatter as Record<string, string | number | boolean | string[] | undefined>;
+		const fieldValue = frontmatterRecord[filter.field];
+		targetValue = fieldValue !== undefined ? fieldValue : null;
 	}
 
 	if (targetValue === undefined || targetValue === null) targetValue = "";
 
-	const normalize = (val: any) => String(val).toLowerCase();
+	const normalize = (val: string | number | boolean | string[]) => String(val).toLowerCase();
 	const filterValue = normalize(filter.value || "");
 
-	const isArray = Array.isArray(targetValue);
-
-	switch (filter.operator) {
-		case "is empty":
-			return isArray ? targetValue.length === 0 : !targetValue;
-		case "is not empty":
-			return isArray ? targetValue.length > 0 : !!targetValue;
-
-		case "is":
-		case "is not": {
-			let match = false;
-			if (isArray) match = targetValue.some((v: any) => normalize(v) === filterValue);
-			else match = normalize(targetValue) === filterValue;
-			return filter.operator === "is" ? match : !match;
+	if (Array.isArray(targetValue)) {
+		const targetArray = targetValue;
+		switch (filter.operator) {
+			case "is empty":
+				return targetArray.length === 0;
+			case "is not empty":
+				return targetArray.length > 0;
+			case "is":
+			case "is not": {
+				const match = targetArray.some((v: string | number | boolean) => normalize(v) === filterValue);
+				return filter.operator === "is" ? match : !match;
+			}
+			case "contains":
+			case "does not contain": {
+				const match = targetArray.some((v: string | number | boolean) => normalize(v).includes(filterValue));
+				return filter.operator === "contains" ? match : !match;
+			}
+			case "starts with":
+			case "ends with":
+				return false;
+			default:
+				return false;
 		}
-
-		case "contains":
-		case "does not contain": {
-			let match = false;
-			if (isArray) match = targetValue.some((v: any) => normalize(v).includes(filterValue));
-			else match = normalize(targetValue).includes(filterValue);
-			return filter.operator === "contains" ? match : !match;
+	} else {
+		const targetScalar = targetValue;
+		switch (filter.operator) {
+			case "is empty":
+				return !targetScalar;
+			case "is not empty":
+				return !!targetScalar;
+			case "is":
+			case "is not": {
+				const match = normalize(targetScalar) === filterValue;
+				return filter.operator === "is" ? match : !match;
+			}
+			case "contains":
+			case "does not contain": {
+				const match = normalize(targetScalar).includes(filterValue);
+				return filter.operator === "contains" ? match : !match;
+			}
+			case "starts with":
+				return normalize(targetScalar).startsWith(filterValue);
+			case "ends with":
+				return normalize(targetScalar).endsWith(filterValue);
+			default:
+				return false;
 		}
-
-		case "starts with":
-			if (isArray) return false;
-			return normalize(targetValue).startsWith(filterValue);
-
-		case "ends with":
-			if (isArray) return false;
-			return normalize(targetValue).endsWith(filterValue);
-
-		default:
-			return false;
 	}
 }

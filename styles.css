@@ -666,3 +666,67 @@ select.cv-conjunction:hover {
     padding-top: var(--size-4-4);
     border-top: var(--border-width) solid var(--background-modifier-border);
 }
+
+.cv-margin-left-auto {
+    margin-left: auto;
+}
+
+.obsidian-custom-view-hidden .markdown-source-view,
+.obsidian-custom-view-hidden .markdown-preview-view {
+    display: none !important;
+}
+
+.obsidian-custom-view-render {
+    padding: 30px;
+    height: 100%;
+    overflow-y: auto;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-color: var(--background-primary);
+    z-index: 10;
+}
+
+.obsidian-custom-view-hidden {
+    position: relative;
+}
+
+.obsidian-custom-view-render .markdown-rendered-content {
+    margin-top: 20px;
+}
+
+.obsidian-custom-view-render .markdown-preview-section {
+    padding: 0;
+}
+
+.obsidian-custom-view-render .markdown-preview-section ul,
+.obsidian-custom-view-render .markdown-preview-section ol {
+    padding-left: 1.625em;
+    margin-block-start: 1em;
+    margin-block-end: 1em;
+}
+
+.obsidian-custom-view-render .markdown-preview-section li {
+    margin-block-start: 0.3em;
+    margin-block-end: 0.3em;
+}
+
+.obsidian-custom-view-render .markdown-preview-section li > ul,
+.obsidian-custom-view-render .markdown-preview-section li > ol {
+    margin-block-start: 0.3em;
+    margin-block-end: 0.3em;
+}
+
+.obsidian-custom-view-render .markdown-preview-section p {
+    margin-block-start: 1em;
+    margin-block-end: 1em;
+}
+
+.obsidian-custom-view-render .markdown-preview-section p:first-child {
+    margin-block-start: 0;
+}
+
+.obsidian-custom-view-render .markdown-preview-section p:last-child {
+    margin-block-end: 0;
+}

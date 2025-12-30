@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Menu, TFile, Modal } from "obsidian";
+import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 
@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 		{
 			id: 'default-1',
 			name: 'View 1',
-			rules: JSON.parse(JSON.stringify(DEFAULT_RULES)),
+			rules: JSON.parse(JSON.stringify(DEFAULT_RULES)) as FilterGroup,
 			template: "<h1>{{file.basename}}</h1> <p>{{file.content}}</p>"
 		}
 	]
@@ -64,8 +64,8 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Work in Live Preview")
-			.setDesc("Enable to allow custom views in both Live Preview and Reading view. Disable to limit them to Reading view only.")
+			.setName("Work in live preview")
+			.setDesc("Enable to allow custom views in both live preview and reading view. Disable to limit them to reading view only.")
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.workInLivePreview)
 				.onChange(async (value) => {
@@ -73,7 +73,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					const file = this.app.workspace.getActiveFile();
 					if (file) {
-						this.plugin.processActiveView(file);
+						void this.plugin.processActiveView(file);
 					}
 				}));
 
@@ -82,16 +82,16 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setHeading()
-			.setName("Views Configuration")
+			.setName("Views configuration")
 			.setDesc("Views are checked in order from top to bottom. Drag to reorder.")
 			.addButton(btn => btn
-				.setButtonText("Add New View")
+				.setButtonText("Add new view")
 				.setCta()
 				.onClick(async () => {
 					const newView: ViewConfig = {
 						id: `${Date.now()}`,
 						name: "New View",
-						rules: JSON.parse(JSON.stringify(DEFAULT_RULES)),
+						rules: JSON.parse(JSON.stringify(DEFAULT_RULES)) as FilterGroup,
 						template: "<h1>{{file.basename}}</h1>"
 					};
 					this.plugin.settings.views.push(newView);
@@ -178,7 +178,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			listItem.removeClass("cv-drag-over");
 		});
 
-		listItem.addEventListener("drop", async (e) => {
+		listItem.addEventListener("drop", (e) => {
 			e.preventDefault();
 			if (!e.dataTransfer || !this.draggedElement || this.draggedIndex === null) return;
 
@@ -189,7 +189,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 			const draggedView = this.plugin.settings.views[this.draggedIndex];
 
-			const allItems = Array.from(container.querySelectorAll(".cv-view-list-item")) as HTMLElement[];
+			const allItems = Array.from(container.querySelectorAll(".cv-view-list-item"));
 			const targetIndex = allItems.indexOf(listItem);
 
 			if (targetIndex === -1) return;
@@ -206,7 +206,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			this.plugin.settings.views.splice(this.draggedIndex, 1);
 			this.plugin.settings.views.splice(newIndex, 0, draggedView);
 
-			await this.plugin.saveSettings();
+			void this.plugin.saveSettings();
 			this.display();
 		});
 	}
@@ -222,10 +222,10 @@ class EditViewModal extends Modal {
 	constructor(app: App, plugin: CustomViewsPlugin, view: ViewConfig, viewIndex: number, onSave: () => void) {
 		super(app);
 		this.plugin = plugin;
-		this.view = JSON.parse(JSON.stringify(view));
+		this.view = JSON.parse(JSON.stringify(view)) as ViewConfig;
 		this.viewIndex = viewIndex;
 		this.onSave = onSave;
-		this.setTitle('Edit View');
+		this.setTitle('Edit view');
 	}
 
 	onOpen() {
@@ -234,13 +234,13 @@ class EditViewModal extends Modal {
 		contentEl.addClass("cv-edit-view-modal");
 
 
-		const nameSetting = new Setting(contentEl)
-			.setName("View Name")
+		new Setting(contentEl)
+			.setName("View name")
 			.setDesc("The name of the view will be displayed in the view selector.")
 			.addText(text => {
 				this.nameTextComponent = text;
 				text.setValue(this.view.name)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						this.view.name = value;
 					});
 				requestAnimationFrame(() => {
@@ -254,26 +254,27 @@ class EditViewModal extends Modal {
 		const builder = new FilterBuilder(
 			this.plugin,
 			this.view.rules,
-			async () => { await this.plugin.saveSettings(); },
+			() => { void this.plugin.saveSettings(); },
 			() => { rulesContainer.empty(); builder.render(rulesContainer); }
 		);
 		builder.render(rulesContainer);
 
-		contentEl.createEl("h3", { text: "HTML Template" });
+		contentEl.createEl("h3", { text: "HTML template" });
 		const templateContainer = contentEl.createDiv({ cls: "cv-bases-template-container" });
 		const textarea = templateContainer.createEl("textarea", {
 			cls: "cv-textarea",
 			text: this.view.template
 		});
-		textarea.addEventListener("input", async (e: any) => {
-			this.view.template = e.target.value;
+		textarea.addEventListener("input", (e: Event) => {
+			const target = e.target as HTMLTextAreaElement;
+			this.view.template = target.value;
 		});
 
 		const buttonContainer = contentEl.createDiv('modal-button-container');
 
 
 
-		const saveBtn = new ButtonComponent(buttonContainer)
+		new ButtonComponent(buttonContainer)
 			.setButtonText("Save")
 			.setCta()
 			.onClick(async () => {
@@ -283,7 +284,7 @@ class EditViewModal extends Modal {
 				this.close();
 			});
 
-		const cancelBtn = new ButtonComponent(buttonContainer)
+		new ButtonComponent(buttonContainer)
 			.setButtonText("Cancel")
 			.onClick(() => {
 				this.close();
@@ -340,7 +341,7 @@ class FilterBuilder {
 				for (const key of Object.keys(cache.frontmatter)) {
 					if (key === "position") continue;
 					if (propMap.has(key) && propMap.get(key) !== "unknown") continue;
-					const val = cache.frontmatter[key];
+					const val = cache.frontmatter[key] as string | number | boolean | string[] | undefined;
 					const type = this.inferType(val);
 					propMap.set(key, type);
 				}
@@ -352,7 +353,7 @@ class FilterBuilder {
 			.sort((a, b) => a.key.localeCompare(b.key));
 	}
 
-	inferType(val: any): PropertyType {
+	inferType(val: unknown): PropertyType {
 		if (val === null || val === undefined) return "unknown";
 		if (Array.isArray(val)) return "list";
 		if (typeof val === "number") return "number";
@@ -423,12 +424,11 @@ class FilterBuilder {
 		const headerActionsDiv = header.createDiv({ cls: "cv-filter-group-header-actions" });
 
 		if (isRoot && this.onDeleteView) {
-			const viewHeader = headerActionsDiv.createDiv({ cls: "cv-custom-view-box-header" });
-			viewHeader.style.marginLeft = "auto";
+			const viewHeader = headerActionsDiv.createDiv({ cls: "cv-custom-view-box-header cv-margin-left-auto" });
 
-			const delBtn = new ButtonComponent(viewHeader)
+			new ButtonComponent(viewHeader)
 				.setIcon("trash")
-				.setTooltip("Delete View")
+				.setTooltip("Delete view")
 				.onClick(() => {
 					if (this.onDeleteView) this.onDeleteView();
 				});
@@ -439,24 +439,23 @@ class FilterBuilder {
 			const rowWrapper = statementsContainer.createDiv({ cls: "cv-filter-row" });
 			const conjLabel = rowWrapper.createSpan({ cls: "cv-conjunction-text" });
 			if (index === 0) {
-				conjLabel.innerText = "where";
+				conjLabel.innerText = "Where";
 			} else {
 				conjLabel.innerText = (group.operator === "OR" || group.operator === "NOR") ? "or" : "and";
 			}
 
 			if (condition.type === "group") {
 				rowWrapper.addClass("mod-group");
-				this.renderGroup(rowWrapper, condition as FilterGroup);
+				this.renderGroup(rowWrapper, condition);
 
 				const h = rowWrapper.querySelector(".cv-filter-group-header");
 				if (h) {
-					const d = h.createDiv({ cls: "cv-clickable-icon" });
-					d.style.marginLeft = "auto";
+					const d = h.createDiv({ cls: "cv-clickable-icon cv-margin-left-auto" });
 					setIcon(d, "trash-2");
 					d.onclick = (e) => { e.stopPropagation(); group.conditions.splice(index, 1); this.onSave(); this.onRefresh(); };
 				}
 			} else {
-				this.renderFilterRow(rowWrapper, condition as Filter, group, index);
+				this.renderFilterRow(rowWrapper, condition, group, index);
 			}
 		});
 
@@ -659,8 +658,9 @@ class FilterBuilder {
 			});
 		};
 
-		searchInput.addEventListener("input", (e: any) => {
-			const val = e.target.value.toLowerCase();
+		searchInput.addEventListener("input", (e: Event) => {
+			const target = e.target as HTMLInputElement;
+			const val = target.value.toLowerCase();
 			const filtered = items.filter(i => i.label.toLowerCase().includes(val) || i.value.toLowerCase().includes(val));
 			render(filtered);
 		});
@@ -745,8 +745,9 @@ class FilterBuilder {
 			const searchInput = searchContainer.createEl("input", { type: "text", placeholder: "Search..." });
 			searchContainer.prepend(searchInput);
 			searchInput.focus();
-			searchInput.addEventListener("input", (e: any) => {
-				const val = e.target.value.toLowerCase();
+			searchInput.addEventListener("input", (e: Event) => {
+				const target = e.target as HTMLInputElement;
+				const val = target.value.toLowerCase();
 				render(items.filter(i => i.label.toLowerCase().includes(val)));
 			});
 		}

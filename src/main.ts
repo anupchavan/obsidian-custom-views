@@ -14,27 +14,27 @@ export default class CustomViewsPlugin extends Plugin {
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
 
 		this.addCommand({
-			id: "enable-custom-views",
-			name: "Enable Custom Views",
+			id: "enable",
+			name: "Enable",
 			checkCallback: (checking) => {
 				if (checking) {
 					return !this.settings.enabled;
 				}
 
-				this.setPluginState(true);
+				void this.setPluginState(true);
 				return true;
 			},
 		});
 
 		this.addCommand({
-			id: "disable-custom-views",
-			name: "Disable Custom Views",
+			id: "disable",
+			name: "Disable",
 			checkCallback: (checking) => {
 				if (checking) {
 					return this.settings.enabled;
 				}
 
-				this.setPluginState(false);
+				void this.setPluginState(false);
 				return true;
 			},
 		});
@@ -46,11 +46,10 @@ export default class CustomViewsPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("layout-change", () => {
 				const file = this.app.workspace.getActiveFile();
-				this.processActiveView(file);
+
+				void this.processActiveView(file);
 			})
 		);
-
-		this.addStyle();
 	}
 
 	async setPluginState(enabled: boolean) {
@@ -61,82 +60,12 @@ export default class CustomViewsPlugin extends Plugin {
 
 		const file = this.app.workspace.getActiveFile();
 		if (file) {
-			this.processActiveView(file);
+
+			void this.processActiveView(file);
 		}
 	}
 
-	addStyle() {
-		const css = `
-            .${HIDE_MARKDOWN_CLASS} .markdown-source-view,
-            .${HIDE_MARKDOWN_CLASS} .markdown-preview-view {
-                display: none !important;
-            }
-
-            .${CUSTOM_VIEW_CLASS} {
-                padding: 30px;
-                height: 100%;
-                overflow-y: auto;
-                width: 100%;
-                position: absolute;
-                top: 0;
-                left: 0;
-                background-color: var(--background-primary);
-                z-index: 10;
-            }
-
-            .${HIDE_MARKDOWN_CLASS} {
-                position: relative;
-            }
-
-            .${CUSTOM_VIEW_CLASS} .markdown-rendered-content {
-                margin-top: 20px;
-            }
-
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section {
-                padding: 0;
-            }
-
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section ul,
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section ol {
-                padding-left: 1.625em;
-                margin-block-start: 1em;
-                margin-block-end: 1em;
-            }
-
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section li {
-                margin-block-start: 0.3em;
-                margin-block-end: 0.3em;
-            }
-
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section li > ul,
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section li > ol {
-                margin-block-start: 0.3em;
-                margin-block-end: 0.3em;
-            }
-
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section p {
-                margin-block-start: 1em;
-                margin-block-end: 1em;
-            }
-
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section p:first-child {
-                margin-block-start: 0;
-            }
-
-            .${CUSTOM_VIEW_CLASS} .markdown-preview-section p:last-child {
-                margin-block-end: 0;
-            }
-        `;
-		const styleEl = document.createElement("style");
-		styleEl.id = "custom-views-css";
-		styleEl.textContent = css;
-		document.head.appendChild(styleEl);
-	}
-
 	onunload() {
-		const styleEl = document.getElementById("custom-views-css");
-		if (styleEl) styleEl.remove();
-
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView) {
 				this.restoreDefaultView(leaf.view);
@@ -217,7 +146,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 					if (href) {
 						const newLeaf = Keymap.isModEvent(evt);
-						this.app.workspace.openLinkText(href, file.path, newLeaf);
+						void this.app.workspace.openLinkText(href, file.path, newLeaf);
 					}
 				}
 			});
@@ -235,7 +164,8 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const loadedData = await this.loadData() as Partial<CustomViewsSettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
 	}
 
 	async saveSettings() {
