@@ -1,5 +1,7 @@
 export type FilterOperator =
 	| "contains" | "does not contain"
+	| "contains any of" | "does not contain any of"
+	| "contains all of" | "does not contain all of"
 	| "is" | "is not"
 	| "starts with" | "ends with"
 	| "is empty" | "is not empty";

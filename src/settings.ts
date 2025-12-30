@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal } from "obsidian";
+import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 
@@ -16,8 +16,8 @@ const TYPE_ICONS: Record<PropertyType, string> = {
 };
 
 const OPERATORS: Record<string, string[]> = {
-	text: ["contains", "does not contain", "is", "is not", "starts with", "ends with", "is empty", "is not empty"],
-	list: ["contains", "does not contain", "is empty", "is not empty"],
+	text: ["contains", "does not contain", "is", "is not", "starts with", "ends with", "contains any of", "does not contain any of", "contains all of", "does not contain all of", "is empty", "is not empty"],
+	list: ["contains", "does not contain", "contains any of", "does not contain any of", "contains all of", "does not contain all of", "is empty", "is not empty"],
 	number: ["=", "≠", "<", "≤", ">", "≥", "is empty", "is not empty"],
 	date: ["on", "not on", "before", "on or before", "after", "on or after", "is empty", "is not empty"],
 	checkbox: ["is"] // true/false
@@ -188,23 +188,13 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			}
 
 			const draggedView = this.plugin.settings.views[this.draggedIndex];
-
 			const allItems = Array.from(container.querySelectorAll(".cv-view-list-item"));
 			const targetIndex = allItems.indexOf(listItem);
 
 			if (targetIndex === -1) return;
 
-			let newIndex: number;
-			if (this.draggedIndex < targetIndex) {
-				newIndex = targetIndex;
-			} else {
-				newIndex = targetIndex;
-			}
-
-			if (newIndex < 0) newIndex = 0;
-
 			this.plugin.settings.views.splice(this.draggedIndex, 1);
-			this.plugin.settings.views.splice(newIndex, 0, draggedView);
+			this.plugin.settings.views.splice(targetIndex, 0, draggedView);
 
 			void this.plugin.saveSettings();
 			this.display();
@@ -302,6 +292,483 @@ interface PropertyDef {
 	type: PropertyType;
 }
 
+interface SuggestItem {
+	label: string;
+	value: string;
+	icon?: string;
+}
+
+/**
+ * Unified combobox modal for property and operator selection.
+ * Consolidates PropertySuggestModal and OperatorSuggestModal into a single reusable class.
+ */
+class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
+	private items: SuggestItem[];
+	private selectedValue: string;
+	private onSelect: (val: string) => void;
+	private anchorEl: HTMLElement | null = null;
+	private clickOutsideHandler: ((evt: MouseEvent) => void) | null = null;
+
+	constructor(
+		app: App,
+		items: SuggestItem[],
+		selectedValue: string,
+		onSelect: (val: string) => void,
+		anchorEl?: HTMLElement
+	) {
+		super(app);
+		this.items = items;
+		this.selectedValue = selectedValue;
+		this.onSelect = onSelect;
+		this.anchorEl = anchorEl || null;
+	}
+
+	getItems(): SuggestItem[] {
+		return this.items;
+	}
+
+	getItemText(item: SuggestItem): string {
+		return item.label;
+	}
+
+	onOpen() {
+		super.onOpen();
+
+		// Style modal as combobox
+		requestAnimationFrame(() => {
+			const modalContainer = this.modalEl.closest('.modal-container');
+			if (modalContainer) {
+				modalContainer.addClass('cv-modal-container');
+				modalContainer.removeClass('mod-dim');
+				const modalBg = modalContainer.querySelector('.modal-bg');
+				if (modalBg) {
+					(modalBg as HTMLElement).style.display = 'none';
+				}
+			}
+		});
+
+		this.modalEl.addClass("cv-suggestion-container", "cv-combobox");
+
+		// Position relative to anchor element
+		if (this.anchorEl) {
+			const rect = this.anchorEl.getBoundingClientRect();
+			this.modalEl.style.position = 'fixed';
+			this.modalEl.style.left = `${rect.left}px`;
+			this.modalEl.style.top = `${rect.bottom + 5}px`;
+			this.modalEl.style.margin = '0';
+			this.modalEl.style.transform = 'none';
+		}
+
+		// Style input and container
+		const promptEl = this.modalEl.querySelector('.prompt-input-container');
+		if (promptEl) {
+			promptEl.addClass("cv-search-input-container");
+			const input = promptEl.querySelector('input');
+			if (input) {
+				input.setAttribute('type', 'search');
+				input.setAttribute('placeholder', 'Search...');
+
+				// Show/hide clear button based on input text
+				const updateClearButtonVisibility = () => {
+					const clearButton = promptEl.querySelector('.search-input-clear-button') as HTMLElement;
+					if (clearButton) {
+						if (input.value.trim().length > 0) {
+							clearButton.style.display = '';
+						} else {
+							clearButton.style.display = 'none';
+						}
+					}
+				};
+
+				// Initial state - use requestAnimationFrame to ensure DOM is ready
+				requestAnimationFrame(() => {
+					updateClearButtonVisibility();
+				});
+
+				// Update on input change
+				input.addEventListener('input', updateClearButtonVisibility);
+			}
+		}
+
+		const suggestionsEl = this.modalEl.querySelector('.suggestion-container');
+		if (suggestionsEl) {
+			suggestionsEl.addClass("cv-suggestion");
+		}
+
+		// Keep anchor focused
+		if (this.anchorEl) {
+			if (this.anchorEl.getAttribute('tabindex') === '-1') {
+				this.anchorEl.setAttribute('tabindex', '0');
+			}
+			requestAnimationFrame(() => {
+				this.anchorEl?.focus();
+			});
+		}
+
+		// Click-outside handler
+		this.clickOutsideHandler = (evt: MouseEvent) => {
+			const target = evt.target as Node;
+			const isOutsideModal = !this.modalEl.contains(target) && this.modalEl !== target;
+			const isNotAnchor = this.anchorEl !== target && !this.anchorEl?.contains(target);
+			if (isOutsideModal && isNotAnchor) {
+				this.close();
+			}
+		};
+
+		setTimeout(() => {
+			document.addEventListener('mousedown', this.clickOutsideHandler!);
+		}, 0);
+	}
+
+	renderSuggestion(match: FuzzyMatch<SuggestItem>, el: HTMLElement): void {
+		const item = match.item;
+		el.addClass("cv-suggestion-item", "cv-mod-complex", "cv-mod-toggle");
+
+		if (item.value === this.selectedValue) {
+			const checkIcon = el.createDiv({ cls: "cv-suggestion-icon cv-mod-checked" });
+			setIcon(checkIcon, "check");
+		}
+
+		const iconDiv = el.createDiv({ cls: "cv-suggestion-icon" });
+		const flair = iconDiv.createSpan({ cls: "cv-suggestion-flair" });
+		if (item.icon) {
+			setIcon(flair, item.icon);
+		}
+
+		const content = el.createDiv({ cls: "cv-suggestion-content" });
+		content.createDiv({ cls: "cv-suggestion-title", text: item.label });
+	}
+
+	onChooseItem(item: SuggestItem): void {
+		this.onSelect(item.value);
+	}
+
+	onClose() {
+		if (this.clickOutsideHandler) {
+			document.removeEventListener('mousedown', this.clickOutsideHandler);
+			this.clickOutsideHandler = null;
+		}
+
+		// Remove focus class from button and outer div
+		if (this.anchorEl) {
+			removeFocusClasses(this.anchorEl, this.anchorEl.parentElement);
+		}
+
+		const modalContainer = this.modalEl.closest('.modal-container');
+		if (modalContainer) {
+			modalContainer.removeClass('cv-modal-container');
+			modalContainer.addClass('mod-dim');
+			const modalBg = modalContainer.querySelector('.modal-bg');
+			if (modalBg) {
+				(modalBg as HTMLElement).style.display = '';
+			}
+		}
+		super.onClose();
+	}
+}
+
+/**
+ * Helper functions for UI component creation
+ */
+function createComboboxButton(
+	container: HTMLElement,
+	label: string,
+	icon?: string
+): HTMLElement {
+	const button = container.createDiv({ cls: "cv-combobox-button", attr: { tabindex: "0" } });
+
+	if (icon) {
+		const iconEl = button.createDiv({ cls: "cv-combobox-button-icon" });
+		setIcon(iconEl, icon);
+	}
+
+	const labelEl = button.createDiv({ cls: "cv-combobox-button-label" });
+	labelEl.innerText = label;
+	setIcon(button.createDiv({ cls: "cv-combobox-button-chevron" }), "chevrons-up-down");
+
+	return button;
+}
+
+function createDeleteButton(
+	container: HTMLElement,
+	onClick: (e: MouseEvent) => void,
+	additionalClasses: string = ""
+): HTMLElement {
+	const deleteBtn = container.createDiv({ cls: `cv-clickable-icon ${additionalClasses}`.trim() });
+	setIcon(deleteBtn, "trash-2");
+	deleteBtn.onclick = (e) => {
+		e.stopPropagation();
+		onClick(e);
+	};
+	return deleteBtn;
+}
+
+function addFocusClasses(button: HTMLElement, parent: HTMLElement): void {
+	button.addClass("cv-has-focus");
+	parent.addClass("cv-has-focus");
+}
+
+function removeFocusClasses(button: HTMLElement | null, parent: HTMLElement | null): void {
+	if (button) {
+		button.removeClass("cv-has-focus");
+	}
+	if (parent) {
+		parent.removeClass("cv-has-focus");
+	}
+}
+
+function createFilterValueInput(
+	container: HTMLElement,
+	type: PropertyType,
+	value: string | undefined,
+	onChange: (val: string) => void,
+	operator?: string
+): HTMLInputElement | HTMLElement {
+	const safeValue = value || "";
+	const needsMultiSelect = operator === "contains any of" || operator === "does not contain any of"
+		|| operator === "contains all of" || operator === "does not contain all of";
+	if (needsMultiSelect) {
+		// Multi-select container for operators that accept multiple values
+		const multiSelectContainer = container.createDiv({ cls: "cv-multi-select-container", attr: { tabindex: "-1" } });
+
+		// Parse existing values (comma-separated)
+		const values: string[] = safeValue ? safeValue.split(",").map(v => v.trim()).filter(v => v.length > 0) : [];
+
+		// Create contenteditable input
+		const input = multiSelectContainer.createDiv({
+			cls: "cv-multi-select-input",
+			attr: {
+				contenteditable: "true",
+				tabindex: "0",
+				"data-placeholder": "Empty"
+			}
+		});
+
+		// Helper to update placeholder based on pill count
+		const updatePlaceholder = (): void => {
+			if (values.length === 0) {
+				input.setAttribute("data-placeholder", "Empty");
+			} else {
+				input.setAttribute("data-placeholder", "");
+			}
+		};
+
+		// Helper to get all pills in order
+		const getPills = (): HTMLElement[] => {
+			return Array.from(multiSelectContainer.querySelectorAll(".cv-multi-select-pill")) as HTMLElement[];
+		};
+
+		// Helper to get the index of a pill
+		const getPillIndex = (pill: HTMLElement): number => {
+			return getPills().indexOf(pill);
+		};
+
+		// Helper to focus a pill by index
+		const focusPill = (index: number): void => {
+			const pills = getPills();
+			if (index >= 0 && index < pills.length) {
+				pills[index].focus();
+			}
+		};
+
+		// Helper to focus the last pill
+		const focusLastPill = (): void => {
+			const pills = getPills();
+			if (pills.length > 0) {
+				pills[pills.length - 1].focus();
+			}
+		};
+
+		// Helper to focus the input
+		const focusInput = (): void => {
+			input.focus();
+		};
+
+		// Helper to clear input and ensure placeholder shows
+		const clearInput = () => {
+			input.textContent = "";
+			// Remove any <br> tags that might prevent :empty from working
+			const br = input.querySelector("br");
+			if (br) br.remove();
+		};
+
+		// Handle keyboard navigation in input
+		input.addEventListener("keydown", (e: KeyboardEvent) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				const text = input.textContent?.trim() || "";
+				if (text.length > 0) {
+					values.push(text);
+					onChange(values.join(","));
+					updatePills();
+					clearInput();
+					updatePlaceholder();
+					// Focus back to input after creating pill
+					setTimeout(() => focusInput(), 0);
+				}
+			} else if (e.key === "Backspace") {
+				// If input is empty, focus the last pill
+				const text = input.textContent?.trim() || "";
+				if (text.length === 0) {
+					e.preventDefault();
+					focusLastPill();
+				}
+			}
+		});
+
+		// Handle paste to split by comma/newline
+		input.addEventListener("paste", (e: ClipboardEvent) => {
+			e.preventDefault();
+			const pastedText = e.clipboardData?.getData("text") || "";
+			const newValues = pastedText.split(/[,\n]/).map(v => v.trim()).filter(v => v.length > 0);
+			if (newValues.length > 0) {
+				values.push(...newValues);
+				onChange(values.join(","));
+				updatePills();
+				clearInput();
+				updatePlaceholder();
+			}
+		});
+
+		// Helper to set up pill keyboard navigation
+		const setupPillNavigation = (pill: HTMLElement): void => {
+			pill.addEventListener("keydown", (e: KeyboardEvent) => {
+				const currentIndex = getPillIndex(pill);
+				if (e.key === "Backspace" || e.key === "Delete") {
+					e.preventDefault();
+					e.stopPropagation();
+					if (currentIndex > -1 && currentIndex < values.length) {
+						values.splice(currentIndex, 1);
+						onChange(values.join(","));
+						updatePills();
+						// Focus previous pill or input
+						if (values.length > 0) {
+							const newIndex = Math.max(0, currentIndex - 1);
+							setTimeout(() => focusPill(newIndex), 0);
+						} else {
+							setTimeout(() => focusInput(), 0);
+						}
+					}
+				} else if (e.key === "Tab" && !e.shiftKey) {
+					e.preventDefault();
+					const pills = getPills();
+					// Focus next pill or input if last pill
+					if (currentIndex < pills.length - 1) {
+						focusPill(currentIndex + 1);
+					} else {
+						focusInput();
+					}
+				} else if (e.key === "Tab" && e.shiftKey) {
+					e.preventDefault();
+					// Focus previous pill or input if first pill
+					if (currentIndex > 0) {
+						focusPill(currentIndex - 1);
+					} else {
+						focusInput();
+					}
+				}
+			});
+		};
+
+		// Function to update pills (defined here to access navigation functions)
+		const updatePills = (): void => {
+			// Remove all pills (but keep the input)
+			const pills = multiSelectContainer.querySelectorAll(".cv-multi-select-pill");
+			pills.forEach(pill => pill.remove());
+
+			// Recreate pills with navigation handlers
+			values.forEach((val, index) => {
+				createPill(multiSelectContainer, val, () => {
+					if (index > -1 && index < values.length) {
+						values.splice(index, 1);
+						onChange(values.join(","));
+						updatePills();
+						updatePlaceholder();
+						// After deletion, focus the previous pill or input
+						if (values.length > 0) {
+							const newIndex = Math.min(index, values.length - 1);
+							setTimeout(() => focusPill(newIndex), 0);
+						} else {
+							setTimeout(() => focusInput(), 0);
+						}
+					}
+				}, (pill: HTMLElement) => {
+					setupPillNavigation(pill);
+				});
+			});
+
+			// Ensure input is last
+			multiSelectContainer.appendChild(input);
+			// Update placeholder after pills are updated
+			updatePlaceholder();
+		};
+
+		// Initial render of pills
+		updatePills();
+		// Set initial placeholder
+		updatePlaceholder();
+
+		return multiSelectContainer;
+	} else if (type === "date" || type === "datetime") {
+		const input = container.createEl("input", {
+			type: type === "datetime" ? "datetime-local" : "date",
+			value: safeValue,
+			attr: {
+				max: type === "datetime" ? "9999-12-31T23:59" : "9999-12-31"
+			}
+		});
+		input.addClass("cv-multi-select-input");
+		input.oninput = () => onChange(input.value);
+		return input;
+	} else if (type === "number") {
+		const input = container.createEl("input", { type: "number", value: safeValue });
+		input.addClass("cv-multi-select-input");
+		input.oninput = () => onChange(input.value);
+		return input;
+	} else {
+		const input = container.createEl("input", { type: "text", value: safeValue });
+		input.addClass("cv-multi-select-input");
+		input.placeholder = "Value...";
+		input.oninput = () => onChange(input.value);
+		return input;
+	}
+}
+
+function createPill(container: HTMLElement, value: string, onRemove: () => void, onCreated?: (pill: HTMLElement) => void): void {
+	const pill = container.createDiv({ cls: "cv-multi-select-pill", attr: { tabindex: "0" } });
+	const pillContent = pill.createDiv({ cls: "cv-multi-select-pill-content", text: value });
+	const removeButton = pill.createDiv({ cls: "cv-multi-select-pill-remove-button" });
+	setIcon(removeButton, "x");
+	removeButton.onclick = (e) => {
+		e.stopPropagation();
+		onRemove();
+	};
+	if (onCreated) {
+		onCreated(pill);
+	}
+}
+
+
+function setupComboboxButtonHandlers(
+	button: HTMLElement,
+	parent: HTMLElement,
+	onOpen: () => void
+): void {
+	button.onclick = (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		onOpen();
+	};
+
+	button.onkeydown = (e) => {
+		if (e.key === " " || e.key === "Spacebar") {
+			e.preventDefault();
+			e.stopPropagation();
+			onOpen();
+		}
+	};
+}
+
 class FilterBuilder {
 	plugin: CustomViewsPlugin;
 	root: FilterGroup;
@@ -375,8 +842,8 @@ class FilterBuilder {
 	}
 
 	renderGroup(container: HTMLElement, group: FilterGroup, isRoot: boolean = false) {
-		const groupDiv = container.createDiv({ cls: "cv-filter-group" });
-		const header = groupDiv.createDiv({ cls: "cv-filter-group-header" });
+		const groupDiv = container.createDiv({ cls: "filter-group" });
+		const header = groupDiv.createDiv({ cls: "filter-group-header" });
 
 		const labelMap: Record<string, string> = {
 			"AND": "All the following are true",
@@ -421,7 +888,7 @@ class FilterBuilder {
 			this.onRefresh();
 		};
 
-		const headerActionsDiv = header.createDiv({ cls: "cv-filter-group-header-actions" });
+		const headerActionsDiv = header.createDiv({ cls: "filter-group-header-actions" });
 
 		if (isRoot && this.onDeleteView) {
 			const viewHeader = headerActionsDiv.createDiv({ cls: "cv-custom-view-box-header cv-margin-left-auto" });
@@ -434,10 +901,10 @@ class FilterBuilder {
 				});
 		}
 
-		const statementsContainer = groupDiv.createDiv({ cls: "cv-filter-group-statements" });
+		const statementsContainer = groupDiv.createDiv({ cls: "filter-group-statements" });
 		group.conditions.forEach((condition, index) => {
-			const rowWrapper = statementsContainer.createDiv({ cls: "cv-filter-row" });
-			const conjLabel = rowWrapper.createSpan({ cls: "cv-conjunction-text" });
+			const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
+			const conjLabel = rowWrapper.createSpan({ cls: "conjunction-text" });
 			if (index === 0) {
 				conjLabel.innerText = "Where";
 			} else {
@@ -448,18 +915,21 @@ class FilterBuilder {
 				rowWrapper.addClass("mod-group");
 				this.renderGroup(rowWrapper, condition);
 
-				const h = rowWrapper.querySelector(".cv-filter-group-header");
+				const h = rowWrapper.querySelector(".filter-group-header");
 				if (h) {
-					const d = h.createDiv({ cls: "cv-clickable-icon cv-margin-left-auto" });
-					setIcon(d, "trash-2");
-					d.onclick = (e) => { e.stopPropagation(); group.conditions.splice(index, 1); this.onSave(); this.onRefresh(); };
+					const headerActionsDiv = h.createDiv({ cls: "cv-clickable-icon cv-margin-left-auto" });
+					createDeleteButton(headerActionsDiv, () => {
+						group.conditions.splice(index, 1);
+						this.onSave();
+						this.onRefresh();
+					});
 				}
 			} else {
 				this.renderFilterRow(rowWrapper, condition, group, index);
 			}
 		});
 
-		const actionsDiv = groupDiv.createDiv({ cls: "cv-filter-group-actions" });
+		const actionsDiv = groupDiv.createDiv({ cls: "filter-group-actions" });
 		this.createSimpleBtn(actionsDiv, "plus", "Add filter", () => {
 			group.conditions.push({ type: "filter", field: "file.name", operator: "contains", value: "" });
 			this.onSave(); this.onRefresh();
@@ -472,27 +942,19 @@ class FilterBuilder {
 
 	renderFilterRow(row: HTMLElement, filter: Filter, parentGroup: FilterGroup, index: number) {
 		const statement = row.createDiv({ cls: "cv-filter-statement" });
+		const expression = statement.createDiv({ cls: "cv-filter-expression" });
 
 		const currentType = this.getPropertyType(filter.field);
 
-		const propertyBtn = statement.createDiv({ cls: "cv-combobox-button", attr: { tabindex: "-1" } });
+		const propertyBtn = createComboboxButton(
+			expression,
+			filter.field,
+			TYPE_ICONS[currentType] || "pilcrow"
+		);
 
-		if (TYPE_ICONS[currentType]) {
-			const icon = propertyBtn.createDiv({ cls: "cv-combobox-button-icon" });
-			setIcon(icon, TYPE_ICONS[currentType] || "pilcrow");
-		}
-
-		const lbl = propertyBtn.createDiv({ cls: "cv-combobox-button-label" });
-		lbl.innerText = filter.field;
-		setIcon(propertyBtn.createDiv({ cls: "cv-combobox-button-chevron" }), "chevrons-up-down");
-
-		propertyBtn.onclick = (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			propertyBtn.blur();
-			propertyBtn.setAttribute("tabindex", "-1");
-			this.createSearchableDropdown(
-				propertyBtn,
+		const openPropertyModal = () => {
+			addFocusClasses(propertyBtn, statement);
+			this.openPropertySuggestModal(
 				this.availableProperties.map(p => ({
 					label: p.key,
 					value: p.key,
@@ -507,9 +969,12 @@ class FilterBuilder {
 					filter.value = "";
 					this.onSave();
 					this.onRefresh();
-				}
+				},
+				propertyBtn
 			);
 		};
+
+		setupComboboxButtonHandlers(propertyBtn, statement, openPropertyModal);
 
 		let opsKey = currentType;
 		if (currentType === "datetime") opsKey = "date";
@@ -518,249 +983,70 @@ class FilterBuilder {
 
 		const validOps = OPERATORS[opsKey];
 
-		const operatorBtn = statement.createDiv({ cls: "cv-combobox-button", attr: { tabindex: "-1" } });
+		const operatorBtn = createComboboxButton(expression, filter.operator);
 
-		const opLbl = operatorBtn.createDiv({ cls: "cv-combobox-button-label" });
-		opLbl.innerText = filter.operator;
-		setIcon(operatorBtn.createDiv({ cls: "cv-combobox-button-chevron" }), "chevrons-up-down");
-
-		operatorBtn.onclick = (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			operatorBtn.blur();
-			operatorBtn.setAttribute("tabindex", "-1");
-			this.createSearchableDropdown(
-				operatorBtn,
+		const openOperatorModal = () => {
+			addFocusClasses(operatorBtn, statement);
+			this.openOperatorSuggestModal(
 				validOps.map(op => ({ label: op, value: op })),
 				filter.operator,
 				(newVal) => {
 					filter.operator = newVal as FilterOperator;
 					this.onSave();
 					this.onRefresh();
-				}
+				},
+				operatorBtn
 			);
 		};
 
+		setupComboboxButtonHandlers(operatorBtn, statement, openOperatorModal);
+
+		const handleDelete = () => {
+			parentGroup.conditions.splice(index, 1);
+			this.onSave();
+			this.onRefresh();
+		};
+
 		if (!["is empty", "is not empty"].includes(filter.operator)) {
-			const rhs = statement.createDiv({ cls: "cv-filter-rhs-container" });
+			const rhs = expression.createDiv({ cls: "cv-filter-rhs-container metadata-property-value" });
 
-			if (currentType === "date" || currentType === "datetime") {
-				const input = rhs.createEl("input", {
-					type: currentType === "datetime" ? "datetime-local" : "date",
-					value: filter.value,
-					attr: {
-						max: currentType === "datetime" ? "9999-12-31T23:59" : "9999-12-31"
-					}
-				});
-				input.addClass("cv-multi-select-input");
-				input.oninput = () => { filter.value = input.value; this.onSave(); };
-			} else if (currentType === "number") {
-				const input = rhs.createEl("input", { type: "number", value: filter.value });
-				input.addClass("cv-multi-select-input");
-				input.oninput = () => { filter.value = input.value; this.onSave(); };
-			} else {
-				const input = rhs.createEl("input", { type: "text", value: filter.value });
-				input.addClass("cv-multi-select-input");
-				input.placeholder = "Value...";
-				input.oninput = () => { filter.value = input.value; this.onSave(); };
-			}
-
-			const delBtn = rhs.createDiv({ cls: "cv-clickable-icon cv-filter-delete-inside" });
-			setIcon(delBtn, "trash-2");
-			delBtn.onclick = (e) => {
-				e.stopPropagation();
-				parentGroup.conditions.splice(index, 1);
+			createFilterValueInput(rhs, currentType, filter.value, (val) => {
+				filter.value = val;
 				this.onSave();
-				this.onRefresh();
-			};
+			}, filter.operator);
+
+			createDeleteButton(rhs, handleDelete, "filter-delete-inside");
 		} else {
-			const actions = row.createDiv({ cls: "cv-filter-row-actions" });
-			const delBtn = actions.createDiv({ cls: "cv-clickable-icon" });
-			setIcon(delBtn, "trash-2");
-			delBtn.onclick = (e) => {
-				e.stopPropagation();
-				parentGroup.conditions.splice(index, 1);
-				this.onSave();
-				this.onRefresh();
-			};
+			const actions = row.createDiv({ cls: "filter-row-actions" });
+			createDeleteButton(actions, handleDelete);
 		}
 	}
 
 
-	createSearchableDropdown(
-		anchorEl: HTMLElement,
+	openPropertySuggestModal(
 		items: { label: string, value: string, icon?: string }[],
 		selectedValue: string,
-		onSelect: (val: string) => void
+		onSelect: (val: string) => void,
+		anchorEl?: HTMLElement
 	) {
-		document.querySelectorAll('.cv-suggestion-container').forEach(el => el.remove());
-
-		const container = document.body.createDiv({ cls: "cv-suggestion-container cv-combobox" });
-		const rect = anchorEl.getBoundingClientRect();
-
-		container.style.left = `${rect.left}px`;
-		container.style.top = `${rect.bottom + 5}px`;
-
-		container.addEventListener("mousedown", (e) => {
-			e.stopPropagation();
-		});
-
-		const searchInputContainer = container.createDiv({ cls: "cv-search-input-container" });
-		const searchInput = searchInputContainer.createEl("input", {
-			type: "search",
-			placeholder: "Search...",
-			attr: { spellcheck: "false" }
-		});
-		const clearButton = searchInputContainer.createDiv({ cls: "cv-search-input-clear-button" });
-
-		const suggestionsContainer = container.createDiv({ cls: "cv-suggestion" });
-
-		const render = (list: typeof items) => {
-			suggestionsContainer.empty();
-
-			const clearSelected = () => {
-				suggestionsContainer.querySelectorAll('.cv-suggestion-item').forEach(el => {
-					el.removeClass('cv-is-selected');
-				});
-			};
-
-			list.forEach(item => {
-				const suggestionItem = suggestionsContainer.createDiv({ cls: "cv-suggestion-item cv-mod-complex cv-mod-toggle" });
-				if (item.value === selectedValue) {
-					suggestionItem.addClass("cv-is-selected");
-				}
-
-				if (item.value === selectedValue) {
-					const checkIcon = suggestionItem.createDiv({ cls: "cv-suggestion-icon cv-mod-checked" });
-					setIcon(checkIcon, "check");
-				}
-
-				const iconDiv = suggestionItem.createDiv({ cls: "cv-suggestion-icon" });
-				const flair = iconDiv.createSpan({ cls: "cv-suggestion-flair" });
-				if (item.icon) {
-					setIcon(flair, item.icon);
-				}
-
-				const content = suggestionItem.createDiv({ cls: "cv-suggestion-content" });
-				content.createDiv({ cls: "cv-suggestion-title", text: item.label });
-
-				suggestionItem.onmouseenter = () => {
-					clearSelected();
-					suggestionItem.addClass('cv-is-selected');
-				};
-
-				suggestionItem.onclick = (evt) => {
-					evt.stopPropagation();
-					onSelect(item.value);
-					container.remove();
-					document.removeEventListener("mousedown", closeHandler);
-				};
-			});
-		};
-
-		searchInput.addEventListener("input", (e: Event) => {
-			const target = e.target as HTMLInputElement;
-			const val = target.value.toLowerCase();
-			const filtered = items.filter(i => i.label.toLowerCase().includes(val) || i.value.toLowerCase().includes(val));
-			render(filtered);
-		});
-
-		searchInput.addEventListener("focus", () => container.addClass("cv-has-input-focus"));
-		searchInput.addEventListener("blur", () => container.removeClass("cv-has-input-focus"));
-
-		searchInput.addEventListener("click", (e) => e.stopPropagation());
-		searchInput.addEventListener("mousedown", (e) => e.stopPropagation());
-
-		clearButton.onclick = (e) => {
-			e.stopPropagation();
-			searchInput.value = "";
-			searchInput.focus();
-			render(items);
-		};
-
-		render(items);
-
-		requestAnimationFrame(() => {
-			searchInput.focus();
-		});
-
-		const closeHandler = (evt: MouseEvent) => {
-			const target = evt.target as Node;
-			if (!container.contains(target) && anchorEl !== target && !anchorEl.contains(target)) {
-				container.remove();
-				document.removeEventListener("mousedown", closeHandler);
-			}
-		};
-
-		setTimeout(() => {
-			document.addEventListener("mousedown", closeHandler);
-		}, 0);
+		const modal = new ComboboxSuggestModal(this.plugin.app, items, selectedValue, onSelect, anchorEl);
+		modal.open();
 	}
 
-	createPopover(
-		anchorEl: HTMLElement,
-		items: { label: string, value: string, icon?: string }[],
+	openOperatorSuggestModal(
+		items: { label: string, value: string }[],
+		selectedValue: string,
 		onSelect: (val: string) => void,
-		selectedValue?: string,
-		enableSearch: boolean = false
+		anchorEl?: HTMLElement
 	) {
-		document.querySelectorAll('.cv-popover').forEach(el => el.remove());
-
-		const popover = document.body.createDiv({ cls: "cv-popover" });
-		const rect = anchorEl.getBoundingClientRect();
-		popover.style.top = `${rect.bottom + 5}px`;
-		popover.style.left = `${rect.left}px`;
-
-		const listContainer = popover.createDiv({ cls: "cv-popover-list" });
-
-		const render = (list: typeof items) => {
-			listContainer.empty();
-			list.forEach(opt => {
-				const item = listContainer.createDiv({ cls: "cv-popover-item" });
-				if (opt.value === selectedValue) item.addClass("is-selected");
-
-				const contentWrapper = item.createDiv({ cls: "cv-popover-content" });
-
-				if (opt.icon) {
-					const iconDiv = contentWrapper.createDiv({ cls: "cv-popover-icon" });
-					setIcon(iconDiv, opt.icon);
-				}
-				contentWrapper.createDiv({ cls: "cv-popover-label", text: opt.label });
-
-				if (opt.value === selectedValue) {
-					const check = item.createDiv({ cls: "cv-popover-check" });
-					setIcon(check, "check");
-				}
-
-				item.onclick = (evt) => {
-					evt.stopPropagation();
-					onSelect(opt.value);
-					popover.remove();
-				};
-			});
-		};
-
-		if (enableSearch) {
-			const searchContainer = popover.createDiv({ cls: "cv-popover-search" });
-			const searchInput = searchContainer.createEl("input", { type: "text", placeholder: "Search..." });
-			searchContainer.prepend(searchInput);
-			searchInput.focus();
-			searchInput.addEventListener("input", (e: Event) => {
-				const target = e.target as HTMLInputElement;
-				const val = target.value.toLowerCase();
-				render(items.filter(i => i.label.toLowerCase().includes(val)));
-			});
-		}
-
-		render(items);
-
-		const closeHandler = (evt: MouseEvent) => {
-			if (!popover.contains(evt.target as Node) && evt.target !== anchorEl && !anchorEl.contains(evt.target as Node)) {
-				popover.remove();
-				document.removeEventListener("click", closeHandler);
-			}
-		};
-		setTimeout(() => document.addEventListener("click", closeHandler), 0);
+		const modal = new ComboboxSuggestModal(
+			this.plugin.app,
+			items,
+			selectedValue,
+			onSelect,
+			anchorEl
+		);
+		modal.open();
 	}
 
 	createSimpleBtn(container: HTMLElement, icon: string, text: string, onClick: () => void) {

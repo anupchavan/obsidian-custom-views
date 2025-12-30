@@ -77,6 +77,28 @@ function evaluateFilter(filter: Filter, file: TFile, frontmatter?: FrontMatterCa
 				const match = targetArray.some((v: string | number | boolean) => normalize(v).includes(filterValue));
 				return filter.operator === "contains" ? match : !match;
 			}
+			case "contains any of":
+			case "does not contain any of": {
+				// Parse comma-separated filter values
+				const filterValues = (filter.value || "").split(",").map(v => normalize(v.trim())).filter(v => v.length > 0);
+				if (filterValues.length === 0) return filter.operator === "does not contain any of";
+				// Check if any filter value matches any target value
+				const match = filterValues.some(filterVal =>
+					targetArray.some((v: string | number | boolean) => normalize(v).includes(filterVal))
+				);
+				return filter.operator === "contains any of" ? match : !match;
+			}
+			case "contains all of":
+			case "does not contain all of": {
+				// Parse comma-separated filter values
+				const filterValues = (filter.value || "").split(",").map(v => normalize(v.trim())).filter(v => v.length > 0);
+				if (filterValues.length === 0) return filter.operator === "does not contain all of";
+				// Check if all filter values are found in the target array
+				const match = filterValues.every(filterVal =>
+					targetArray.some((v: string | number | boolean) => normalize(v).includes(filterVal))
+				);
+				return filter.operator === "contains all of" ? match : !match;
+			}
 			case "starts with":
 			case "ends with":
 				return false;
@@ -99,6 +121,24 @@ function evaluateFilter(filter: Filter, file: TFile, frontmatter?: FrontMatterCa
 			case "does not contain": {
 				const match = normalize(targetScalar).includes(filterValue);
 				return filter.operator === "contains" ? match : !match;
+			}
+			case "contains any of":
+			case "does not contain any of": {
+				// Parse comma-separated filter values
+				const filterValues = (filter.value || "").split(",").map(v => normalize(v.trim())).filter(v => v.length > 0);
+				if (filterValues.length === 0) return filter.operator === "does not contain any of";
+				// Check if any filter value is contained in the target string
+				const match = filterValues.some(filterVal => normalize(targetScalar).includes(filterVal));
+				return filter.operator === "contains any of" ? match : !match;
+			}
+			case "contains all of":
+			case "does not contain all of": {
+				// Parse comma-separated filter values
+				const filterValues = (filter.value || "").split(",").map(v => normalize(v.trim())).filter(v => v.length > 0);
+				if (filterValues.length === 0) return filter.operator === "does not contain all of";
+				// Check if all filter values are contained in the target string
+				const match = filterValues.every(filterVal => normalize(targetScalar).includes(filterVal));
+				return filter.operator === "contains all of" ? match : !match;
 			}
 			case "starts with":
 				return normalize(targetScalar).startsWith(filterValue);
