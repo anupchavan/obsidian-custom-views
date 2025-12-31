@@ -3,7 +3,7 @@ import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 
 
-type PropertyType = "text" | "number" | "date" | "datetime" | "list" | "checkbox" | "unknown";
+type PropertyType = "text" | "number" | "date" | "datetime" | "list" | "checkbox" | "file" | "unknown";
 
 const TYPE_ICONS: Record<PropertyType, string> = {
 	text: "text",
@@ -12,6 +12,7 @@ const TYPE_ICONS: Record<PropertyType, string> = {
 	datetime: "clock",
 	list: "list",
 	checkbox: "check-square",
+	file: "file",
 	unknown: "help-circle"
 };
 
@@ -20,7 +21,8 @@ const OPERATORS: Record<string, string[]> = {
 	list: ["contains", "does not contain", "contains any of", "does not contain any of", "contains all of", "does not contain all of", "is empty", "is not empty"],
 	number: ["=", "≠", "<", "≤", ">", "≥", "is empty", "is not empty"],
 	date: ["on", "not on", "before", "on or before", "after", "on or after", "is empty", "is not empty"],
-	checkbox: ["is"] // true/false
+	checkbox: ["is"], // true/false
+	file: ["links to", "does not link to", "in folder", "is not in folder", "has tag", "does not have tag", "has property", "does not have property"]
 };
 
 const DEFAULT_RULES: FilterGroup = {
@@ -124,7 +126,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 		const actionsContainer = listItem.createDiv({ cls: "cv-view-actions" });
 
-		const editBtn = actionsContainer.createDiv({ cls: "cv-clickable-icon" });
+		const editBtn = actionsContainer.createDiv({ cls: "clickable-icon" });
 		setIcon(editBtn, "pencil");
 		editBtn.setAttribute("aria-label", "Edit view");
 		editBtn.onclick = (e) => {
@@ -134,7 +136,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			}).open();
 		};
 
-		const deleteBtn = actionsContainer.createDiv({ cls: "cv-clickable-icon" });
+		const deleteBtn = actionsContainer.createDiv({ cls: "clickable-icon" });
 		setIcon(deleteBtn, "trash-2");
 		deleteBtn.setAttribute("aria-label", "Delete view");
 		deleteBtn.onclick = async (e) => {
@@ -429,9 +431,9 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 			setIcon(checkIcon, "check");
 		}
 
-		const iconDiv = el.createDiv({ cls: "cv-suggestion-icon" });
-		const flair = iconDiv.createSpan({ cls: "cv-suggestion-flair" });
 		if (item.icon) {
+			const iconDiv = el.createDiv({ cls: "cv-suggestion-icon" });
+			const flair = iconDiv.createSpan({ cls: "cv-suggestion-flair" });
 			setIcon(flair, item.icon);
 		}
 
@@ -449,9 +451,11 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 			this.clickOutsideHandler = null;
 		}
 
-		// Remove focus class from button and outer div
+		// Remove focus class from button and cv-filter-statement
 		if (this.anchorEl) {
-			removeFocusClasses(this.anchorEl, this.anchorEl.parentElement);
+			// Find the cv-filter-statement element that contains the anchor
+			const statement = this.anchorEl.closest('.cv-filter-statement') as HTMLElement;
+			removeFocusClasses(this.anchorEl, statement);
 		}
 
 		const modalContainer = this.modalEl.closest('.modal-container');
@@ -494,7 +498,10 @@ function createDeleteButton(
 	onClick: (e: MouseEvent) => void,
 	additionalClasses: string = ""
 ): HTMLElement {
-	const deleteBtn = container.createDiv({ cls: `cv-clickable-icon ${additionalClasses}`.trim() });
+	const deleteBtn = container.createEl("button", {
+		cls: `clickable-icon ${additionalClasses}`.trim(),
+		attr: { "aria-label": "Remove filter" }
+	});
 	setIcon(deleteBtn, "trash-2");
 	deleteBtn.onclick = (e) => {
 		e.stopPropagation();
@@ -526,7 +533,8 @@ function createFilterValueInput(
 ): HTMLInputElement | HTMLElement {
 	const safeValue = value || "";
 	const needsMultiSelect = operator === "contains any of" || operator === "does not contain any of"
-		|| operator === "contains all of" || operator === "does not contain all of";
+		|| operator === "contains all of" || operator === "does not contain all of"
+		|| operator === "has tag" || operator === "does not have tag";
 	if (needsMultiSelect) {
 		// Multi-select container for operators that accept multiple values
 		const multiSelectContainer = container.createDiv({ cls: "cv-multi-select-container", attr: { tabindex: "-1" } });
@@ -544,6 +552,15 @@ function createFilterValueInput(
 			}
 		});
 
+		// Focus input when clicking on container (but not on child elements)
+		multiSelectContainer.addEventListener("click", (e: MouseEvent) => {
+			// Only focus if clicking directly on the container, not on pills or input
+			if (e.target === multiSelectContainer) {
+				e.preventDefault();
+				input.focus();
+			}
+		});
+
 		// Helper to update placeholder based on pill count
 		const updatePlaceholder = (): void => {
 			if (values.length === 0) {
@@ -555,7 +572,7 @@ function createFilterValueInput(
 
 		// Helper to get all pills in order
 		const getPills = (): HTMLElement[] => {
-			return Array.from(multiSelectContainer.querySelectorAll(".cv-multi-select-pill")) as HTMLElement[];
+			return Array.from(multiSelectContainer.querySelectorAll(".multi-select-pill")) as HTMLElement[];
 		};
 
 		// Helper to get the index of a pill
@@ -673,7 +690,7 @@ function createFilterValueInput(
 		// Function to update pills (defined here to access navigation functions)
 		const updatePills = (): void => {
 			// Remove all pills (but keep the input)
-			const pills = multiSelectContainer.querySelectorAll(".cv-multi-select-pill");
+			const pills = multiSelectContainer.querySelectorAll(".multi-select-pill");
 			pills.forEach(pill => pill.remove());
 
 			// Recreate pills with navigation handlers
@@ -717,17 +734,15 @@ function createFilterValueInput(
 				max: type === "datetime" ? "9999-12-31T23:59" : "9999-12-31"
 			}
 		});
-		input.addClass("cv-multi-select-input");
 		input.oninput = () => onChange(input.value);
 		return input;
 	} else if (type === "number") {
 		const input = container.createEl("input", { type: "number", value: safeValue });
-		input.addClass("cv-multi-select-input");
 		input.oninput = () => onChange(input.value);
 		return input;
 	} else {
 		const input = container.createEl("input", { type: "text", value: safeValue });
-		input.addClass("cv-multi-select-input");
+		input.addClass("metadata-input", "metadata-input-text");
 		input.placeholder = "Value...";
 		input.oninput = () => onChange(input.value);
 		return input;
@@ -735,9 +750,9 @@ function createFilterValueInput(
 }
 
 function createPill(container: HTMLElement, value: string, onRemove: () => void, onCreated?: (pill: HTMLElement) => void): void {
-	const pill = container.createDiv({ cls: "cv-multi-select-pill", attr: { tabindex: "0" } });
-	const pillContent = pill.createDiv({ cls: "cv-multi-select-pill-content", text: value });
-	const removeButton = pill.createDiv({ cls: "cv-multi-select-pill-remove-button" });
+	const pill = container.createDiv({ cls: "multi-select-pill", attr: { tabindex: "0" } });
+	const pillContent = pill.createDiv({ cls: "multi-select-pill-content", text: value });
+	const removeButton = pill.createDiv({ cls: "multi-select-pill-remove-button" });
 	setIcon(removeButton, "x");
 	removeButton.onclick = (e) => {
 		e.stopPropagation();
@@ -793,20 +808,21 @@ class FilterBuilder {
 		const app = this.plugin.app;
 		const propMap = new Map<string, PropertyType>();
 
+		propMap.set("file", "file");
 		propMap.set("file.name", "text");
 		propMap.set("file.path", "text");
 		propMap.set("file.folder", "text");
 		propMap.set("file.size", "number");
 		propMap.set("file.ctime", "datetime");
 		propMap.set("file.mtime", "datetime");
-		propMap.set("tags", "list");
+		propMap.set("file tags", "list");
 
 		const files = app.vault.getMarkdownFiles();
 		for (const file of files) {
 			const cache = app.metadataCache.getFileCache(file);
 			if (cache?.frontmatter) {
 				for (const key of Object.keys(cache.frontmatter)) {
-					if (key === "position") continue;
+					if (key === "position" || key === "tags") continue;
 					if (propMap.has(key) && propMap.get(key) !== "unknown") continue;
 					const val = cache.frontmatter[key] as string | number | boolean | string[] | undefined;
 					const type = this.inferType(val);
@@ -888,50 +904,50 @@ class FilterBuilder {
 			this.onRefresh();
 		};
 
-		const headerActionsDiv = header.createDiv({ cls: "filter-group-header-actions" });
-
-		if (isRoot && this.onDeleteView) {
-			const viewHeader = headerActionsDiv.createDiv({ cls: "cv-custom-view-box-header cv-margin-left-auto" });
-
-			new ButtonComponent(viewHeader)
-				.setIcon("trash")
-				.setTooltip("Delete view")
-				.onClick(() => {
-					if (this.onDeleteView) this.onDeleteView();
-				});
-		}
 
 		const statementsContainer = groupDiv.createDiv({ cls: "filter-group-statements" });
-		group.conditions.forEach((condition, index) => {
+
+		// If conditions is empty, show a default empty rule
+		if (group.conditions.length === 0) {
 			const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
-			const conjLabel = rowWrapper.createSpan({ cls: "conjunction-text" });
-			if (index === 0) {
-				conjLabel.innerText = "Where";
-			} else {
-				conjLabel.innerText = (group.operator === "OR" || group.operator === "NOR") ? "or" : "and";
-			}
+			const conjLabel = rowWrapper.createSpan({ cls: "conjunction" });
+			conjLabel.innerText = "where";
 
-			if (condition.type === "group") {
-				rowWrapper.addClass("mod-group");
-				this.renderGroup(rowWrapper, condition);
-
-				const h = rowWrapper.querySelector(".filter-group-header");
-				if (h) {
-					const headerActionsDiv = h.createDiv({ cls: "cv-clickable-icon cv-margin-left-auto" });
-					createDeleteButton(headerActionsDiv, () => {
-						group.conditions.splice(index, 1);
-						this.onSave();
-						this.onRefresh();
-					});
+			// Create a temporary placeholder filter
+			const placeholderFilter: Filter = { type: "filter", field: "file", operator: "links to", value: "" };
+			this.renderFilterRow(rowWrapper, placeholderFilter, group, -1, true);
+		} else {
+			group.conditions.forEach((condition, index) => {
+				const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
+				const conjLabel = rowWrapper.createSpan({ cls: "conjunction" });
+				if (index === 0) {
+					conjLabel.innerText = "where";
+				} else {
+					conjLabel.innerText = (group.operator === "OR" || group.operator === "NOR") ? "or" : "and";
 				}
-			} else {
-				this.renderFilterRow(rowWrapper, condition, group, index);
-			}
-		});
+
+				if (condition.type === "group") {
+					rowWrapper.addClass("mod-group");
+					this.renderGroup(rowWrapper, condition);
+
+					const h = rowWrapper.querySelector(".filter-group-header");
+					if (h) {
+						const headerActionsDiv = h.createDiv({ cls: "filter-group-header-actions" });
+						createDeleteButton(headerActionsDiv, () => {
+							group.conditions.splice(index, 1);
+							this.onSave();
+							this.onRefresh();
+						});
+					}
+				} else {
+					this.renderFilterRow(rowWrapper, condition, group, index);
+				}
+			});
+		}
 
 		const actionsDiv = groupDiv.createDiv({ cls: "filter-group-actions" });
 		this.createSimpleBtn(actionsDiv, "plus", "Add filter", () => {
-			group.conditions.push({ type: "filter", field: "file.name", operator: "contains", value: "" });
+			group.conditions.push({ type: "filter", field: "file", operator: "links to", value: "" });
 			this.onSave(); this.onRefresh();
 		});
 		this.createSimpleBtn(actionsDiv, "plus", "Add group", () => {
@@ -940,16 +956,25 @@ class FilterBuilder {
 		});
 	}
 
-	renderFilterRow(row: HTMLElement, filter: Filter, parentGroup: FilterGroup, index: number) {
+	renderFilterRow(row: HTMLElement, filter: Filter, parentGroup: FilterGroup, index: number, isPlaceholder: boolean = false) {
 		const statement = row.createDiv({ cls: "cv-filter-statement" });
-		const expression = statement.createDiv({ cls: "cv-filter-expression" });
+		const expression = statement.createDiv({ cls: "cv-filter-expression metadata-property" });
 
 		const currentType = this.getPropertyType(filter.field);
+
+		// Track if this placeholder has been added to the conditions array
+		let placeholderAdded = false;
+
+		// Get icon for the property - special case for "file tags"
+		const getPropertyIcon = (field: string, type: PropertyType): string => {
+			if (field === "file tags") return "tags";
+			return TYPE_ICONS[type] || "pilcrow";
+		};
 
 		const propertyBtn = createComboboxButton(
 			expression,
 			filter.field,
-			TYPE_ICONS[currentType] || "pilcrow"
+			getPropertyIcon(filter.field, currentType)
 		);
 
 		const openPropertyModal = () => {
@@ -958,15 +983,38 @@ class FilterBuilder {
 				this.availableProperties.map(p => ({
 					label: p.key,
 					value: p.key,
-					icon: TYPE_ICONS[p.type] || "pilcrow"
+					icon: p.key === "file tags" ? "tags" : (TYPE_ICONS[p.type] || "pilcrow")
 				})),
 				filter.field,
 				(newVal) => {
-					filter.field = newVal;
 					const newType = this.getPropertyType(newVal);
 					const validOps = OPERATORS[newType === "datetime" ? "date" : newType] || OPERATORS["text"];
-					filter.operator = validOps[0] as FilterOperator;
-					filter.value = "";
+					const newOperator = validOps[0] as FilterOperator;
+
+					// If this is a placeholder, add it to the conditions array
+					if (isPlaceholder && !placeholderAdded) {
+						parentGroup.conditions.push({
+							type: "filter",
+							field: newVal,
+							operator: newOperator,
+							value: ""
+						});
+						placeholderAdded = true;
+					} else if (isPlaceholder && placeholderAdded) {
+						// Update the filter in the conditions array
+						const conditionIndex = parentGroup.conditions.length - 1;
+						if (conditionIndex >= 0 && parentGroup.conditions[conditionIndex].type === "filter") {
+							const conditionFilter = parentGroup.conditions[conditionIndex] as Filter;
+							conditionFilter.field = newVal;
+							conditionFilter.operator = newOperator;
+							conditionFilter.value = "";
+						}
+					} else {
+						filter.field = newVal;
+						filter.operator = newOperator;
+						filter.value = "";
+					}
+
 					this.onSave();
 					this.onRefresh();
 				},
@@ -991,7 +1039,20 @@ class FilterBuilder {
 				validOps.map(op => ({ label: op, value: op })),
 				filter.operator,
 				(newVal) => {
-					filter.operator = newVal as FilterOperator;
+					// If this is a placeholder, add it to the conditions array first
+					if (isPlaceholder && !placeholderAdded) {
+						parentGroup.conditions.push({ ...filter, operator: newVal as FilterOperator });
+						placeholderAdded = true;
+					} else if (isPlaceholder && placeholderAdded) {
+						// Update the filter in the conditions array (it's the last one we added)
+						const conditionIndex = parentGroup.conditions.length - 1;
+						if (conditionIndex >= 0 && parentGroup.conditions[conditionIndex].type === "filter") {
+							(parentGroup.conditions[conditionIndex] as Filter).operator = newVal as FilterOperator;
+						}
+					} else {
+						filter.operator = newVal as FilterOperator;
+					}
+
 					this.onSave();
 					this.onRefresh();
 				},
@@ -1002,24 +1063,40 @@ class FilterBuilder {
 		setupComboboxButtonHandlers(operatorBtn, statement, openOperatorModal);
 
 		const handleDelete = () => {
-			parentGroup.conditions.splice(index, 1);
-			this.onSave();
-			this.onRefresh();
+			if (isPlaceholder) {
+				// For placeholder, just refresh to show the default again
+				this.onRefresh();
+			} else {
+				parentGroup.conditions.splice(index, 1);
+				this.onSave();
+				this.onRefresh();
+			}
 		};
 
 		if (!["is empty", "is not empty"].includes(filter.operator)) {
 			const rhs = expression.createDiv({ cls: "cv-filter-rhs-container metadata-property-value" });
 
 			createFilterValueInput(rhs, currentType, filter.value, (val) => {
-				filter.value = val;
+				// If this is a placeholder, add it to the conditions array first
+				if (isPlaceholder && !placeholderAdded) {
+					parentGroup.conditions.push({ ...filter, value: val });
+					placeholderAdded = true;
+				} else if (isPlaceholder && placeholderAdded) {
+					// Update the filter in the conditions array (it's the last one we added)
+					const conditionIndex = parentGroup.conditions.length - 1;
+					if (conditionIndex >= 0 && parentGroup.conditions[conditionIndex].type === "filter") {
+						(parentGroup.conditions[conditionIndex] as Filter).value = val;
+					}
+				} else {
+					filter.value = val;
+				}
+
 				this.onSave();
 			}, filter.operator);
-
-			createDeleteButton(rhs, handleDelete, "filter-delete-inside");
-		} else {
-			const actions = row.createDiv({ cls: "filter-row-actions" });
-			createDeleteButton(actions, handleDelete);
 		}
+
+		const actions = expression.createDiv({ cls: "cv-filter-row-actions" });
+		createDeleteButton(actions, handleDelete);
 	}
 
 

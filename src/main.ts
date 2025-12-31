@@ -90,7 +90,7 @@ export default class CustomViewsPlugin extends Plugin {
 		let matchedTemplate = "";
 
 		for (const viewConfig of this.settings.views) {
-			const isMatch = checkRules(viewConfig.rules, file, cache?.frontmatter);
+			const isMatch = checkRules(this.app, viewConfig.rules, file, cache?.frontmatter);
 			if (isMatch) {
 				matchedTemplate = viewConfig.template;
 				break;
