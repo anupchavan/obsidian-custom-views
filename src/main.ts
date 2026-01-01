@@ -1,10 +1,11 @@
-import { Plugin, TFile, MarkdownView, Keymap, Notice } from "obsidian";
+import { Plugin, TFile, MarkdownView, Keymap, Notice, WorkspaceLeaf, View } from "obsidian";
 import { CustomViewsSettings, DEFAULT_SETTINGS, CustomViewsSettingTab } from "./settings";
 import { checkRules } from "./matcher";
 import { renderTemplate } from "./renderer";
 
 const CUSTOM_VIEW_CLASS = "obsidian-custom-view-render";
 const HIDE_MARKDOWN_CLASS = "obsidian-custom-view-hidden";
+const CANVAS_NODE_CLASS = "canvas-node-content";
 
 export default class CustomViewsPlugin extends Plugin {
 	settings: CustomViewsSettings;
@@ -48,8 +49,27 @@ export default class CustomViewsPlugin extends Plugin {
 				const file = this.app.workspace.getActiveFile();
 
 				void this.processActiveView(file);
+				if (this.settings.workInCanvas) {
+					void this.processAllCanvasNodes();
+				}
 			})
 		);
+
+		// Process canvas nodes when canvas changes
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", () => {
+				if (this.settings.workInCanvas) {
+					void this.processAllCanvasNodes();
+				}
+			})
+		);
+
+		// Also process canvas nodes periodically to catch updates
+		this.registerInterval(window.setInterval(() => {
+			if (this.settings.enabled && this.settings.workInCanvas) {
+				void this.processAllCanvasNodes();
+			}
+		}, 1000));
 	}
 
 	async setPluginState(enabled: boolean) {
@@ -71,6 +91,8 @@ export default class CustomViewsPlugin extends Plugin {
 				this.restoreDefaultView(leaf.view);
 			}
 		});
+		// Clean up canvas nodes
+		this.restoreAllCanvasNodes();
 	}
 
 	async processActiveView(file: TFile | null) {
@@ -120,11 +142,10 @@ export default class CustomViewsPlugin extends Plugin {
 			return;
 		}
 
-		await this.injectCustomView(view, file, matchedTemplate);
+		await this.injectCustomView(view.contentEl, file, matchedTemplate);
 	}
 
-	async injectCustomView(view: MarkdownView, file: TFile, template: string) {
-		const container = view.contentEl;
+	async injectCustomView(container: HTMLElement, file: TFile, template: string) {
 		let customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`) as HTMLElement;
 
 		if (!customEl) {
@@ -167,4 +188,98 @@ export default class CustomViewsPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
+
+	/**
+	 * Process all markdown file nodes in canvas files
+	 */
+	async processAllCanvasNodes() {
+		if (!this.settings.enabled || !this.settings.workInCanvas) {
+			this.restoreAllCanvasNodes();
+			return;
+		}
+
+		// Find all canvas views
+		this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+			const view = leaf.view;
+			// Check if this is a canvas view (CanvasView type may not be exported, so we check by class)
+			if (view && (view as any).canvas) {
+				const canvas = (view as any).canvas;
+				if (canvas && canvas.nodes) {
+					// Process each node in the canvas
+					canvas.nodes.forEach((node: any) => {
+						if (node.file && node.file instanceof TFile && node.file.extension === "md") {
+							void this.processCanvasNode(node);
+						}
+					});
+				}
+			}
+		});
+	}
+
+	/**
+	 * Process a single canvas node
+	 */
+	async processCanvasNode(node: any) {
+		const file = node.file as TFile;
+		if (!file) return;
+
+		const cache = this.app.metadataCache.getFileCache(file);
+		let matchedTemplate = "";
+
+		for (const viewConfig of this.settings.views) {
+			const isMatch = checkRules(this.app, viewConfig.rules, file, cache?.frontmatter);
+			if (isMatch) {
+				matchedTemplate = viewConfig.template;
+				break;
+			}
+		}
+
+		if (!matchedTemplate) {
+			this.restoreCanvasNode(node);
+			return;
+		}
+
+		// Find the node's content element
+		const nodeEl = node.nodeEl as HTMLElement;
+		if (!nodeEl) return;
+
+		// Find the markdown preview container within the node
+		const previewContainer = nodeEl.querySelector(".markdown-preview-view") as HTMLElement;
+		if (!previewContainer) return;
+
+		await this.injectCustomView(previewContainer, file, matchedTemplate);
+	}
+
+	/**
+	 * Restore a canvas node to default view
+	 */
+	restoreCanvasNode(node: any) {
+		const nodeEl = node.nodeEl as HTMLElement;
+		if (!nodeEl) return;
+
+		const previewContainer = nodeEl.querySelector(".markdown-preview-view") as HTMLElement;
+		if (!previewContainer) return;
+
+		previewContainer.removeClass(HIDE_MARKDOWN_CLASS);
+		const customEl = previewContainer.querySelector(`.${CUSTOM_VIEW_CLASS}`);
+		if (customEl) customEl.remove();
+	}
+
+	/**
+	 * Restore all canvas nodes
+	 */
+	restoreAllCanvasNodes() {
+		this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+			const view = leaf.view;
+			if (view && (view as any).canvas) {
+				const canvas = (view as any).canvas;
+				if (canvas && canvas.nodes) {
+					canvas.nodes.forEach((node: any) => {
+						this.restoreCanvasNode(node);
+					});
+				}
+			}
+		});
+	}
+
 }

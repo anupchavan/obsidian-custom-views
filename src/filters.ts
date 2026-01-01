@@ -76,8 +76,8 @@ const filters: Record<string, FilterFunction> = {
 	trim: (val: string) => String(val).trim(),
 
 	replace: (val: FilterValue, search: unknown, replaceWith?: unknown) => {
-		const searchStr = String(search || "");
-		const replaceStr = String(replaceWith || "");
+		const searchStr = (typeof search === 'string' || typeof search === 'number') ? String(search) : "";
+		const replaceStr = (typeof replaceWith === 'string' || typeof replaceWith === 'number') ? String(replaceWith) : "";
 		if (searchStr.startsWith("/")) {
 			const lastSlash = searchStr.lastIndexOf("/");
 			const pattern = searchStr.substring(1, lastSlash);

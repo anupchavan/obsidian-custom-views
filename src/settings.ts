@@ -35,12 +35,14 @@ const DEFAULT_RULES: FilterGroup = {
 export interface CustomViewsSettings {
 	enabled: boolean;
 	workInLivePreview: boolean;
+	workInCanvas: boolean;
 	views: ViewConfig[];
 }
 
 export const DEFAULT_SETTINGS: CustomViewsSettings = {
 	enabled: true,
 	workInLivePreview: true,
+	workInCanvas: false,
 	views: [
 		{
 			id: 'default-1',
@@ -80,6 +82,24 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						});
 					}
 				}));
+
+		new Setting(containerEl)
+			.setName("Work in canvas (experimental)")
+			.setDesc("Enable to apply custom views to markdown file nodes in canvas files.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.workInCanvas)
+				.onChange(async (value) => {
+					this.plugin.settings.workInCanvas = value;
+					await this.plugin.saveSettings();
+					if (value) {
+						this.plugin.processAllCanvasNodes().catch(() => {
+							// Error handling
+						});
+					} else {
+						this.plugin.restoreAllCanvasNodes();
+					}
+				}));
+
 
 
 
@@ -969,7 +989,7 @@ class FilterBuilder {
 		if (group.conditions.length === 0) {
 			const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
 			const conjLabel = rowWrapper.createSpan({ cls: "conjunction" });
-			conjLabel.innerText = "Where";
+			conjLabel.innerText = "where";
 
 			// Create a temporary placeholder filter
 			const placeholderFilter: Filter = { type: "filter", field: "file", operator: "links to", value: "" };
@@ -1081,7 +1101,7 @@ class FilterBuilder {
 		if (currentType === "unknown") opsKey = "text";
 		if (!OPERATORS[opsKey]) opsKey = "text";
 
-		const validOps = OPERATORS[opsKey];
+		const validOps = OPERATORS[opsKey] as FilterOperator[];
 
 		const operatorBtn = createComboboxButton(expression, filter.operator);
 
@@ -1091,18 +1111,19 @@ class FilterBuilder {
 				validOps.map(op => ({ label: op, value: op })),
 				filter.operator,
 				(newVal) => {
+					const operator = newVal as FilterOperator;
 					// If this is a placeholder, add it to the conditions array first
 					if (isPlaceholder && !placeholderAdded) {
-						parentGroup.conditions.push({ ...filter, operator: newVal as FilterOperator });
+						parentGroup.conditions.push({ ...filter, operator });
 						placeholderAdded = true;
 					} else if (isPlaceholder && placeholderAdded) {
 						// Update the filter in the conditions array (it's the last one we added)
 						const conditionIndex = parentGroup.conditions.length - 1;
 						if (conditionIndex >= 0 && parentGroup.conditions[conditionIndex].type === "filter") {
-							(parentGroup.conditions[conditionIndex] as Filter).operator = newVal as FilterOperator;
+							(parentGroup.conditions[conditionIndex] as Filter).operator = operator;
 						}
 					} else {
-						filter.operator = newVal as FilterOperator;
+						filter.operator = operator;
 					}
 
 					this.onSave();

@@ -111,10 +111,10 @@ export async function renderTemplate(
 		}
 	);
 
-	// Use a temporary container to safely parse HTML instead of direct innerHTML
-	const tempContainer = document.createElement('div');
-	// eslint-disable-next-line @microsoft/sdl/no-inner-html
-	tempContainer.innerHTML = filledTemplate;
+	// Use DOMParser to safely parse HTML instead of innerHTML
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(filledTemplate, 'text/html');
+	const tempContainer = doc.body;
 
 	// Clear the container and move nodes from temporary container
 	while (container.firstChild) {
