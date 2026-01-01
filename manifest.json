@@ -1,7 +1,7 @@
 {
 	"id": "custom-views",
 	"name": "Custom Views",
-	"version": "0.1.52",
+	"version": "0.1.53",
 	"minAppVersion": "0.15.0",
   "description": "Create custom HTML views for your notes based on filter rules. Transform how your notes are displayed.",
   "author": "Anup Chavan",

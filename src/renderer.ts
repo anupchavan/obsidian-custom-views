@@ -32,54 +32,30 @@ export async function renderTemplate(
 	const markdownQueue: { id: string, content: string }[] = [];
 	const contentPlaceholderId = `custom-view-content-${Date.now()}`;
 
-	const resolveValue = (key: string, isFileProperty: boolean, index?: string): string | number | boolean | string[] | null => {
+	const resolveValue = (key: string, index?: string, isFileProperty: boolean = false): string | number | boolean | string[] | null => {
 		let value: string | number | boolean | string[] | undefined;
 
+		// Handle file properties (only when using file. prefix)
 		if (isFileProperty) {
-			// Handle file properties (file.name, file.basename, file.tags, etc.)
 			if (key === "name") value = file.name;
 			else if (key === "basename") value = file.basename;
-			else if (key === "path") value = file.path;
-			else if (key === "folder") value = file.parent?.path || "";
 			else if (key === "size") value = file.stat.size;
 			else if (key === "ctime") value = file.stat.ctime; // Timestamp for dates
 			else if (key === "mtime") value = file.stat.mtime;
-			else if (key === "extension") value = file.extension;
-			else if (key === "tags") {
-				// Get tags from both cache.tags (body tags) and frontmatter.tags
-				const cache = app.metadataCache.getFileCache(file);
-				const bodyTags = cache?.tags || [];
-				const frontmatterTags = frontmatter?.tags as string | string[] | undefined;
-
-				const tagStrings: string[] = [];
-				// Add body tags
-				tagStrings.push(...bodyTags.map(tag => tag.tag.replace(/^#+/, "")));
-				// Add frontmatter tags
-				if (frontmatterTags) {
-					if (Array.isArray(frontmatterTags)) {
-						tagStrings.push(...frontmatterTags.map(tag =>
-							typeof tag === 'string' ? tag.replace(/^#+/, "") : String(tag).replace(/^#+/, "")
-						));
-					} else if (typeof frontmatterTags === 'string') {
-						tagStrings.push(frontmatterTags.replace(/^#+/, ""));
-					}
-				}
-				value = tagStrings;
+			else if (key === "content") {
+				// Special case: content is handled separately
+				return null;
 			}
-			// For other file.* properties, check frontmatter
-			else if (frontmatter && frontmatter[key] !== undefined) {
-				const frontmatterValue = frontmatter[key] as string | number | boolean | string[] | undefined;
-				value = frontmatterValue;
-			}
-			else return null;
-		} else {
-			// Handle frontmatter properties directly (cover, title, etc.)
-			if (frontmatter && frontmatter[key] !== undefined) {
-				const frontmatterValue = frontmatter[key] as string | number | boolean | string[] | undefined;
-				value = frontmatterValue;
-			}
-			else return null;
 		}
+
+		// Check frontmatter (works for both file.property and property syntax)
+		if (frontmatter && frontmatter[key] !== undefined) {
+			const frontmatterValue = frontmatter[key] as string | number | boolean | string[] | undefined;
+			value = frontmatterValue;
+		}
+
+		// If not found and not a file property, return null
+		if (value === undefined) return null;
 
 		if (index !== undefined && Array.isArray(value)) {
 			const i = parseInt(index);
@@ -89,20 +65,19 @@ export async function renderTemplate(
 	};
 
 	// Match both {{file.property}} and {{property}} patterns
-	// Group 1: optional "file." prefix, Group 2: property name, Group 3: bracket with index, Group 4: index number, Group 5: filter chain
 	const regex = /\{\{(file\.)?([a-zA-Z0-9_.-]+)(\[(\d+)\])?(?:\s*\|(.*?))?\}\}/g;
 
 	const filledTemplate = template.replace(
 		regex,
 		(_match: string, filePrefix: string | undefined, key: string, _bracket: string | undefined, index: string | undefined, filterChain: string | undefined, offset: number, fullString: string) => {
-			// Check if this is a file property by checking if "file." prefix was present
-			const isFileProperty = filePrefix !== undefined;
+			// Determine if this is a file.property pattern
+			const isFileProperty = filePrefix === 'file.';
 
-			if (key === "content" && isFileProperty) {
+			if (key === "content") {
 				return `<div id="${contentPlaceholderId}" class="markdown-rendered-content"></div>`;
 			}
 
-			let value = resolveValue(key, isFileProperty, index);
+			let value = resolveValue(key, index, isFileProperty);
 			if (value === null) return "";
 
 			if (filterChain) {

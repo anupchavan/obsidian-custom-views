@@ -979,9 +979,9 @@ class FilterBuilder {
 				const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
 				const conjLabel = rowWrapper.createSpan({ cls: "conjunction" });
 				if (index === 0) {
-					conjLabel.innerText = "Where";
+					conjLabel.innerText = "where";
 				} else {
-					conjLabel.innerText = (group.operator === "OR" || group.operator === "NOR") ? "Or" : "And";
+					conjLabel.innerText = (group.operator === "OR" || group.operator === "NOR") ? "or" : "and";
 				}
 
 				if (condition.type === "group") {
