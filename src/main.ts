@@ -59,8 +59,8 @@ export default class CustomViewsPlugin extends Plugin {
 		new Notice(enabled ? "Custom Views Enabled" : "Custom Views Disabled");
 
 		const file = this.app.workspace.getActiveFile();
-		if (file) {
 
+		if (file) {
 			void this.processActiveView(file);
 		}
 	}
@@ -112,16 +112,12 @@ export default class CustomViewsPlugin extends Plugin {
 			return;
 		}
 
-		if (!this.settings.workInLivePreview) {
-			if (!isReadingMode) {
-				this.restoreDefaultView(view);
-				return;
-			}
-		} else {
-			if (!isReadingMode && !isLivePreviewMode) {
-				this.restoreDefaultView(view);
-				return;
-			}
+		if (!this.settings.workInLivePreview && !isReadingMode) {
+			this.restoreDefaultView(view);
+			return;
+		} else if (!isReadingMode && !isLivePreviewMode) {
+			this.restoreDefaultView(view);
+			return;
 		}
 
 		await this.injectCustomView(view, file, matchedTemplate);

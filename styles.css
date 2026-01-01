@@ -184,7 +184,7 @@
     flex-direction: column;
 }
 
-.cv-filter-statement.cv-has-focus, .cv-filter-statement:focus-within {
+.cv-filter-expression:focus-within {
     box-shadow: var(--metadata-property-box-shadow-focus);
     border-radius: var(--metadata-property-radius-focus);
 }
@@ -216,7 +216,12 @@
     background: var(--metadata-label-background-active);
 
 }
-
+.metadata-property.cv-has-focus {
+    --metadata-divider-color: var(--metadata-divider-color-focus);
+    background-color: var(--metadata-property-background-hover);
+    box-shadow: var(--metadata-property-box-shadow-focus);
+    border-radius: var(--metadata-property-radius-focus);
+}
 .cv-combobox-button *,
 .cv-text-button-icon {
     display: flex;
@@ -513,7 +518,9 @@ font-size: var(--metadata-input-font-size);
     display: block;
     background-color: var(--search-icon-color);
     -webkit-mask-image: url("data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27><circle cx=%2711%27 cy=%2711%27 r=%278%27></circle><line x1=%2721%27 y1=%2721%27 x2=%2716.65%27 y2=%2716.65%27></line></svg>");
+    mask-image: url("data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27><circle cx=%2711%27 cy=%2711%27 r=%278%27></circle><line x1=%2721%27 y1=%2721%27 x2=%2716.65%27 y2=%2716.65%27></line></svg>");
     -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
 }
 
 .cv-combobox .cv-search-input-container input[type=search] {
@@ -863,4 +870,27 @@ font-size: var(--metadata-input-font-size);
     inset-inline-start: 0;
     width: 100%;
     z-index: var(--layer-modal);
+}
+
+/* Combobox positioning */
+.cv-combobox-positioned {
+    position: fixed !important;
+    margin: 0 !important;
+    transform: none !important;
+    left: var(--cv-combobox-left, auto);
+    top: var(--cv-combobox-top, auto);
+}
+
+/* Hide modal background */
+.cv-modal-bg-hidden {
+    display: none !important;
+}
+
+/* Show clear button */
+.cv-clear-button-visible {
+    display: block !important;
+}
+
+.cv-clear-button-hidden {
+    display: none !important;
 }

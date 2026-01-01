@@ -13,7 +13,7 @@ const TYPE_ICONS: Record<PropertyType, string> = {
 	list: "list",
 	checkbox: "check-square",
 	file: "file",
-	unknown: "help-circle"
+	unknown: "text"
 };
 
 const OPERATORS: Record<string, string[]> = {
@@ -21,7 +21,7 @@ const OPERATORS: Record<string, string[]> = {
 	list: ["contains", "does not contain", "contains any of", "does not contain any of", "contains all of", "does not contain all of", "is empty", "is not empty"],
 	number: ["=", "≠", "<", "≤", ">", "≥", "is empty", "is not empty"],
 	date: ["on", "not on", "before", "on or before", "after", "on or after", "is empty", "is not empty"],
-	checkbox: ["is"], // true/false
+	checkbox: ["is"],
 	file: ["links to", "does not link to", "in folder", "is not in folder", "has tag", "does not have tag", "has property", "does not have property"]
 };
 
@@ -75,7 +75,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					const file = this.app.workspace.getActiveFile();
 					if (file) {
-						void this.plugin.processActiveView(file);
+						this.plugin.processActiveView(file).catch(() => {
+							// Error handling for processActiveView
+						});
 					}
 				}));
 
@@ -334,7 +336,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 	}
 
 	onOpen() {
-		super.onOpen();
+		void super.onOpen();
 
 		// Style modal as combobox
 		requestAnimationFrame(() => {
@@ -344,7 +346,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 				modalContainer.removeClass('mod-dim');
 				const modalBg = modalContainer.querySelector('.modal-bg');
 				if (modalBg) {
-					(modalBg as HTMLElement).style.display = 'none';
+					(modalBg as HTMLElement).addClass('cv-modal-bg-hidden');
 				}
 			}
 		});
@@ -354,11 +356,10 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 		// Position relative to anchor element
 		if (this.anchorEl) {
 			const rect = this.anchorEl.getBoundingClientRect();
-			this.modalEl.style.position = 'fixed';
-			this.modalEl.style.left = `${rect.left}px`;
-			this.modalEl.style.top = `${rect.bottom + 5}px`;
-			this.modalEl.style.margin = '0';
-			this.modalEl.style.transform = 'none';
+			this.modalEl.addClass('cv-combobox-positioned');
+			// Use CSS custom properties for dynamic positioning (setProperty is acceptable for CSS variables)
+			this.modalEl.style.setProperty('--cv-combobox-left', `${rect.left}px`);
+			this.modalEl.style.setProperty('--cv-combobox-top', `${rect.bottom + 5}px`);
 		}
 
 		// Style input and container
@@ -375,9 +376,11 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 					const clearButton = promptEl.querySelector('.search-input-clear-button') as HTMLElement;
 					if (clearButton) {
 						if (input.value.trim().length > 0) {
-							clearButton.style.display = '';
+							clearButton.removeClass('cv-clear-button-hidden');
+							clearButton.addClass('cv-clear-button-visible');
 						} else {
-							clearButton.style.display = 'none';
+							clearButton.removeClass('cv-clear-button-visible');
+							clearButton.addClass('cv-clear-button-hidden');
 						}
 					}
 				};
@@ -453,9 +456,9 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 
 		// Remove focus class from button and cv-filter-statement
 		if (this.anchorEl) {
-			// Find the cv-filter-statement element that contains the anchor
-			const statement = this.anchorEl.closest('.cv-filter-statement') as HTMLElement;
-			removeFocusClasses(this.anchorEl, statement);
+			// Find the cv-filter-expression element that contains the anchor
+			const expression = this.anchorEl.closest('.cv-filter-expression') as HTMLElement;
+			removeFocusClasses(this.anchorEl, expression);
 		}
 
 		const modalContainer = this.modalEl.closest('.modal-container');
@@ -464,7 +467,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 			modalContainer.addClass('mod-dim');
 			const modalBg = modalContainer.querySelector('.modal-bg');
 			if (modalBg) {
-				(modalBg as HTMLElement).style.display = '';
+				(modalBg as HTMLElement).removeClass('cv-modal-bg-hidden');
 			}
 		}
 		super.onClose();
@@ -572,7 +575,7 @@ function createFilterValueInput(
 
 		// Helper to get all pills in order
 		const getPills = (): HTMLElement[] => {
-			return Array.from(multiSelectContainer.querySelectorAll(".multi-select-pill")) as HTMLElement[];
+			return Array.from(multiSelectContainer.querySelectorAll(".multi-select-pill"));
 		};
 
 		// Helper to get the index of a pill
@@ -751,7 +754,7 @@ function createFilterValueInput(
 
 function createPill(container: HTMLElement, value: string, onRemove: () => void, onCreated?: (pill: HTMLElement) => void): void {
 	const pill = container.createDiv({ cls: "multi-select-pill", attr: { tabindex: "0" } });
-	const pillContent = pill.createDiv({ cls: "multi-select-pill-content", text: value });
+	pill.createDiv({ cls: "multi-select-pill-content", text: value });
 	const removeButton = pill.createDiv({ cls: "multi-select-pill-remove-button" });
 	setIcon(removeButton, "x");
 	removeButton.onclick = (e) => {
@@ -802,27 +805,62 @@ class FilterBuilder {
 	}
 
 	/**
+	 * Gets the display label for a property key
+	 */
+	getPropertyLabel(key: string): string {
+		const labelMap: Record<string, string> = {
+			"file.name": "file name",
+			"file.path": "file path",
+			"file.folder": "folder",
+			"file.size": "file size",
+			"file.ctime": "created time",
+			"file.mtime": "modified time"
+		};
+		return labelMap[key] || key;
+	}
+
+	/**
+	 * Gets the icon for a property
+	 */
+	getPropertyIcon(key: string, type: PropertyType): string {
+		if (key === "file tags") return "tags";
+		if (key === "aliases") return "forward";
+		if (key === "file.ctime" || key === "file.mtime") return "clock";
+		return TYPE_ICONS[type] || "pilcrow";
+	}
+
+	/**
 	 * Scans the vault to find properties and INFER their types.
 	 */
 	scanVaultProperties(): PropertyDef[] {
 		const app = this.plugin.app;
 		const propMap = new Map<string, PropertyType>();
 
-		propMap.set("file", "file");
-		propMap.set("file.name", "text");
-		propMap.set("file.path", "text");
-		propMap.set("file.folder", "text");
-		propMap.set("file.size", "number");
-		propMap.set("file.ctime", "datetime");
-		propMap.set("file.mtime", "datetime");
-		propMap.set("file tags", "list");
+		// Define built-in properties in the desired order
+		const builtInProps: Array<[string, PropertyType]> = [
+			["file", "file"],
+			["file.name", "text"],
+			["file.path", "text"],
+			["file.folder", "text"],
+			["file.ctime", "date"],
+			["file.mtime", "date"],
+			["file.size", "number"],
+			["file tags", "list"],
+			["aliases", "list"]
+		];
 
+		// Add built-in properties
+		for (const [key, type] of builtInProps) {
+			propMap.set(key, type);
+		}
+
+		// Scan frontmatter properties
 		const files = app.vault.getMarkdownFiles();
 		for (const file of files) {
 			const cache = app.metadataCache.getFileCache(file);
 			if (cache?.frontmatter) {
 				for (const key of Object.keys(cache.frontmatter)) {
-					if (key === "position" || key === "tags") continue;
+					if (key === "position" || key === "tags" || key === "aliases") continue;
 					if (propMap.has(key) && propMap.get(key) !== "unknown") continue;
 					const val = cache.frontmatter[key] as string | number | boolean | string[] | undefined;
 					const type = this.inferType(val);
@@ -831,9 +869,29 @@ class FilterBuilder {
 			}
 		}
 
-		return Array.from(propMap.entries())
-			.map(([key, type]) => ({ key, type }))
-			.sort((a, b) => a.key.localeCompare(b.key));
+		// Separate built-in and custom properties
+		const builtInKeys = new Set(builtInProps.map(([key]) => key));
+		const builtIn: PropertyDef[] = [];
+		const custom: PropertyDef[] = [];
+
+		for (const [key, type] of propMap.entries()) {
+			const def = { key, type };
+			if (builtInKeys.has(key)) {
+				builtIn.push(def);
+			} else {
+				custom.push(def);
+			}
+		}
+
+		// Sort built-in by the defined order, custom alphabetically
+		builtIn.sort((a, b) => {
+			const aIndex = builtInProps.findIndex(([key]) => key === a.key);
+			const bIndex = builtInProps.findIndex(([key]) => key === b.key);
+			return aIndex - bIndex;
+		});
+		custom.sort((a, b) => a.key.localeCompare(b.key));
+
+		return [...builtIn, ...custom];
 	}
 
 	inferType(val: unknown): PropertyType {
@@ -911,7 +969,7 @@ class FilterBuilder {
 		if (group.conditions.length === 0) {
 			const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
 			const conjLabel = rowWrapper.createSpan({ cls: "conjunction" });
-			conjLabel.innerText = "where";
+			conjLabel.innerText = "Where";
 
 			// Create a temporary placeholder filter
 			const placeholderFilter: Filter = { type: "filter", field: "file", operator: "links to", value: "" };
@@ -921,9 +979,9 @@ class FilterBuilder {
 				const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
 				const conjLabel = rowWrapper.createSpan({ cls: "conjunction" });
 				if (index === 0) {
-					conjLabel.innerText = "where";
+					conjLabel.innerText = "Where";
 				} else {
-					conjLabel.innerText = (group.operator === "OR" || group.operator === "NOR") ? "or" : "and";
+					conjLabel.innerText = (group.operator === "OR" || group.operator === "NOR") ? "Or" : "And";
 				}
 
 				if (condition.type === "group") {
@@ -950,7 +1008,7 @@ class FilterBuilder {
 			group.conditions.push({ type: "filter", field: "file", operator: "links to", value: "" });
 			this.onSave(); this.onRefresh();
 		});
-		this.createSimpleBtn(actionsDiv, "plus", "Add group", () => {
+		this.createSimpleBtn(actionsDiv, "plus", "Add filter group", () => {
 			group.conditions.push({ type: "group", operator: "AND", conditions: [] });
 			this.onSave(); this.onRefresh();
 		});
@@ -965,25 +1023,19 @@ class FilterBuilder {
 		// Track if this placeholder has been added to the conditions array
 		let placeholderAdded = false;
 
-		// Get icon for the property - special case for "file tags"
-		const getPropertyIcon = (field: string, type: PropertyType): string => {
-			if (field === "file tags") return "tags";
-			return TYPE_ICONS[type] || "pilcrow";
-		};
-
 		const propertyBtn = createComboboxButton(
 			expression,
-			filter.field,
-			getPropertyIcon(filter.field, currentType)
+			this.getPropertyLabel(filter.field),
+			this.getPropertyIcon(filter.field, currentType)
 		);
 
 		const openPropertyModal = () => {
-			addFocusClasses(propertyBtn, statement);
+			addFocusClasses(propertyBtn, expression);
 			this.openPropertySuggestModal(
 				this.availableProperties.map(p => ({
-					label: p.key,
+					label: this.getPropertyLabel(p.key),
 					value: p.key,
-					icon: p.key === "file tags" ? "tags" : (TYPE_ICONS[p.type] || "pilcrow")
+					icon: this.getPropertyIcon(p.key, p.type)
 				})),
 				filter.field,
 				(newVal) => {
@@ -1034,7 +1086,7 @@ class FilterBuilder {
 		const operatorBtn = createComboboxButton(expression, filter.operator);
 
 		const openOperatorModal = () => {
-			addFocusClasses(operatorBtn, statement);
+			addFocusClasses(operatorBtn, expression);
 			this.openOperatorSuggestModal(
 				validOps.map(op => ({ label: op, value: op })),
 				filter.operator,

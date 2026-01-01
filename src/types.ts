@@ -8,7 +8,10 @@ export type FilterOperator =
 	| "links to" | "does not link to"
 	| "in folder" | "is not in folder"
 	| "has tag" | "does not have tag"
-	| "has property" | "does not have property";
+	| "has property" | "does not have property"
+	| "on" | "not on"
+	| "before" | "on or before"
+	| "after" | "on or after";
 
 export type FilterConjunction = "AND" | "OR" | "NOR";
 export interface Filter {
