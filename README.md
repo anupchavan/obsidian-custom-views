@@ -35,9 +35,9 @@ Then, create a template like this:
 
 ```html
 <div class="movie-card">
-  <h1>{{file.title}}</h1>
-  <p>Year: {{file.year}}</p>
-  <p>Rating: {{file.rating}}/10</p>
+  <h1>{{title}}</h1>
+  <p>Year: {{year}}</p>
+  <p>Rating: {{rating}}/10</p>
   <div>{{file.content}}</div>
 </div>
 ```
@@ -64,7 +64,7 @@ Match files using powerful filter rules based on file properties or frontmatter.
 
 ### HTML Templates
 
-Write custom HTML templates using a simple placeholder syntax. Access file properties and frontmatter using `{{file.property}}`.
+Write custom HTML templates using a simple placeholder syntax. Access file properties using `{{file.property}}` and frontmatter properties using `{{property}}`.
 
 **Basic Placeholders:**
 - `{{file.name}}` - The full filename (e.g., "My Note.md")
@@ -75,7 +75,8 @@ Write custom HTML templates using a simple placeholder syntax. Access file prope
 - `{{file.ctime}}` - Creation timestamp
 - `{{file.mtime}}` - Modification timestamp
 - `{{file.content}}` - The note body rendered as markdown
-- `{{file.property}}` - Any frontmatter property (e.g., `{{file.title}}`, `{{file.tags}}`)
+- `{{file.tags}}` - File tags (from both body and frontmatter)
+- `{{property}}` - Any frontmatter property (e.g., `{{title}}`, `{{cover}}`, `{{rating}}`)
 
 **Array Access:**
 - `{{file.tags[0]}}` - First tag
@@ -88,8 +89,8 @@ Transform values using filter chains. Chain multiple filters together using the 
 
 **Example:**
 ```html
-<h1>{{file.title | capitalize}}</h1>
-<p>Published: {{file.date | date:"MMMM DD, YYYY"}}</p>
+<h1>{{title | capitalize}}</h1>
+<p>Published: {{date | date:"MMMM DD, YYYY"}}</p>
 <p>Tags: {{file.tags | join:", " | wikilink}}</p>
 ```
 
@@ -154,6 +155,7 @@ You can include `<script>` tags in your templates for dynamic behavior. Scripts 
 
 ```html
 <div class="interactive-card">
+  <h2>{{title}}</h2>
   <button onclick="toggleDetails()">Show Details</button>
   <div id="details" style="display: none;">{{file.content}}</div>
 </div>
@@ -179,16 +181,16 @@ function toggleDetails() {
 **Template:**
 ```html
 <div class="movie-card" style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid var(--background-modifier-border); border-radius: 8px;">
-  <h1 style="margin-top: 0;">{{file.title}}</h1>
+  <h1 style="margin-top: 0;">{{title}}</h1>
   <div style="display: flex; gap: 20px; margin-bottom: 20px;">
     <div>
-      <strong>Year:</strong> {{file.year}}
+      <strong>Year:</strong> {{year}}
     </div>
     <div>
-      <strong>Rating:</strong> {{file.rating}}/10
+      <strong>Rating:</strong> {{rating}}/10
     </div>
     <div>
-      <strong>Genre:</strong> {{file.genre | join:", "}}
+      <strong>Genre:</strong> {{genre | join:", "}}
     </div>
   </div>
   <div style="margin-top: 20px;">
@@ -207,9 +209,9 @@ function toggleDetails() {
 <div class="project-dashboard">
   <h1>{{file.name | replace:".md":"" | title}}</h1>
   <div class="metadata">
-    <p><strong>Status:</strong> {{file.status | capitalize}}</p>
-    <p><strong>Due Date:</strong> {{file.due_date | date:"MMMM DD, YYYY"}}</p>
-    <p><strong>Progress:</strong> {{file.progress}}%</p>
+    <p><strong>Status:</strong> {{status | capitalize}}</p>
+    <p><strong>Due Date:</strong> {{due_date | date:"MMMM DD, YYYY"}}</p>
+    <p><strong>Progress:</strong> {{progress}}%</p>
   </div>
   <div class="tags">
     Tags: {{file.tags | join:", " | wikilink}}
@@ -230,13 +232,13 @@ function toggleDetails() {
 ```html
 <div style="display: grid; grid-template-columns: 200px 1fr; gap: 20px; padding: 20px;">
   <div>
-    <img src="{{file.cover_image}}" alt="{{file.title}}" style="width: 100%; border-radius: 4px;">
+    <img src="{{cover_image}}" alt="{{title}}" style="width: 100%; border-radius: 4px;">
   </div>
   <div>
-    <h1>{{file.title}}</h1>
-    <p><strong>Author:</strong> {{file.author}}</p>
-    <p><strong>Published:</strong> {{file.published | date:"YYYY"}}</p>
-    <p><strong>Rating:</strong> {{file.rating}}/5 ⭐</p>
+    <h1>{{title}}</h1>
+    <p><strong>Author:</strong> {{author}}</p>
+    <p><strong>Published:</strong> {{published | date:"YYYY"}}</p>
+    <p><strong>Rating:</strong> {{rating}}/5 ⭐</p>
     <div style="margin-top: 20px;">
       {{file.content}}
     </div>
@@ -270,11 +272,17 @@ Each view has:
 
 ### Placeholder Syntax
 
+For file properties:
 ```
 {{file.PROPERTY[INDEX] | FILTER1:ARG1,ARG2 | FILTER2:ARG3}}
 ```
 
-- `PROPERTY` - The property name (file property or frontmatter key)
+For frontmatter properties:
+```
+{{PROPERTY[INDEX] | FILTER1:ARG1,ARG2 | FILTER2:ARG3}}
+```
+
+- `PROPERTY` - The property name (file property with `file.` prefix, or frontmatter key without prefix)
 - `[INDEX]` - Optional array index (e.g., `[0]` for first element)
 - `| FILTER:ARGS` - Optional filter chain
 
@@ -285,7 +293,7 @@ Each view has:
 ### Context-Aware Rendering
 
 Placeholders are rendered differently based on context:
-- **Inside HTML attributes** (e.g., `href="{{file.path}}"`): Returns raw string value
+- **Inside HTML attributes** (e.g., `href="{{file.path}}"` or `src="{{cover}}"`): Returns raw string value
 - **In HTML body**: Renders as markdown if the value contains markdown syntax (like `[[links]]`)
 
 ### Filter Chain Syntax
@@ -293,7 +301,7 @@ Placeholders are rendered differently based on context:
 Filters are chained using the pipe (`|`) operator:
 
 ```
-{{file.date | date:"YYYY-MM-DD" | upper}}
+{{date | date:"YYYY-MM-DD" | upper}}
 ```
 
 Filter arguments can be:

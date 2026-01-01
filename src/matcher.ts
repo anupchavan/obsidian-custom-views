@@ -21,12 +21,16 @@ export function checkRules(app: App, group: FilterGroup, file: TFile, frontmatte
 		}
 	});
 
-	// Combine results based on AND (every) / OR (some)
+	// Combine results based on AND (every) / OR (some) / NOR (none)
 	if (group.operator === "AND") {
 		return results.every(r => r === true);
-	} else {
+	} else if (group.operator === "OR") {
 		return results.some(r => r === true);
+	} else if (group.operator === "NOR") {
+		// NOR: None of the following are true (all must be false)
+		return results.every(r => r === false);
 	}
+	return true;
 }
 
 /**
