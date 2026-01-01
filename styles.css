@@ -467,6 +467,26 @@ font-size: var(--metadata-input-font-size);
 .prompt-input-container.cv-search-input-container .search-input-clear-button {
 	inset-inline-end: 2px;
 	--search-clear-button-size: 13px !important;
+	align-content: center;
+	    position: absolute;
+    background: transparent;
+    border-radius: 50%;
+    color: var(--search-clear-button-color);
+    cursor: var(--cursor);
+    top: 0px;
+    inset-inline-end: 2px;
+    bottom: 0px;
+    line-height: 0;
+    height: var(--input-height);
+    width: 28px;
+    margin: auto;
+    padding: 0 0;
+    text-align: center;
+    display: flex
+;
+    justify-content: center;
+    align-items: center;
+    transition: color var(--anim-duration-fast) ease-in-out;
 }
 /* .cv-combobox {
 } */
@@ -861,7 +881,6 @@ font-size: var(--metadata-input-font-size);
 }
 
 .cv-modal-container {
-
     align-items: center;
     justify-content: center;
     position: absolute;
@@ -887,9 +906,7 @@ font-size: var(--metadata-input-font-size);
 }
 
 /* Show clear button */
-.cv-clear-button-visible {
-    display: block !important;
-}
+
 
 .cv-clear-button-hidden {
     display: none !important;

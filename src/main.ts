@@ -1,11 +1,36 @@
-import { Plugin, TFile, MarkdownView, Keymap, Notice, WorkspaceLeaf, View } from "obsidian";
+import { Plugin, TFile, MarkdownView, Keymap, Notice, WorkspaceLeaf } from "obsidian";
 import { CustomViewsSettings, DEFAULT_SETTINGS, CustomViewsSettingTab } from "./settings";
 import { checkRules } from "./matcher";
 import { renderTemplate } from "./renderer";
 
 const CUSTOM_VIEW_CLASS = "obsidian-custom-view-render";
 const HIDE_MARKDOWN_CLASS = "obsidian-custom-view-hidden";
-const CANVAS_NODE_CLASS = "canvas-node-content";
+
+/**
+ * Interface for canvas node structure
+ * CanvasView and CanvasNode types are not exported from Obsidian, so we define minimal interfaces
+ */
+interface CanvasNode {
+	file?: TFile;
+	nodeEl?: HTMLElement;
+}
+
+/**
+ * Interface for canvas structure
+ * CanvasView type is not exported from Obsidian, so we define a minimal interface
+ */
+interface CanvasView {
+	canvas?: {
+		nodes?: CanvasNode[];
+	};
+}
+
+/**
+ * Type guard to check if a view is a canvas view
+ */
+function isCanvasView(view: unknown): view is CanvasView {
+	return typeof view === "object" && view !== null && "canvas" in view;
+}
 
 export default class CustomViewsPlugin extends Plugin {
 	settings: CustomViewsSettings;
@@ -202,11 +227,11 @@ export default class CustomViewsPlugin extends Plugin {
 		this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
 			const view = leaf.view;
 			// Check if this is a canvas view (CanvasView type may not be exported, so we check by class)
-			if (view && (view as any).canvas) {
-				const canvas = (view as any).canvas;
-				if (canvas && canvas.nodes) {
+			if (isCanvasView(view) && view.canvas) {
+				const canvas = view.canvas;
+				if (canvas.nodes) {
 					// Process each node in the canvas
-					canvas.nodes.forEach((node: any) => {
+					canvas.nodes.forEach((node) => {
 						if (node.file && node.file instanceof TFile && node.file.extension === "md") {
 							void this.processCanvasNode(node);
 						}
@@ -219,9 +244,9 @@ export default class CustomViewsPlugin extends Plugin {
 	/**
 	 * Process a single canvas node
 	 */
-	async processCanvasNode(node: any) {
-		const file = node.file as TFile;
-		if (!file) return;
+	async processCanvasNode(node: CanvasNode) {
+		const file = node.file;
+		if (!(file instanceof TFile)) return;
 
 		const cache = this.app.metadataCache.getFileCache(file);
 		let matchedTemplate = "";
@@ -253,7 +278,7 @@ export default class CustomViewsPlugin extends Plugin {
 	/**
 	 * Restore a canvas node to default view
 	 */
-	restoreCanvasNode(node: any) {
+	restoreCanvasNode(node: CanvasNode) {
 		const nodeEl = node.nodeEl as HTMLElement;
 		if (!nodeEl) return;
 
@@ -271,10 +296,10 @@ export default class CustomViewsPlugin extends Plugin {
 	restoreAllCanvasNodes() {
 		this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
 			const view = leaf.view;
-			if (view && (view as any).canvas) {
-				const canvas = (view as any).canvas;
-				if (canvas && canvas.nodes) {
-					canvas.nodes.forEach((node: any) => {
+			if (isCanvasView(view) && view.canvas) {
+				const canvas = view.canvas;
+				if (canvas.nodes) {
+					canvas.nodes.forEach((node) => {
 						this.restoreCanvasNode(node);
 					});
 				}

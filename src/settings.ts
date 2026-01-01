@@ -989,7 +989,7 @@ class FilterBuilder {
 		if (group.conditions.length === 0) {
 			const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
 			const conjLabel = rowWrapper.createSpan({ cls: "conjunction" });
-			conjLabel.innerText = "where";
+			conjLabel.innerText = "Where";
 
 			// Create a temporary placeholder filter
 			const placeholderFilter: Filter = { type: "filter", field: "file", operator: "links to", value: "" };
@@ -999,7 +999,7 @@ class FilterBuilder {
 				const rowWrapper = statementsContainer.createDiv({ cls: "filter-row" });
 				const conjLabel = rowWrapper.createSpan({ cls: "conjunction" });
 				if (index === 0) {
-					conjLabel.innerText = "where";
+					conjLabel.innerText = "Where";
 				} else {
 					conjLabel.innerText = (group.operator === "OR" || group.operator === "NOR") ? "or" : "and";
 				}
