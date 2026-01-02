@@ -85,16 +85,14 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Work in canvas (experimental)")
-			.setDesc("Enable to apply custom views to markdown file nodes in canvas files.")
+			// .setDesc("Enable to apply custom views to markdown file nodes in canvas files.")
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.workInCanvas)
 				.onChange(async (value) => {
 					this.plugin.settings.workInCanvas = value;
 					await this.plugin.saveSettings();
 					if (value) {
-						this.plugin.processAllCanvasNodes().catch(() => {
-							// Error handling
-						});
+						this.plugin.processAllCanvasNodes();
 					} else {
 						this.plugin.restoreAllCanvasNodes();
 					}
@@ -1076,7 +1074,7 @@ class FilterBuilder {
 						// Update the filter in the conditions array
 						const conditionIndex = parentGroup.conditions.length - 1;
 						if (conditionIndex >= 0 && parentGroup.conditions[conditionIndex].type === "filter") {
-							const conditionFilter = parentGroup.conditions[conditionIndex] as Filter;
+							const conditionFilter = parentGroup.conditions[conditionIndex];
 							conditionFilter.field = newVal;
 							conditionFilter.operator = newOperator;
 							conditionFilter.value = "";
@@ -1120,7 +1118,7 @@ class FilterBuilder {
 						// Update the filter in the conditions array (it's the last one we added)
 						const conditionIndex = parentGroup.conditions.length - 1;
 						if (conditionIndex >= 0 && parentGroup.conditions[conditionIndex].type === "filter") {
-							(parentGroup.conditions[conditionIndex] as Filter).operator = operator;
+							parentGroup.conditions[conditionIndex].operator = operator;
 						}
 					} else {
 						filter.operator = operator;
@@ -1158,7 +1156,7 @@ class FilterBuilder {
 					// Update the filter in the conditions array (it's the last one we added)
 					const conditionIndex = parentGroup.conditions.length - 1;
 					if (conditionIndex >= 0 && parentGroup.conditions[conditionIndex].type === "filter") {
-						(parentGroup.conditions[conditionIndex] as Filter).value = val;
+						parentGroup.conditions[conditionIndex].value = val;
 					}
 				} else {
 					filter.value = val;

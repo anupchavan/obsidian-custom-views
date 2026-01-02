@@ -217,7 +217,7 @@ export default class CustomViewsPlugin extends Plugin {
 	/**
 	 * Process all markdown file nodes in canvas files
 	 */
-	async processAllCanvasNodes() {
+	processAllCanvasNodes() {
 		if (!this.settings.enabled || !this.settings.workInCanvas) {
 			this.restoreAllCanvasNodes();
 			return;
