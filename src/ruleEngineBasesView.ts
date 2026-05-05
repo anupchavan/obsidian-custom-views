@@ -39,7 +39,7 @@ export class RuleEngineBasesView extends BasesView implements HoverParent {
         this.plugin.activeBasesView = undefined;
     }
 
-    public async processView(ignoreDataHash = false): Promise<void> {
+    public processView(ignoreDataHash = false): void {
         if (this.isProcessing) return;
 
         const layoutMode = this.config.get('layout') ?? 'table';
@@ -123,11 +123,11 @@ export class RuleEngineBasesView extends BasesView implements HoverParent {
     }
 
     public onDataUpdated(): void {
-        void this.processView(false);
+        this.processView(false);
     }
 
     public onOpen(): void {
-        void this.processView(true);
+        this.processView(true);
     }
 
     private renderGrid(parent: HTMLElement, entries: BasesEntry[], order: string[]) {

@@ -23,7 +23,7 @@ const processNow: GetCommandFn = (plugin) => ({
 
             if (plugin?.activeBasesView) {
                 plugin?.debug(`activeBasesView, processing results...`, plugin.activeBasesView);
-                void plugin?.activeBasesView?.processView(true);
+                plugin?.activeBasesView?.processView(true);
             } else {
                 plugin?.debug(`no activeBasesView, not processing results`);
             };

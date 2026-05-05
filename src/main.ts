@@ -376,7 +376,7 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 	async saveSettings() {
 		this.debug(`saving settings`);
 		if (this.activeBasesView && this.settings.processOnSave) {
-			void this.activeBasesView.processView(true);
+			this.activeBasesView.processView(true);
 		}
 		await this.saveData(this.settings);
 	}
