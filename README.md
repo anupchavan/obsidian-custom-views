@@ -30,7 +30,6 @@ By default, commands provided by this plugin are disabled. You can enable them i
 - `Force template` - Apply a template to the current file regardless of rule automations and conditions.
 - `Restore view` - Remove any applied templates from the current file.
 - `Process now` - Check and execute automations as if the file has just been opened.
-- `Notify time` - Notifies you of the current time. Used really for validating rule conditions.
 
 ### Third party commands
 

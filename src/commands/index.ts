@@ -63,17 +63,6 @@ const resetTemplate: GetCommandFn = (plugin) => ({
     }
 });
 
-const notifyTime: GetCommandFn = (plugin) => ({
-    id: "notify-time",
-    name: "Notify time",
-    description: "Create a notification of the current time",
-    callback: () => {
-        const dt = new Date().toISOString();
-        plugin?.debug(`notify -time`, dt);
-        new Notice(dt, 3000);
-    }
-});
-
 const deleteWithoutConfirmation: GetCommandFn = (plugin) => ({
     id: "delete-without-confirmation",
     name: "Delete current file without confirmation",
@@ -88,4 +77,4 @@ const deleteWithoutConfirmation: GetCommandFn = (plugin) => ({
     }
 });
 
-export const list: GetCommandFn[] = [processNow, forceTemplate, resetTemplate, notifyTime, taskDate, deleteWithoutConfirmation] as const;
+export const list: GetCommandFn[] = [processNow, forceTemplate, resetTemplate, taskDate, deleteWithoutConfirmation] as const;
