@@ -11,7 +11,7 @@ export interface TaskDateParams extends Record<string, unknown> {
 
 export const taskDate: GetCommandFn<TaskDateParams> = (plugin) => ({
     id: TASK_DATE_ID,
-    name: 'Fill task due dates',
+    name: 'Fill emoji task due dates',
     description: 'The due date will always fall back to the last modified time of the file if the field or title are not parsed.',
     settingCallback: (settingGroup, currentConfig, saveFn) => {
         const params = currentConfig.params;
