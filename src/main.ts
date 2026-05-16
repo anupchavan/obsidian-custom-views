@@ -476,9 +476,9 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 
 	public get obsidianCommands(): Record<string, Command> {
 		// @ts-expect-error 'commands' is private
-		const regularCommands: Record<string, Command> = this.app.commands.commands;
+		const regularCommands: Record<string, Command> = this.app.commands.commands as Record<string, Command>;
 		// @ts-expect-error 'commands' is private
-		const editorCommands: Record<string, Command> = this.app.commands.editorCommands;
+		const editorCommands: Record<string, Command> = this.app.commands.editorCommands as Record<string, Command>;
 		const allCommands: Record<string, Command> = { ...regularCommands, ...editorCommands };
 		if (Object.keys(allCommands).length === 0) {
 			this.debug('no commands found for rule-engine');
