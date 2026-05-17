@@ -1,4 +1,4 @@
-import { App, TFile, MarkdownRenderer, Component } from "obsidian";
+import { App, TFile, MarkdownRenderer, Component, sanitizeHTML } from "obsidian";
 import { applyFilterChain } from "./filters";
 
 /**
@@ -110,10 +110,12 @@ export async function renderTemplate(
 			}
 		}
 	);
+	const sanitizedTemplate = ''+ sanitizeHTML(filledTemplate);
+
 
 	// Use DOMParser to safely parse HTML instead of innerHTML
 	const parser = new DOMParser();
-	const doc = parser.parseFromString(filledTemplate, 'text/html');
+	const doc = parser.parseFromString(sanitizedTemplate, 'text/html');
 	const tempContainer = doc.body;
 
 	// Clear the container and move nodes from temporary container
