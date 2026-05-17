@@ -8,7 +8,10 @@
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
-		"lint:fix": "eslint . --fix"
+		"lint:fix": "eslint . --fix",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
 	},
 	"keywords": [],
 	"author": "Anup Chavan",
@@ -16,17 +19,21 @@
 	"devDependencies": {
 		"@eslint/compat": "^2.0.0",
 		"@eslint/json": "^0.14.0",
-		"@types/node": "^16.11.6",
+		"@types/node": "^20.19.41",
 		"@typescript-eslint/eslint-plugin": "^8.51.0",
 		"@typescript-eslint/parser": "^8.51.0",
 		"@typescript-eslint/utils": "^8.51.0",
-		"esbuild": "0.17.3",
-		"eslint": "^9.39.2",
-		"eslint-plugin-obsidianmd": "^0.1.9",
+		"@vitest/coverage-v8": "^4.1.6",
+		"esbuild": "^0.28.0",
+		"eslint": "^9.39.4",
+		"eslint-plugin-obsidianmd": "^0.3.0",
+		"jsdom": "^29.1.1",
+		"moment": "^2.30.1",
 		"obsidian": "latest",
 		"tslib": "2.4.0",
-		"typescript": "4.7.4",
-		"typescript-eslint": "^8.51.0"
+		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.51.0",
+		"vitest": "^4.1.6"
 	},
 	"dependencies": {
 		"nanoid": "^5.1.6"

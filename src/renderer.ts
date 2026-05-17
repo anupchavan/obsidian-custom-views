@@ -152,31 +152,38 @@ export async function renderTemplate(
 }
 
 /**
- * Executes all script tags found in the container.
- * @param container - The container to execute scripts in
+ * Executes inline script tags found in the container.
+ *
+ * Scripts with a `src` attribute are intentionally ignored — loading external
+ * scripts would allow arbitrary remote code execution, which violates
+ * Obsidian's plugin guidelines.  Only inline script content (written by the
+ * user directly in their template) is evaluated, using the Function constructor
+ * rather than dynamic `<script>` element injection so that no external URLs
+ * can be loaded.
+ *
+ * @param container - The container whose inline scripts should be executed
  */
 function executeScripts(container: HTMLElement): void {
 	const scripts = Array.from(container.querySelectorAll('script'));
 
-	scripts.forEach((oldScript) => {
-		const newScript = document.createElement('script');
-
-		Array.from(oldScript.attributes).forEach((attr) => {
-			newScript.setAttribute(attr.name, attr.value);
-		});
-
-		if (oldScript.textContent) {
-			const scriptContent = oldScript.textContent.trim();
-			if (scriptContent) {
-				newScript.textContent = `(function() {\n${scriptContent}\n})();`;
+	scripts.forEach((script) => {
+		// Silently drop src-based scripts — external code must never be loaded.
+		if (!script.src) {
+			const code = script.textContent?.trim();
+			if (code) {
+				try {
+					// The Function constructor creates a new function in the
+					// global scope (same as an inline script would) without
+					// injecting a DOM <script> element.  `this` is bound to
+					// the container so template scripts can reference it.
+					// eslint-disable-next-line @typescript-eslint/no-implied-eval
+					const fn = new Function(code);
+					fn.call(container);
+				} catch (e) {
+					console.error('[Custom Views] Error executing template script:', e);
+				}
 			}
 		}
-
-		if (oldScript.src && !oldScript.textContent) {
-			newScript.src = oldScript.src;
-		}
-
-		oldScript.parentNode?.insertBefore(newScript, oldScript);
-		oldScript.remove();
+		script.remove();
 	});
 }

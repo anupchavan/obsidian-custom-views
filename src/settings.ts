@@ -805,7 +805,7 @@ function setupComboboxButtonHandlers(
 	};
 }
 
-class FilterBuilder {
+export class FilterBuilder {
 	plugin: CustomViewsPlugin;
 	root: FilterGroup;
 	onSave: () => void;
