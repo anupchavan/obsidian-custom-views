@@ -255,7 +255,7 @@ class EditViewModal extends Modal {
 					.onChange((value) => {
 						this.view.name = value;
 					});
-				requestAnimationFrame(() => {
+				window.requestAnimationFrame(() => {
 					text.inputEl.select();
 				});
 			});
@@ -357,7 +357,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 		void super.onOpen();
 
 		// Style modal as combobox
-		requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			const modalContainer = this.modalEl.closest('.modal-container');
 			if (modalContainer) {
 				modalContainer.addClass('cv-modal-container');
@@ -404,7 +404,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 				};
 
 				// Initial state - use requestAnimationFrame to ensure DOM is ready
-				requestAnimationFrame(() => {
+				window.requestAnimationFrame(() => {
 					updateClearButtonVisibility();
 				});
 
@@ -423,7 +423,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 			if (this.anchorEl.getAttribute('tabindex') === '-1') {
 				this.anchorEl.setAttribute('tabindex', '0');
 			}
-			requestAnimationFrame(() => {
+			window.requestAnimationFrame(() => {
 				this.anchorEl?.focus();
 			});
 		}
@@ -438,8 +438,8 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 			}
 		};
 
-		setTimeout(() => {
-			document.addEventListener('mousedown', this.clickOutsideHandler!);
+		window.setTimeout(() => {
+			activeDocument.addEventListener('mousedown', this.clickOutsideHandler!);
 		}, 0);
 	}
 
@@ -468,7 +468,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 
 	onClose() {
 		if (this.clickOutsideHandler) {
-			document.removeEventListener('mousedown', this.clickOutsideHandler);
+			activeDocument.removeEventListener('mousedown', this.clickOutsideHandler);
 			this.clickOutsideHandler = null;
 		}
 
@@ -642,7 +642,7 @@ function createFilterValueInput(
 					clearInput();
 					updatePlaceholder();
 					// Focus back to input after creating pill
-					setTimeout(() => focusInput(), 0);
+					window.setTimeout(() => focusInput(), 0);
 				}
 			} else if (e.key === "Backspace") {
 				// If input is empty, focus the last pill
@@ -682,9 +682,9 @@ function createFilterValueInput(
 						// Focus previous pill or input
 						if (values.length > 0) {
 							const newIndex = Math.max(0, currentIndex - 1);
-							setTimeout(() => focusPill(newIndex), 0);
+							window.setTimeout(() => focusPill(newIndex), 0);
 						} else {
-							setTimeout(() => focusInput(), 0);
+							window.setTimeout(() => focusInput(), 0);
 						}
 					}
 				} else if (e.key === "Tab" && !e.shiftKey) {
@@ -725,9 +725,9 @@ function createFilterValueInput(
 						// After deletion, focus the previous pill or input
 						if (values.length > 0) {
 							const newIndex = Math.min(index, values.length - 1);
-							setTimeout(() => focusPill(newIndex), 0);
+							window.setTimeout(() => focusPill(newIndex), 0);
 						} else {
-							setTimeout(() => focusInput(), 0);
+							window.setTimeout(() => focusInput(), 0);
 						}
 					}
 				}, (pill: HTMLElement) => {

@@ -30,7 +30,7 @@ const recommendedConfigs = Array.from(obsidianmd.configs.recommended).flatMap(co
 export default [
 	// Global ignores (replaces .eslintignore)
 	{
-		ignores: ["node_modules/**", "main.js", "eslint.config.mjs", "*.config.mjs"],
+		ignores: ["node_modules/**", "main.js", "eslint.config.mjs", "*.config.mjs", "vitest.config.ts", "package.json"],
 	},
 	// Use the converted configs, ensuring all have proper file filters
 	...recommendedConfigs.map(config => {
@@ -75,6 +75,9 @@ export default [
 				requestAnimationFrame: "readonly",
 				cancelAnimationFrame: "readonly",
 				window: "readonly",
+				// Obsidian popout-window globals
+				activeDocument: "readonly",
+				activeWindow: "readonly",
 				// Node globals (for build scripts)
 				process: "readonly",
 				Buffer: "readonly",
