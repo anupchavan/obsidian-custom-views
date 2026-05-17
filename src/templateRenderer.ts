@@ -1,4 +1,4 @@
-import { App, TFile, MarkdownRenderer, Component, sanitizeHTML } from "obsidian";
+import { App, TFile, MarkdownRenderer, Component } from "obsidian";
 import { applyFilterChain } from "./filters";
 
 /**
@@ -110,12 +110,11 @@ export async function renderTemplate(
 			}
 		}
 	);
-	const sanitizedTemplate = ''+ sanitizeHTML(filledTemplate);
 
 
 	// Use DOMParser to safely parse HTML instead of innerHTML
 	const parser = new DOMParser();
-	const doc = parser.parseFromString(sanitizedTemplate, 'text/html');
+	const doc = parser.parseFromString(filledTemplate, 'text/html');
 	const tempContainer = doc.body;
 
 	// Clear the container and move nodes from temporary container
@@ -150,35 +149,35 @@ export async function renderTemplate(
 		contentEl.removeAttribute("id");
 	}
 
-	executeScripts(container);
+	// executeScripts(container);
 }
 
-/**
- * Executes all script tags found in the container.
- * @param container - The container to execute scripts in
- */
-function executeScripts(container: HTMLElement): void {
-	const scripts = Array.from(container.querySelectorAll('script'));
+// /**
+//  * Executes all script tags found in the container.
+//  * @param container - The container to execute scripts in
+//  */
+// function executeScripts(container: HTMLElement): void {
+// 	const scripts = Array.from(container.querySelectorAll('script'));
 
-	scripts.forEach((oldScript) => {
-		const newScript = document.createElement('script');
+// 	scripts.forEach((oldScript) => {
+// 		const newScript = document.createElement('script');
 
-		Array.from(oldScript.attributes).forEach((attr) => {
-			newScript.setAttribute(attr.name, attr.value);
-		});
+// 		Array.from(oldScript.attributes).forEach((attr) => {
+// 			newScript.setAttribute(attr.name, attr.value);
+// 		});
 
-		if (oldScript.textContent) {
-			const scriptContent = oldScript.textContent.trim();
-			if (scriptContent) {
-				newScript.textContent = `(function() {\n${scriptContent}\n})();`;
-			}
-		}
+// 		if (oldScript.textContent) {
+// 			const scriptContent = oldScript.textContent.trim();
+// 			if (scriptContent) {
+// 				newScript.textContent = `(function() {\n${scriptContent}\n})();`;
+// 			}
+// 		}
 
-		if (oldScript.src && !oldScript.textContent) {
-			newScript.src = oldScript.src;
-		}
+// 		if (oldScript.src && !oldScript.textContent) {
+// 			newScript.src = oldScript.src;
+// 		}
 
-		oldScript.parentNode?.insertBefore(newScript, oldScript);
-		oldScript.remove();
-	});
-}
+// 		oldScript.parentNode?.insertBefore(newScript, oldScript);
+// 		oldScript.remove();
+// 	});
+// }

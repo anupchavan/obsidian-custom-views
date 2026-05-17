@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-rule-engine",
-	"version": "1.5.7",
+	"version": "1.5.8",
 	"description": "Run commands and create custom HTML views for your notes based on filter rules. Transform how your vault behaves and how notes are displayed.",
 	"main": "main.js",
 	"scripts": {
