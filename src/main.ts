@@ -174,7 +174,7 @@ export default class CustomViewsPlugin extends Plugin {
 		let customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`) as HTMLElement;
 
 		if (!customEl) {
-			customEl = document.createElement("div");
+			customEl = activeDocument.createElement("div");
 			customEl.addClass(CUSTOM_VIEW_CLASS);
 			container.appendChild(customEl);
 
@@ -182,7 +182,7 @@ export default class CustomViewsPlugin extends Plugin {
 				const target = evt.target as HTMLElement;
 				const link = target.closest(".internal-link");
 
-				if (link && link instanceof HTMLAnchorElement) {
+				if (link && link.instanceOf(HTMLAnchorElement)) {
 					evt.preventDefault();
 					const href = link.getAttribute("data-href") || link.getAttribute("href");
 

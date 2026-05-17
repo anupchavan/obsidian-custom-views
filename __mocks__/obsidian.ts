@@ -1,7 +1,11 @@
 /**
  * Mock for the 'obsidian' module so tests can run outside of Obsidian.
  * Re-exports real `moment` so date filters work correctly.
+ *
+ * The moment import below is intentional — this file IS the obsidian mock,
+ * so we must source moment directly rather than from 'obsidian' itself.
  */
+// eslint-disable-next-line no-restricted-imports
 import momentLib from "moment";
 
 export const moment = momentLib;
