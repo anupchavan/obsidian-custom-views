@@ -21,6 +21,7 @@ export async function renderTemplate(
 	const rawContent = await app.vault.read(file);
 
 	let bodyContent = rawContent;
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
 	const endOffset = frontmatter?.position?.end?.offset;
 	if (typeof endOffset === "number") {
 		bodyContent = rawContent.substring(endOffset).trim();

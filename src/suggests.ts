@@ -35,6 +35,7 @@ abstract class BaseSuggest extends AbstractInputSuggest<SuggestItem> {
 		super(app, inputEl);
 		this.limit = 50;
 		// Add native Obsidian class for property-value suggest styling
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 		(this as any).suggestEl?.addClass("mod-property-value");
 	}
 
@@ -100,7 +101,7 @@ abstract class BaseSuggest extends AbstractInputSuggest<SuggestItem> {
 	 * Returns true if a suggestion was selected.
 	 */
 	selectHighlighted(): boolean {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
 		const suggestEl = (this as any).suggestEl as HTMLElement | undefined;
 		const selected = suggestEl?.querySelector('.suggestion-item.is-selected') as HTMLElement;
 		if (selected) {
@@ -286,6 +287,7 @@ export class FrontmatterValueSuggest extends BaseSuggest {
 		for (const file of files) {
 			const cache = this.app.metadataCache.getFileCache(file);
 			if (cache?.frontmatter && this.propertyKey in cache.frontmatter) {
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 				const val = cache.frontmatter[this.propertyKey];
 				if (val === null || val === undefined) continue;
 
@@ -378,7 +380,7 @@ export function openWikilinkFile(app: App, linkTarget: string): void {
 	const file = app.metadataCache.getFirstLinkpathDest(linkTarget, "");
 	if (file) {
 		const leaf = app.workspace.getLeaf("tab");
-		leaf.openFile(file).then(() => {
+		void leaf.openFile(file).then(() => {
 			new Notice(`Opened "${file.basename}"`);
 		});
 	} else {
