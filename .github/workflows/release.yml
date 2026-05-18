@@ -1,14 +1,18 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (optional - auto-bumps patch if empty, e.g. 0.1.9)'
+        required: false
+        type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Checkout code
@@ -20,14 +24,44 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            CURRENT=$(jq -r '.version' manifest.json)
+            VERSION=$(echo $CURRENT | awk -F. '{print $1"."$2"."$3+1}')
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
+
+      - name: Update manifest.json
+        run: |
+          jq '.version = "${{ steps.version.outputs.VERSION }}"' manifest.json > manifest.json.tmp
+          mv manifest.json.tmp manifest.json
+          cat manifest.json | jq '.version'
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build
         run: npm run build
 
-      - name: Upload release assets
+      - name: Commit and tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add manifest.json
+          git commit -m "Bump version to ${{ steps.version.outputs.VERSION }}"
+          git tag "v${{ steps.version.outputs.VERSION }}"
+          git push origin main --tags
+
+      - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.event.release.tag_name }} main.js styles.css manifest.json --clobber
+          gh release create "v${{ steps.version.outputs.VERSION }}" \
+            main.js styles.css manifest.json \
+            --title "Release ${{ steps.version.outputs.VERSION }}" \
+            --generate-notes
