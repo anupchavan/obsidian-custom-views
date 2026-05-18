@@ -1,7 +1,8 @@
-import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch } from "obsidian";
+import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, Notice } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 import { createTemplateEditor } from "./editor";
+import { FileSuggest, FolderSuggest, TagSuggest, PropertySuggest, FrontmatterValueSuggest, isWikilink, extractWikilinkTarget, extractWikilinkDisplay, openWikilinkFile } from "./suggests";
 import type { EditorView } from "@codemirror/view";
 
 
@@ -556,7 +557,9 @@ function createFilterValueInput(
 	type: PropertyType,
 	value: string | undefined,
 	onChange: (val: string) => void,
-	operator?: string
+	operator?: string,
+	app?: App,
+	field?: string
 ): HTMLInputElement | HTMLElement {
 	const safeValue = value || "";
 	const needsMultiSelect = operator === "contains any of" || operator === "does not contain any of"
@@ -738,7 +741,7 @@ function createFilterValueInput(
 					}
 				}, (pill: HTMLElement) => {
 					setupPillNavigation(pill);
-				});
+				}, app);
 			});
 
 			// Ensure input is last
@@ -751,6 +754,25 @@ function createFilterValueInput(
 		updatePills();
 		// Set initial placeholder
 		updatePlaceholder();
+
+		// Attach inline suggestions for multi-select inputs
+		if (app) {
+			const addPillFromSuggest = (text: string): void => {
+				if (text.trim().length > 0 && !values.includes(text.trim())) {
+					values.push(text.trim());
+					onChange(values.join(","));
+					updatePills();
+					clearInput();
+					updatePlaceholder();
+					window.setTimeout(() => focusInput(), 0);
+				}
+			};
+
+			const suggest = createSuggestForInput(app, input, operator, field);
+			if (suggest) {
+				suggest.onSelectCb(addPillFromSuggest);
+			}
+		}
 
 		return multiSelectContainer;
 	} else if (type === "date" || type === "datetime") {
@@ -772,13 +794,94 @@ function createFilterValueInput(
 		input.addClass("metadata-input", "metadata-input-text");
 		input.placeholder = "Value...";
 		input.oninput = () => onChange(input.value);
+
+		// Attach inline suggestions for single-value text inputs
+		if (app) {
+			const suggest = createSuggestForInput(app, input, operator, field);
+			if (suggest) {
+				suggest.onSelectCb((text: string) => {
+					input.value = text;
+					input.dispatchEvent(new Event("input"));
+					onChange(text);
+				});
+			}
+		}
+
 		return input;
 	}
 }
 
-function createPill(container: HTMLElement, value: string, onRemove: () => void, onCreated?: (pill: HTMLElement) => void): void {
+/**
+ * Creates the appropriate suggest provider based on the operator and field.
+ * Returns the suggest instance or null if no suggest is applicable.
+ */
+function createSuggestForInput(
+	app: App,
+	inputEl: HTMLInputElement | HTMLDivElement,
+	operator?: string,
+	field?: string
+): FileSuggest | FolderSuggest | TagSuggest | PropertySuggest | FrontmatterValueSuggest | null {
+	// File-level operators (field === "file")
+	if (operator === "links to" || operator === "does not link to") {
+		return new FileSuggest(app, inputEl);
+	}
+	if (operator === "in folder" || operator === "is not in folder") {
+		return new FolderSuggest(app, inputEl);
+	}
+	if (operator === "has tag" || operator === "does not have tag") {
+		return new TagSuggest(app, inputEl);
+	}
+	if (operator === "has property" || operator === "does not have property") {
+		return new PropertySuggest(app, inputEl);
+	}
+
+	// Field-based suggestions for non-"file" operators
+	// "file tags" with any operator (contains any of, etc.) → tag suggestions
+	if (field === "file tags") {
+		return new TagSuggest(app, inputEl);
+	}
+
+	// "folder" field with any operator (is, is not, etc.) → folder suggestions
+	if (field === "folder") {
+		return new FolderSuggest(app, inputEl);
+	}
+
+	// "aliases" field → suggest existing aliases from the vault
+	if (field === "aliases") {
+		return new FrontmatterValueSuggest(app, inputEl, "aliases");
+	}
+
+	// For frontmatter property values — suggest existing values
+	// Skip built-in file.* properties (file.name, file.path, etc.)
+	if (field && !field.startsWith("file.") && field !== "file") {
+		return new FrontmatterValueSuggest(app, inputEl, field);
+	}
+
+	return null;
+}
+
+function createPill(container: HTMLElement, value: string, onRemove: () => void, onCreated?: (pill: HTMLElement) => void, app?: App): void {
 	const pill = container.createDiv({ cls: "multi-select-pill", attr: { tabindex: "0" } });
-	pill.createDiv({ cls: "multi-select-pill-content", text: value });
+
+	// Detect wikilinks and render with link styling
+	if (isWikilink(value) && app) {
+		pill.addClass("cv-pill-wikilink");
+		const linkIcon = pill.createDiv({ cls: "cv-pill-link-icon" });
+		setIcon(linkIcon, "link");
+		const contentEl = pill.createDiv({ cls: "multi-select-pill-content cv-pill-link-text" });
+		contentEl.setText(extractWikilinkDisplay(value));
+		contentEl.setAttribute("aria-label", value);
+
+		// Click on content opens the file
+		contentEl.addEventListener("click", (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			openWikilinkFile(app, extractWikilinkTarget(value));
+		});
+	} else {
+		pill.createDiv({ cls: "multi-select-pill-content", text: value });
+	}
+
 	const removeButton = pill.createDiv({ cls: "multi-select-pill-remove-button" });
 	setIcon(removeButton, "x");
 	removeButton.onclick = (e) => {
@@ -854,7 +957,35 @@ export class FilterBuilder {
 	}
 
 	/**
-	 * Scans the vault to find properties and INFER their types.
+	 * Gets the Obsidian-assigned type for a property key from the internal
+	 * metadataTypeManager registry. Returns null if not available.
+	 */
+	private getObsidianPropertyType(key: string): PropertyType | null {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const typeManager = (this.plugin.app as any).metadataTypeManager;
+		if (!typeManager || typeof typeManager.getAssignedType !== "function") return null;
+
+		const obsidianType = typeManager.getAssignedType(key) as string | undefined;
+		if (!obsidianType) return null;
+
+		// Map Obsidian's internal type names to our PropertyType
+		const typeMap: Record<string, PropertyType> = {
+			"text": "text",
+			"number": "number",
+			"date": "date",
+			"datetime": "datetime",
+			"checkbox": "checkbox",
+			"tags": "list",
+			"aliases": "list",
+			"multitext": "list",
+		};
+
+		return typeMap[obsidianType] || null;
+	}
+
+	/**
+	 * Scans the vault to find properties and their types.
+	 * Uses Obsidian's metadataTypeManager when available, falls back to inference.
 	 */
 	scanVaultProperties(): PropertyDef[] {
 		const app = this.plugin.app;
@@ -886,9 +1017,16 @@ export class FilterBuilder {
 				for (const key of Object.keys(cache.frontmatter)) {
 					if (key === "position" || key === "tags" || key === "aliases") continue;
 					if (propMap.has(key) && propMap.get(key) !== "unknown") continue;
-					const val = cache.frontmatter[key] as string | number | boolean | string[] | undefined;
-					const type = this.inferType(val);
-					propMap.set(key, type);
+
+					// Prefer Obsidian's assigned type over inference
+					const obsidianType = this.getObsidianPropertyType(key);
+					if (obsidianType) {
+						propMap.set(key, obsidianType);
+					} else {
+						const val = cache.frontmatter[key] as string | number | boolean | string[] | undefined;
+						const type = this.inferType(val);
+						propMap.set(key, type);
+					}
 				}
 			}
 		}
@@ -1169,7 +1307,7 @@ export class FilterBuilder {
 				}
 
 				this.onSave();
-			}, filter.operator);
+			}, filter.operator, this.plugin.app, filter.field);
 		}
 
 		const actions = expression.createDiv({ cls: "cv-filter-row-actions" });
