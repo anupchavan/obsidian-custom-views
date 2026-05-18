@@ -1,65 +1,3 @@
-.custom-view-wrapper {
-    padding: 20px;
-    height: 100%;
-    overflow-y: auto;
-}
-
-.cv-custom-view-box {
-    display: flex;
-    flex-direction: column;
-    border: var(--menu-border-width) solid var(--menu-border-color);
-    background-color: var(--menu-background);
-    backdrop-filter: var(--menu-backdrop-filter) none;
-    margin-top: var(--size-4-4);
-    border-radius: var(--menu-radius);
-    max-height: 100%;
-    z-index: var(--layer-menu);
-    user-select: none;
-}
-
-.cv-custom-view-box-header {
-    padding: 0;
-}
-
-.cv-custom-view-box-header button {
-    background-color: transparent;
-    box-shadow: none;
-    -webkit-app-region: no-drag;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--size-2-2) var(--size-2-3);
-    cursor: var(--cursor);
-    border-radius: var(--clickable-icon-radius);
-    color: var(--icon-color);
-    opacity: var(--icon-opacity);
-    transition: opacity var(--anim-duration-fast) ease-in-out;
-    height: auto;
-    -electron-corner-smoothing: var(--corner-smoothing);
-}
-
-.cv-custom-view-box-header button:hover {
-    box-shadow: none;
-    opacity: var(--icon-opacity-hover);
-    color: var(--icon-color-hover);
-    background-color: var(--background-modifier-hover);
-}
-
-.cv-custom-view-box-header input {
-    flex-grow: 1;
-    background-color: transparent;
-    border: none;
-    color: var(--text-normal);
-    font-weight: var(--font-medium);
-    font-size: var(--font-ui-normal);
-}
-
-.cv-textarea {
-    height: 250px;
-    width: 100%;
-    font-family: var(--font-monospace);
-}
-
 .cv-codemirror-container {
     width: 100%;
     margin-bottom: 0.75rem;
@@ -344,6 +282,38 @@
     content: attr(data-placeholder);
     color: var(--text-muted);
     pointer-events: none;
+}
+
+/* ─── Inline Suggest Dropdown (matches Obsidian bases style) ───────────────── */
+
+/* ─── Wikilink Pills ──────────────────────────────────────────────────────── */
+
+.cv-pill-wikilink {
+    cursor: default;
+}
+
+.cv-pill-link-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-accent);
+    flex-shrink: 0;
+    margin-inline-start: var(--pill-padding-x);
+}
+
+.cv-pill-link-icon svg {
+    width: 12px;
+    height: 12px;
+}
+
+.cv-pill-link-text {
+    color: var(--text-accent);
+    cursor: pointer;
+}
+
+.cv-pill-link-text:hover {
+    color: var(--text-accent-hover);
+    text-decoration: underline;
 }
 
 .cv-bases-query-container .filter-row .cv-filter-row-actions {

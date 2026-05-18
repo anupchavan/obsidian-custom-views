@@ -31,8 +31,29 @@ export class Setting {}
 export class Modal {}
 export class Notice {}
 export class FuzzySuggestModal {}
+export class AbstractInputSuggest {
+	constructor(_app: unknown, _inputEl: unknown) {}
+	limit = 100;
+	close() {}
+	onSelect(_callback: unknown) { return this; }
+}
+export class TFolder {
+	path = "";
+	name = "";
+	children: unknown[] = [];
+	isRoot() { return false; }
+	parent: { path: string } | null = null;
+}
+export class TAbstractFile {
+	path = "";
+	name = "";
+	parent: { path: string } | null = null;
+}
 export class ButtonComponent {}
 export class TextComponent {}
 export class WorkspaceLeaf {}
 export const Keymap = { isModEvent: () => false };
 export function setIcon() {}
+export function getAllTags() { return []; }
+export function prepareFuzzySearch() { return () => null; }
+export function renderResults() {}
