@@ -2,6 +2,22 @@ import { App, TFile, FrontMatterCache } from "obsidian";
 import { FilterGroup, Filter } from "./types";
 
 /**
+ * Collects all tag names (without # prefix) from a file's body and frontmatter.
+ */
+function getFileTags(app: App, file: TFile, frontmatter?: FrontMatterCache): string[] {
+	const cache = app.metadataCache.getFileCache(file);
+	const bodyTags = (cache?.tags || []).map(t => t.tag.replace(/^#/, ""));
+
+	const fmTags = frontmatter?.tags as string | string[] | undefined;
+	if (!fmTags) return bodyTags;
+
+	const rawTags = Array.isArray(fmTags) ? fmTags : [fmTags];
+	const fmTagNames = rawTags.map(t => String(t).replace(/^#/, ""));
+
+	return [...bodyTags, ...fmTagNames];
+}
+
+/**
  * Evaluates the rules for a given filter group, file, and frontmatter
  * @param app - The Obsidian app instance
  * @param group - The filter group to evaluate
@@ -128,59 +144,21 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 
 			case "has tag":
 			case "does not have tag": {
-				const trimmedValue = filterValue.trim();
-				const filterTags = trimmedValue.split(",").map(t => t.trim()).filter(t => t.length > 0);
+				const filterTags = filterValue.trim().split(",").map(t => t.trim()).filter(t => t.length > 0);
 				if (filterTags.length === 0) {
 					return filter.operator === "does not have tag";
 				}
 
-				const cache = app.metadataCache.getFileCache(file);
+				const fileTagNames = getFileTags(app, file, frontmatter);
 
-				// Get tags from both cache.tags (body tags) and frontmatter.tags (frontmatter tags)
-				const bodyTags = cache?.tags || [];
-				const frontmatterTags = frontmatter?.tags as string | string[] | undefined;
-
-				// Combine tags from both sources
-				// For frontmatter tags, we'll just extract the tag strings and compare them separately
-				const fileTags = [...bodyTags];
-				const frontmatterTagStrings: string[] = [];
-				if (frontmatterTags) {
-					// If frontmatter has tags as an array, extract tag strings
-					if (Array.isArray(frontmatterTags)) {
-						frontmatterTagStrings.push(...frontmatterTags.map(tag =>
-							typeof tag === 'string' ? (tag.startsWith('#') ? tag : `#${tag}`) : String(tag)
-						));
-					} else if (typeof frontmatterTags === 'string') {
-						// Single tag as string
-						frontmatterTagStrings.push(frontmatterTags.startsWith('#') ? frontmatterTags : `#${frontmatterTags}`);
-					}
-				}
-
-				// Normalize file tags: remove # prefix (preserve case)
-				// Include both body tags and frontmatter tags
-				const fileTagNames = [
-					...fileTags.map(tag => {
-						// tag.tag is the full tag string like "#movies" or "#movies/action"
-						return tag.tag.replace(/^#+/, "");
-					}),
-					...frontmatterTagStrings.map(tag => {
-						return tag.replace(/^#+/, "");
-					})
-				];
-
-				// Check if any of the filter tags match any file tag
-				// Match exact tags or parent tags (e.g., "movies" matches "#movies" and "#movies/action")
-				const hasAnyTag = filterTags.some(filterTag => {
-					return fileTagNames.some(fileTag => {
-						// Exact match
-						if (fileTag === filterTag) return true;
-						// Parent tag match (e.g., fileTag is "movies/action" and filterTag is "movies")
-						if (fileTag.startsWith(filterTag + "/")) return true;
-						// Child tag match (e.g., fileTag is "movies" and filterTag is "movies/action")
-						if (filterTag.startsWith(fileTag + "/")) return true;
-						return false;
-					});
-				});
+				// Match exact tags or parent/child tags (e.g., "movies" matches "movies/action")
+				const hasAnyTag = filterTags.some(filterTag =>
+					fileTagNames.some(fileTag =>
+						fileTag === filterTag ||
+						fileTag.startsWith(filterTag + "/") ||
+						filterTag.startsWith(fileTag + "/")
+					)
+				);
 
 				return filter.operator === "has tag" ? hasAnyTag : !hasAnyTag;
 			}
@@ -213,56 +191,48 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 		else if (filter.field === "file.ctime") targetValue = file.stat.ctime;
 		else if (filter.field === "file.mtime") targetValue = file.stat.mtime;
 		else if (filter.field === "file.extension") targetValue = file.extension;
+	} else if (filter.field === "file links") {
+		// Gather all resolved outgoing link paths (without .md extension)
+		const cache = app.metadataCache.getFileCache(file);
+		const bodyLinks = (cache?.links || []).map(link => {
+			const resolved = app.metadataCache.getFirstLinkpathDest(link.link, file.path);
+			return resolved ? resolved.path.replace(/\.md$/, "") : null;
+		}).filter(Boolean) as string[];
+
+		// Also check frontmatter for wikilinks
+		if (frontmatter) {
+			const fmRecord = frontmatter as Record<string, string | number | boolean | string[] | undefined>;
+			const extractFmLinks = (value: string | number | boolean | string[] | undefined): string[] => {
+				if (value === undefined || value === null) return [];
+				if (Array.isArray(value)) return value.flatMap(item => extractFmLinks(item));
+				const strValue = String(value);
+				const linkPattern = /\[\[([^\]]+)\]\]/g;
+				const matches: string[] = [];
+				let match;
+				while ((match = linkPattern.exec(strValue)) !== null) {
+					// Handle [[Target|Alias]] → use Target
+					const linkTarget = match[1].split("|")[0];
+					const resolved = app.metadataCache.getFirstLinkpathDest(linkTarget, file.path);
+					if (resolved) matches.push(resolved.path.replace(/\.md$/, ""));
+				}
+				return matches;
+			};
+			for (const key of Object.keys(fmRecord)) {
+				bodyLinks.push(...extractFmLinks(fmRecord[key]));
+			}
+		}
+
+		// Deduplicate
+		targetValue = [...new Set(bodyLinks)];
 	} else if (filter.field === "file tags") {
-		// Special handling for file tags - get from Obsidian's metadata cache
-		const cache = app.metadataCache.getFileCache(file);
-		const bodyTags = cache?.tags || [];
-		const frontmatterTags = frontmatter?.tags as string | string[] | undefined;
-
-		// Get tag strings from body tags
-		const bodyTagStrings = bodyTags.map(tag => tag.tag.replace(/^#+/, ""));
-
-		// Get tag strings from frontmatter tags
-		const frontmatterTagStrings: string[] = [];
-		if (frontmatterTags) {
-			if (Array.isArray(frontmatterTags)) {
-				frontmatterTagStrings.push(...frontmatterTags.map(tag =>
-					typeof tag === 'string' ? tag.replace(/^#+/, "") : String(tag).replace(/^#+/, "")
-				));
-			} else if (typeof frontmatterTags === 'string') {
-				frontmatterTagStrings.push(frontmatterTags.replace(/^#+/, ""));
-			}
-		}
-
-		// Combine tags from both sources
-		targetValue = [...bodyTagStrings, ...frontmatterTagStrings];
+		targetValue = getFileTags(app, file, frontmatter);
 	} else if (filter.field === "aliases") {
-		// Special handling for aliases - get from both frontmatter and metadata cache
-		const cache = app.metadataCache.getFileCache(file);
-		const frontmatterAliases = frontmatter?.aliases as string | string[] | undefined;
-		const cacheAliases = cache?.frontmatter?.aliases as string | string[] | undefined;
-
-		const aliasList: string[] = [];
-
-		// Get aliases from frontmatter
-		if (frontmatterAliases) {
-			if (Array.isArray(frontmatterAliases)) {
-				aliasList.push(...frontmatterAliases.map(alias => String(alias)));
-			} else if (typeof frontmatterAliases === 'string') {
-				aliasList.push(frontmatterAliases);
-			}
+		const aliases = frontmatter?.aliases as string | string[] | undefined;
+		if (aliases) {
+			targetValue = Array.isArray(aliases) ? aliases.map(a => String(a)) : [String(aliases)];
+		} else {
+			targetValue = [];
 		}
-
-		// Get aliases from cache (if different from frontmatter)
-		if (cacheAliases && cacheAliases !== frontmatterAliases) {
-			if (Array.isArray(cacheAliases)) {
-				aliasList.push(...cacheAliases.map(alias => String(alias)));
-			} else if (typeof cacheAliases === 'string') {
-				aliasList.push(cacheAliases);
-			}
-		}
-
-		targetValue = aliasList;
 	} else if (frontmatter) {
 		// Type-safe access to frontmatter field
 		const frontmatterRecord = frontmatter as Record<string, string | number | boolean | string[] | undefined>;
@@ -325,9 +295,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 		}
 	}
 
-	// Convert to string preserving case (case-sensitive matching)
-	const toString = (val: string | number | boolean | string[]) => String(val);
-	const filterValue = toString(filter.value || "");
+	const filterValue = String(filter.value || "");
 
 	if (Array.isArray(targetValue)) {
 		const targetArray = targetValue;
@@ -338,33 +306,42 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 				return targetArray.length > 0;
 			case "is":
 			case "is not": {
-				const match = targetArray.some((v: string | number | boolean) => toString(v) === filterValue);
+				const match = targetArray.some((v: string | number | boolean) => String(v) === filterValue);
 				return filter.operator === "is" ? match : !match;
+			}
+			case "is exactly":
+			case "is not exactly": {
+				// Exact match: array must contain exactly the specified comma-separated values (order-independent)
+				const filterValues = (filter.value || "").split(",").map(v => v.trim()).filter(v => v.length > 0);
+				const targetStrings = targetArray.map((v: string | number | boolean) => String(v));
+				const match = filterValues.length === targetStrings.length &&
+					filterValues.every(fv => targetStrings.includes(fv));
+				return filter.operator === "is exactly" ? match : !match;
 			}
 			case "contains":
 			case "does not contain": {
-				const match = targetArray.some((v: string | number | boolean) => toString(v).includes(filterValue));
+				const match = targetArray.some((v: string | number | boolean) => String(v).includes(filterValue));
 				return filter.operator === "contains" ? match : !match;
 			}
 			case "contains any of":
 			case "does not contain any of": {
 				// Parse comma-separated filter values
-				const filterValues = (filter.value || "").split(",").map(v => toString(v.trim())).filter(v => v.length > 0);
+				const filterValues = (filter.value || "").split(",").map(v => String(v.trim())).filter(v => v.length > 0);
 				if (filterValues.length === 0) return filter.operator === "does not contain any of";
 				// Check if any filter value matches any target value
 				const match = filterValues.some(filterVal =>
-					targetArray.some((v: string | number | boolean) => toString(v).includes(filterVal))
+					targetArray.some((v: string | number | boolean) => String(v).includes(filterVal))
 				);
 				return filter.operator === "contains any of" ? match : !match;
 			}
 			case "contains all of":
 			case "does not contain all of": {
 				// Parse comma-separated filter values
-				const filterValues = (filter.value || "").split(",").map(v => toString(v.trim())).filter(v => v.length > 0);
+				const filterValues = (filter.value || "").split(",").map(v => String(v.trim())).filter(v => v.length > 0);
 				if (filterValues.length === 0) return filter.operator === "does not contain all of";
 				// Check if all filter values are found in the target array
 				const match = filterValues.every(filterVal =>
-					targetArray.some((v: string | number | boolean) => toString(v).includes(filterVal))
+					targetArray.some((v: string | number | boolean) => String(v).includes(filterVal))
 				);
 				return filter.operator === "contains all of" ? match : !match;
 			}
@@ -383,36 +360,42 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 				return !!targetScalar;
 			case "is":
 			case "is not": {
-				const match = toString(targetScalar) === filterValue;
+				const match = String(targetScalar) === filterValue;
 				return filter.operator === "is" ? match : !match;
 			}
 			case "contains":
 			case "does not contain": {
-				const match = toString(targetScalar).includes(filterValue);
+				const match = String(targetScalar).includes(filterValue);
 				return filter.operator === "contains" ? match : !match;
 			}
 			case "contains any of":
 			case "does not contain any of": {
 				// Parse comma-separated filter values
-				const filterValues = (filter.value || "").split(",").map(v => toString(v.trim())).filter(v => v.length > 0);
+				const filterValues = (filter.value || "").split(",").map(v => String(v.trim())).filter(v => v.length > 0);
 				if (filterValues.length === 0) return filter.operator === "does not contain any of";
 				// Check if any filter value is contained in the target string
-				const match = filterValues.some(filterVal => toString(targetScalar).includes(filterVal));
+				const match = filterValues.some(filterVal => String(targetScalar).includes(filterVal));
 				return filter.operator === "contains any of" ? match : !match;
 			}
 			case "contains all of":
 			case "does not contain all of": {
 				// Parse comma-separated filter values
-				const filterValues = (filter.value || "").split(",").map(v => toString(v.trim())).filter(v => v.length > 0);
+				const filterValues = (filter.value || "").split(",").map(v => String(v.trim())).filter(v => v.length > 0);
 				if (filterValues.length === 0) return filter.operator === "does not contain all of";
 				// Check if all filter values are contained in the target string
-				const match = filterValues.every(filterVal => toString(targetScalar).includes(filterVal));
+				const match = filterValues.every(filterVal => String(targetScalar).includes(filterVal));
 				return filter.operator === "contains all of" ? match : !match;
 			}
 			case "starts with":
-				return toString(targetScalar).startsWith(filterValue);
+			case "does not start with": {
+				const match = String(targetScalar).startsWith(filterValue);
+				return filter.operator === "starts with" ? match : !match;
+			}
 			case "ends with":
-				return toString(targetScalar).endsWith(filterValue);
+			case "does not end with": {
+				const match = String(targetScalar).endsWith(filterValue);
+				return filter.operator === "ends with" ? match : !match;
+			}
 			default:
 				return false;
 		}

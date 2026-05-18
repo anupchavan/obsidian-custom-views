@@ -21,12 +21,9 @@ export async function renderTemplate(
 	const rawContent = await app.vault.read(file);
 
 	let bodyContent = rawContent;
-	if (frontmatter && frontmatter.position) {
-		const position = frontmatter.position as { start?: { offset: number }, end?: { offset: number } };
-		if (position.end && typeof position.end === 'object' && position.end !== null && 'offset' in position.end) {
-			const endOffset = position.end.offset;
-			bodyContent = rawContent.substring(endOffset).trim();
-		}
+	const endOffset = frontmatter?.position?.end?.offset;
+	if (typeof endOffset === "number") {
+		bodyContent = rawContent.substring(endOffset).trim();
 	}
 
 	const markdownQueue: { id: string, content: string }[] = [];
@@ -95,10 +92,8 @@ export async function renderTemplate(
 			}
 
 			const prefix = fullString.substring(0, offset);
-			const doubleQuotesMatch = prefix.match(/"/g);
-			const singleQuotesMatch = prefix.match(/'/g);
-			const doubleQuotes = doubleQuotesMatch ? doubleQuotesMatch.length : 0;
-			const singleQuotes = singleQuotesMatch ? singleQuotesMatch.length : 0;
+			const doubleQuotes = prefix.split('"').length - 1;
+			const singleQuotes = prefix.split("'").length - 1;
 			const isInsideAttribute = (doubleQuotes % 2 !== 0) || (singleQuotes % 2 !== 0);
 
 			if (isInsideAttribute) {

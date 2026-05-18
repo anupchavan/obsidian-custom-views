@@ -1,9 +1,7 @@
 import {
 	App,
 	AbstractInputSuggest,
-	TFile,
 	TFolder,
-	TAbstractFile,
 	prepareFuzzySearch,
 	renderResults,
 	SearchResult,
@@ -30,6 +28,8 @@ interface SuggestItem {
 
 abstract class BaseSuggest extends AbstractInputSuggest<SuggestItem> {
 	protected onSelectCallback: ((value: string) => void) | null = null;
+	/** Live reference to values that should be excluded from suggestions */
+	protected excludeValues: string[] = [];
 
 	constructor(app: App, inputEl: HTMLInputElement | HTMLDivElement) {
 		super(app, inputEl);
@@ -38,7 +38,21 @@ abstract class BaseSuggest extends AbstractInputSuggest<SuggestItem> {
 		(this as any).suggestEl?.addClass("mod-property-value");
 	}
 
+	/**
+	 * Sets a live reference to values that should be excluded from suggestions.
+	 * The array is checked on every getSuggestions call, so mutations are reflected.
+	 */
+	setExcludeValues(values: string[]): this {
+		this.excludeValues = values;
+		return this;
+	}
+
 	protected filterItems(items: SuggestItem[], query: string): SuggestItem[] {
+		// Filter out already-selected values
+		if (this.excludeValues.length > 0) {
+			items = items.filter(item => !this.excludeValues.includes(item.value));
+		}
+
 		if (!query || query.trim() === "") {
 			// Clear any stale match results for unfiltered items
 			for (const item of items) {
@@ -79,6 +93,21 @@ abstract class BaseSuggest extends AbstractInputSuggest<SuggestItem> {
 			this.onSelectCallback(item.value);
 		}
 		this.close();
+	}
+
+	/**
+	 * Selects the currently highlighted suggestion, if any.
+	 * Returns true if a suggestion was selected.
+	 */
+	selectHighlighted(): boolean {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const suggestEl = (this as any).suggestEl as HTMLElement | undefined;
+		const selected = suggestEl?.querySelector('.suggestion-item.is-selected') as HTMLElement;
+		if (selected) {
+			selected.click();
+			return true;
+		}
+		return false;
 	}
 
 	onSelectCb(callback: (value: string) => void): this {
@@ -316,24 +345,30 @@ export class FrontmatterValueSuggest extends BaseSuggest {
  * Checks if a string is a wikilink: [[...]]
  */
 export function isWikilink(text: string): boolean {
-	return /^\[\[.+\]\]$/.test(text.trim());
+	const t = text.trim();
+	return t.startsWith("[[") && t.endsWith("]]") && t.length > 4;
 }
 
 /**
  * Extracts the link target from a wikilink: [[Target]] → Target, [[Target|Alias]] → Target
  */
 export function extractWikilinkTarget(text: string): string {
-	const match = text.trim().match(/^\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/);
-	return match ? match[1] : text;
+	const t = text.trim();
+	if (!t.startsWith("[[") || !t.endsWith("]]")) return text;
+	const inner = t.slice(2, -2);
+	const pipe = inner.indexOf("|");
+	return pipe >= 0 ? inner.slice(0, pipe) : inner;
 }
 
 /**
  * Extracts the display text from a wikilink: [[Target|Alias]] → Alias, [[Target]] → Target
  */
 export function extractWikilinkDisplay(text: string): string {
-	const match = text.trim().match(/^\[\[([^\]|]+)(?:\|([^\]]*))?\]\]$/);
-	if (!match) return text;
-	return match[2] || match[1];
+	const t = text.trim();
+	if (!t.startsWith("[[") || !t.endsWith("]]")) return text;
+	const inner = t.slice(2, -2);
+	const pipe = inner.indexOf("|");
+	return pipe >= 0 ? inner.slice(pipe + 1) : inner;
 }
 
 /**

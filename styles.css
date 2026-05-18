@@ -3,12 +3,12 @@
     margin-bottom: 0.75rem;
 }
 
-.cv-codemirror-container .cm-editor {
+.cv-codemirror-container .cm-editor.cm-editor {
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
     font-size: var(--font-inputs);
     height: 20em;
-    outline: none !important;
+    outline: none;
     text-align: left;
 }
 
@@ -78,9 +78,7 @@
     box-shadow: none;
     background-color: transparent;
     padding-top: 0;
-    background-color: transparent;
     font-size: var(--font-ui-small);
-    box-shadow: none;
     text-align: start;
 }
 
@@ -248,14 +246,11 @@
     --background-modifier-border: transparent;
     align-items: center;
     overflow: hidden;
+    font-size: var(--metadata-input-font-size);
 }
 
 .metadata-property-value .cv-multi-select-container:focus-within {
     background-color: transparent;
-}
-
-.metadata-property-value .cv-multi-select-container {
-    font-size: var(--metadata-input-font-size);
 }
 
 .cv-multi-select-container:focus {
@@ -323,7 +318,7 @@
     height: var(--input-height);
 }
 
-.cv-filter-expression {
+.cv-bases-query-container .cv-filter-expression {
     --input-shadow: none;
     --icon-size: var(--icon-s);
     --icon-stroke: var(--icon-s-stroke-width);
@@ -332,7 +327,7 @@
     --metadata-input-font-size: var(--font-ui-small);
     --metadata-property-box-shadow: 0 0 0 1px
         var(--background-modifier-border-hover);
-    background-color: var(--interactive-normal) !important;
+    background-color: var(--interactive-normal);
     width: 100%;
     align-items: center;
     display: flex;
@@ -410,11 +405,10 @@
 
 .prompt.cv-suggestion-container.cv-combobox {
     --prompt-width: 500px;
-
     align-self: stretch;
     overflow: hidden;
     flex-direction: column;
-    max-width: 500px !important;
+    max-width: 500px;
     max-height: 300px;
     z-index: var(--layer-notice);
 }
@@ -424,33 +418,26 @@
 }
 
 .prompt-input-container.cv-search-input-container .search-input-clear-button {
-    inset-inline-end: 2px;
-    --search-clear-button-size: 13px !important;
-    align-content: center;
+    --search-clear-button-size: 13px;
     position: absolute;
+    inset-inline-end: 2px;
+    top: 0;
+    bottom: 0;
+    margin: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--input-height);
+    width: 28px;
+    padding: 0;
     background: transparent;
     border-radius: 50%;
     color: var(--search-clear-button-color);
     cursor: var(--cursor);
-    top: 0px;
-    inset-inline-end: 2px;
-    bottom: 0px;
     line-height: 0;
-    height: var(--input-height);
-    width: 28px;
-    margin: auto;
-    padding: 0 0;
     text-align: center;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     transition: color var(--anim-duration-fast) ease-in-out;
 }
-/* .cv-combobox {
-} */
-
-/* .cv-has-input-focus {
-} */
 
 .cv-conjunction-trigger {
     display: flex;
@@ -513,8 +500,6 @@
     padding-inline-start: 36px;
 }
 
-/* .cv-search-input-clear-button {
-} */
 
 .cv-suggestion {
     overflow-y: auto;
@@ -572,11 +557,6 @@
     margin-inline-end: auto;
 }
 
-/* .cv-mod-complex {
-} */
-
-/* .cv-mod-toggle {
-} */
 
 .cv-suggestion-item.cv-mod-toggle .cv-mod-checked {
     --icon-size: var(--icon-xs);
@@ -584,19 +564,12 @@
     order: 2;
 }
 
-/* .cv-mod-checked {
-} */
 
 .cv-suggestion-flair .svg-icon {
     --icon-size: var(--icon-s);
     --icon-stroke: var(--icon-s-stroke-width);
 }
 
-/* .cv-suggestion-title {
-} */
-
-/* .cv-suggestion-aux {
-} */
 
 .cv-list-value-container {
     display: flex;
@@ -733,6 +706,7 @@
     margin-left: auto;
 }
 
+/* Needs !important to override Obsidian's layout system which sets display on these elements */
 .obsidian-custom-view-hidden .markdown-source-view,
 .obsidian-custom-view-hidden .markdown-preview-view {
     display: none !important;
@@ -750,20 +724,6 @@
     z-index: 10;
 }
 
-/* In Live Preview mode, keep the editor accessible but overlay the custom view */
-.obsidian-custom-view-live-preview {
-    /* The editor is kept visible behind, so we need to ensure our view is on top */
-    z-index: 5;
-}
-
-/* Ensure the editor is accessible in Live Preview mode when custom view is active */
-.markdown-source-view:has(
-    ~ .obsidian-custom-view-render.obsidian-custom-view-live-preview
-) {
-    /* Keep editor visible but behind custom view */
-    position: relative;
-    z-index: 1;
-}
 
 .obsidian-custom-view-hidden {
     position: relative;
@@ -808,30 +768,17 @@
     margin-block-end: 0;
 }
 
-/* Override modal styles for suggestion modals */
-.cv-suggestion-container.modal {
-    position: fixed !important;
-    margin: 0 !important;
-    transform: none !important;
+/* Override modal styles for suggestion modals — needs body prefix for specificity over .modal */
+body .cv-suggestion-container.modal {
+    position: fixed;
+    margin: 0;
+    transform: none;
     max-width: 500px;
     max-height: 300px;
     background-color: var(--background-primary);
     border: 1px solid var(--background-modifier-border);
     box-shadow: var(--shadow-s);
     border-radius: var(--radius-m);
-}
-
-/* Hide modal background for suggestion modals */
-.modal-container:has(.cv-suggestion-container) .modal-bg {
-    display: none !important;
-}
-
-.modal-container:has(.cv-suggestion-container) {
-    background: transparent !important;
-}
-
-.modal-container:has(.cv-suggestion-container).mod-dim {
-    background: transparent !important;
 }
 
 .cv-suggestion-container.modal .modal-content {
@@ -865,22 +812,19 @@
     z-index: var(--layer-modal);
 }
 
-/* Combobox positioning */
-.cv-combobox-positioned {
-    position: fixed !important;
-    margin: 0 !important;
-    transform: none !important;
+/* Combobox positioning — needs body prefix for specificity over .modal */
+body .cv-combobox-positioned {
+    position: fixed;
+    margin: 0;
+    transform: none;
     left: var(--cv-combobox-left, auto);
     top: var(--cv-combobox-top, auto);
 }
 
-/* Hide modal background */
-.cv-modal-bg-hidden {
-    display: none !important;
+body .cv-modal-bg-hidden {
+    display: none;
 }
 
-/* Show clear button */
-
-.cv-clear-button-hidden {
-    display: none !important;
+body .cv-clear-button-hidden {
+    display: none;
 }

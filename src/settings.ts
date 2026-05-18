@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, Notice } from "obsidian";
+import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 import { createTemplateEditor } from "./editor";
@@ -19,14 +19,35 @@ const TYPE_ICONS: Record<PropertyType, string> = {
 	unknown: "text"
 };
 
-const OPERATORS: Record<string, string[]> = {
-	text: ["contains", "does not contain", "is", "is not", "starts with", "ends with", "contains any of", "does not contain any of", "contains all of", "does not contain all of", "is empty", "is not empty"],
-	list: ["contains", "does not contain", "contains any of", "does not contain any of", "contains all of", "does not contain all of", "is empty", "is not empty"],
+/**
+ * Operator sets by type. Field-specific overrides take priority (see FIELD_OPERATORS).
+ */
+const TYPE_OPERATORS: Record<string, string[]> = {
+	text: ["is", "is not", "starts with", "ends with", "is empty", "contains any of", "contains all of", "does not start with", "does not end with", "is not empty", "does not contain", "does not contain any of", "does not contain all of"],
+	list: ["is exactly", "is not exactly", "is empty", "contains", "contains any of", "contains all of", "is not empty", "does not contain", "does not contain any of", "does not contain all of"],
 	number: ["=", "≠", "<", "≤", ">", "≥", "is empty", "is not empty"],
 	date: ["on", "not on", "before", "on or before", "after", "on or after", "is empty", "is not empty"],
-	checkbox: ["is"],
-	file: ["links to", "does not link to", "in folder", "is not in folder", "has tag", "does not have tag", "has property", "does not have property"]
+	checkbox: ["is", "is not"],
 };
+
+/**
+ * Field-specific operator overrides. These take priority over TYPE_OPERATORS.
+ */
+const FIELD_OPERATORS: Record<string, string[]> = {
+	"file": ["links to", "in folder", "has tag", "has property", "does not link to", "is not in folder", "does not have tag", "does not have property"],
+	"file.name": ["is", "is not", "starts with", "ends with", "is empty", "contains", "contains any of", "contains all of", "does not start with", "does not end with", "is not empty", "does not contain", "does not contain any of", "does not contain all of"],
+	"file.folder": ["is", "is not", "starts with", "ends with", "is empty", "contains", "contains any of", "contains all of", "does not start with", "does not end with", "is not empty", "does not contain", "does not contain any of", "does not contain all of"],
+};
+
+/**
+ * Returns the operator list for a given field and type.
+ * Field-specific overrides take priority, then type-based lookup.
+ */
+function getOperatorsForField(field: string, type: PropertyType): string[] {
+	if (FIELD_OPERATORS[field]) return FIELD_OPERATORS[field];
+	const opsKey = type === "datetime" ? "date" : (type === "unknown" ? "text" : type);
+	return TYPE_OPERATORS[opsKey] || TYPE_OPERATORS["text"];
+}
 
 const DEFAULT_RULES: FilterGroup = {
 	type: "group",
@@ -321,7 +342,7 @@ interface PropertyDef {
 	type: PropertyType;
 }
 
-interface SuggestItem {
+interface ComboboxItem {
 	label: string;
 	value: string;
 	icon?: string;
@@ -329,10 +350,9 @@ interface SuggestItem {
 
 /**
  * Unified combobox modal for property and operator selection.
- * Consolidates PropertySuggestModal and OperatorSuggestModal into a single reusable class.
  */
-class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
-	private items: SuggestItem[];
+class ComboboxSuggestModal extends FuzzySuggestModal<ComboboxItem> {
+	private items: ComboboxItem[];
 	private selectedValue: string;
 	private onSelect: (val: string) => void;
 	private anchorEl: HTMLElement | null = null;
@@ -340,7 +360,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 
 	constructor(
 		app: App,
-		items: SuggestItem[],
+		items: ComboboxItem[],
 		selectedValue: string,
 		onSelect: (val: string) => void,
 		anchorEl?: HTMLElement
@@ -352,11 +372,11 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 		this.anchorEl = anchorEl || null;
 	}
 
-	getItems(): SuggestItem[] {
+	getItems(): ComboboxItem[] {
 		return this.items;
 	}
 
-	getItemText(item: SuggestItem): string {
+	getItemText(item: ComboboxItem): string {
 		return item.label;
 	}
 
@@ -417,6 +437,21 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 
 				// Update on input change
 				input.addEventListener('input', updateClearButtonVisibility);
+
+				// Tab: select highlighted and advance. Shift+Tab: close and focus previous combobox.
+				input.addEventListener('keydown', (e) => {
+					if (e.key !== 'Tab') return;
+					e.preventDefault();
+					if (e.shiftKey) {
+						this.close();
+						const prev = this.anchorEl?.previousElementSibling as HTMLElement;
+						if (prev) prev.focus();
+					} else {
+						const highlighted = this.modalEl.querySelector('.suggestion-item.is-selected') as HTMLElement;
+						if (highlighted) highlighted.click();
+						else this.close();
+					}
+				});
 			}
 		}
 
@@ -450,7 +485,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 		}, 0);
 	}
 
-	renderSuggestion(match: FuzzyMatch<SuggestItem>, el: HTMLElement): void {
+	renderSuggestion(match: FuzzyMatch<ComboboxItem>, el: HTMLElement): void {
 		const item = match.item;
 		el.addClass("cv-suggestion-item", "cv-mod-complex", "cv-mod-toggle");
 
@@ -469,7 +504,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
 		content.createDiv({ cls: "cv-suggestion-title", text: item.label });
 	}
 
-	onChooseItem(item: SuggestItem): void {
+	onChooseItem(item: ComboboxItem): void {
 		this.onSelect(item.value);
 	}
 
@@ -523,11 +558,10 @@ function createComboboxButton(
 
 function createDeleteButton(
 	container: HTMLElement,
-	onClick: (e: MouseEvent) => void,
-	additionalClasses: string = ""
+	onClick: (e: MouseEvent) => void
 ): HTMLElement {
 	const deleteBtn = container.createEl("button", {
-		cls: `clickable-icon ${additionalClasses}`.trim(),
+		cls: "clickable-icon",
 		attr: { "aria-label": "Remove filter" }
 	});
 	setIcon(deleteBtn, "trash-2");
@@ -564,6 +598,7 @@ function createFilterValueInput(
 	const safeValue = value || "";
 	const needsMultiSelect = operator === "contains any of" || operator === "does not contain any of"
 		|| operator === "contains all of" || operator === "does not contain all of"
+		|| operator === "is exactly" || operator === "is not exactly"
 		|| operator === "has tag" || operator === "does not have tag";
 	if (needsMultiSelect) {
 		// Multi-select container for operators that accept multiple values
@@ -639,6 +674,9 @@ function createFilterValueInput(
 			if (br) br.remove();
 		};
 
+		// Mutable reference for inline suggest (assigned later)
+		let inlineSuggest: FileSuggest | FolderSuggest | TagSuggest | PropertySuggest | FrontmatterValueSuggest | null = null;
+
 		// Handle keyboard navigation in input
 		input.addEventListener("keydown", (e: KeyboardEvent) => {
 			if (e.key === "Enter") {
@@ -651,9 +689,14 @@ function createFilterValueInput(
 					clearInput();
 					updatePlaceholder();
 					// Focus back to input after creating pill
-					window.setTimeout(() => focusInput(), 0);
+					requestAnimationFrame(() => focusInput());
 				}
-			} else if (e.key === "Backspace") {
+			} else if (e.key === "Tab" && !e.shiftKey) {
+				// Accept the highlighted inline suggestion if open
+				if (inlineSuggest?.selectHighlighted()) {
+					e.preventDefault();
+				}
+			} else if (e.key === "Backspace" || e.key === "ArrowLeft") {
 				// If input is empty, focus the last pill
 				const text = input.textContent?.trim() || "";
 				if (text.length === 0) {
@@ -691,12 +734,12 @@ function createFilterValueInput(
 						// Focus previous pill or input
 						if (values.length > 0) {
 							const newIndex = Math.max(0, currentIndex - 1);
-							window.setTimeout(() => focusPill(newIndex), 0);
+							requestAnimationFrame(() => focusPill(newIndex));
 						} else {
-							window.setTimeout(() => focusInput(), 0);
+							requestAnimationFrame(() => focusInput());
 						}
 					}
-				} else if (e.key === "Tab" && !e.shiftKey) {
+				} else if ((e.key === "Tab" && !e.shiftKey) || e.key === "ArrowRight") {
 					e.preventDefault();
 					const pills = getPills();
 					// Focus next pill or input if last pill
@@ -705,14 +748,21 @@ function createFilterValueInput(
 					} else {
 						focusInput();
 					}
-				} else if (e.key === "Tab" && e.shiftKey) {
+				} else if (e.key === "ArrowLeft") {
 					e.preventDefault();
-					// Focus previous pill or input if first pill
+					// Focus previous pill; wrap to input if first pill
 					if (currentIndex > 0) {
 						focusPill(currentIndex - 1);
 					} else {
 						focusInput();
 					}
+				} else if (e.key === "Tab" && e.shiftKey) {
+					// Focus previous pill, or let default Tab bubble out to previous combobox
+					if (currentIndex > 0) {
+						e.preventDefault();
+						focusPill(currentIndex - 1);
+					}
+					// else: don't preventDefault — let browser move focus to previous element
 				}
 			});
 		};
@@ -734,9 +784,9 @@ function createFilterValueInput(
 						// After deletion, focus the previous pill or input
 						if (values.length > 0) {
 							const newIndex = Math.min(index, values.length - 1);
-							window.setTimeout(() => focusPill(newIndex), 0);
+							requestAnimationFrame(() => focusPill(newIndex));
 						} else {
-							window.setTimeout(() => focusInput(), 0);
+							requestAnimationFrame(() => focusInput());
 						}
 					}
 				}, (pill: HTMLElement) => {
@@ -755,22 +805,45 @@ function createFilterValueInput(
 		// Set initial placeholder
 		updatePlaceholder();
 
+		// Accept text on blur (with delay to avoid conflict with suggest selection)
+		let blurTimeout: ReturnType<typeof setTimeout> | null = null;
+		const acceptInputText = (): void => {
+			const text = input.textContent?.trim() || "";
+			if (text.length > 0) {
+				values.push(text);
+				onChange(values.join(","));
+				updatePills();
+				clearInput();
+				updatePlaceholder();
+			}
+		};
+		input.addEventListener("blur", () => {
+			blurTimeout = setTimeout(() => {
+				blurTimeout = null;
+				acceptInputText();
+			}, 150);
+		});
+
 		// Attach inline suggestions for multi-select inputs
 		if (app) {
 			const addPillFromSuggest = (text: string): void => {
+				// Cancel pending blur acceptance — suggest takes priority
+				if (blurTimeout) { clearTimeout(blurTimeout); blurTimeout = null; }
 				if (text.trim().length > 0 && !values.includes(text.trim())) {
 					values.push(text.trim());
 					onChange(values.join(","));
 					updatePills();
 					clearInput();
 					updatePlaceholder();
-					window.setTimeout(() => focusInput(), 0);
+					requestAnimationFrame(() => focusInput());
 				}
 			};
 
 			const suggest = createSuggestForInput(app, input, operator, field);
 			if (suggest) {
+				suggest.setExcludeValues(values);
 				suggest.onSelectCb(addPillFromSuggest);
+				inlineSuggest = suggest;
 			}
 		}
 
@@ -790,6 +863,73 @@ function createFilterValueInput(
 		input.oninput = () => onChange(input.value);
 		return input;
 	} else {
+		// For wikilink values, render like Obsidian bases: metadata-link with pencil flair
+		if (isWikilink(safeValue) && app) {
+			const input = container.createEl("input", { type: "text", value: safeValue });
+			input.addClass("metadata-input", "metadata-input-text");
+			input.placeholder = "Value...";
+			input.oninput = () => onChange(input.value);
+
+			const linkTarget = extractWikilinkTarget(safeValue);
+			const resolved = app.metadataCache.getFirstLinkpathDest(linkTarget, "");
+
+			const metadataLink = container.createDiv({ cls: "metadata-link" });
+			const linkEl = metadataLink.createDiv({
+				cls: "metadata-link-inner internal-link",
+				text: extractWikilinkDisplay(safeValue),
+				attr: { "data-href": linkTarget, draggable: "true" }
+			});
+			if (!resolved) linkEl.addClass("is-unresolved");
+			const flair = metadataLink.createDiv({ cls: "metadata-link-flair" });
+			setIcon(flair, "pencil");
+
+			const enterEditMode = () => {
+				metadataLink.style.display = "none";
+				input.style.display = "";
+				input.focus();
+				input.select();
+			};
+
+			// Click link text → open file in background
+			linkEl.addEventListener("click", (e) => {
+				e.stopPropagation();
+				openWikilinkFile(app, extractWikilinkTarget(input.value));
+			});
+
+			// Click pencil or anywhere else on metadata-link → enter edit mode
+			flair.addEventListener("click", (e) => { e.stopPropagation(); enterEditMode(); });
+			metadataLink.addEventListener("click", enterEditMode);
+
+			// When input loses focus, restore link display if value is still a wikilink
+			input.addEventListener("blur", () => {
+				if (isWikilink(input.value)) {
+					metadataLink.style.display = "";
+					input.style.display = "none";
+					const newTarget = extractWikilinkTarget(input.value);
+					const newResolved = app.metadataCache.getFirstLinkpathDest(newTarget, "");
+					linkEl.setText(extractWikilinkDisplay(input.value));
+					linkEl.setAttribute("data-href", newTarget);
+					if (newResolved) linkEl.removeClass("is-unresolved");
+					else linkEl.addClass("is-unresolved");
+				}
+			});
+
+			// Start with link visible, input hidden
+			input.style.display = "none";
+
+			// Attach inline suggestions
+			const suggest = createSuggestForInput(app, input, operator, field);
+			if (suggest) {
+				suggest.onSelectCb((text: string) => {
+					input.value = text;
+					input.dispatchEvent(new Event("input"));
+					onChange(text);
+				});
+			}
+
+			return container;
+		}
+
 		const input = container.createEl("input", { type: "text", value: safeValue });
 		input.addClass("metadata-input", "metadata-input-text");
 		input.placeholder = "Value...";
@@ -812,7 +952,7 @@ function createFilterValueInput(
 }
 
 /**
- * Creates the appropriate suggest provider based on the operator and field.
+ * Creates the appropriate suggest provider based on the field.
  * Returns the suggest instance or null if no suggest is applicable.
  */
 function createSuggestForInput(
@@ -821,39 +961,26 @@ function createSuggestForInput(
 	operator?: string,
 	field?: string
 ): FileSuggest | FolderSuggest | TagSuggest | PropertySuggest | FrontmatterValueSuggest | null {
-	// File-level operators (field === "file")
-	if (operator === "links to" || operator === "does not link to") {
-		return new FileSuggest(app, inputEl);
-	}
-	if (operator === "in folder" || operator === "is not in folder") {
-		return new FolderSuggest(app, inputEl);
-	}
-	if (operator === "has tag" || operator === "does not have tag") {
-		return new TagSuggest(app, inputEl);
-	}
-	if (operator === "has property" || operator === "does not have property") {
-		return new PropertySuggest(app, inputEl);
-	}
+	if (!field) return null;
 
-	// Field-based suggestions for non-"file" operators
-	// "file tags" with any operator (contains any of, etc.) → tag suggestions
-	if (field === "file tags") {
-		return new TagSuggest(app, inputEl);
-	}
+	// Field-based suggest mapping
+	if (field === "file links") return new FileSuggest(app, inputEl);
+	if (field === "file.folder") return new FolderSuggest(app, inputEl);
+	if (field === "file tags") return new TagSuggest(app, inputEl);
+	if (field === "aliases") return new FrontmatterValueSuggest(app, inputEl, "aliases");
 
-	// "folder" field with any operator (is, is not, etc.) → folder suggestions
-	if (field === "folder") {
-		return new FolderSuggest(app, inputEl);
-	}
-
-	// "aliases" field → suggest existing aliases from the vault
-	if (field === "aliases") {
-		return new FrontmatterValueSuggest(app, inputEl, "aliases");
+	// Legacy support for old "file" field operators
+	if (field === "file") {
+		if (operator === "links to" || operator === "does not link to") return new FileSuggest(app, inputEl);
+		if (operator === "in folder" || operator === "is not in folder") return new FolderSuggest(app, inputEl);
+		if (operator === "has tag" || operator === "does not have tag") return new TagSuggest(app, inputEl);
+		if (operator === "has property" || operator === "does not have property") return new PropertySuggest(app, inputEl);
+		return null;
 	}
 
 	// For frontmatter property values — suggest existing values
 	// Skip built-in file.* properties (file.name, file.path, etc.)
-	if (field && !field.startsWith("file.") && field !== "file") {
+	if (!field.startsWith("file.") && field !== "file links" && field !== "file tags") {
 		return new FrontmatterValueSuggest(app, inputEl, field);
 	}
 
@@ -863,20 +990,21 @@ function createSuggestForInput(
 function createPill(container: HTMLElement, value: string, onRemove: () => void, onCreated?: (pill: HTMLElement) => void, app?: App): void {
 	const pill = container.createDiv({ cls: "multi-select-pill", attr: { tabindex: "0" } });
 
-	// Detect wikilinks and render with link styling
+	// Detect wikilinks and render with internal-link styling
 	if (isWikilink(value) && app) {
 		pill.addClass("cv-pill-wikilink");
-		const linkIcon = pill.createDiv({ cls: "cv-pill-link-icon" });
-		setIcon(linkIcon, "link");
-		const contentEl = pill.createDiv({ cls: "multi-select-pill-content cv-pill-link-text" });
+		const linkTarget = extractWikilinkTarget(value);
+		const resolved = app.metadataCache.getFirstLinkpathDest(linkTarget, "");
+		const contentEl = pill.createDiv({ cls: "multi-select-pill-content internal-link" });
+		if (!resolved) contentEl.addClass("is-unresolved");
+		contentEl.setAttribute("data-href", linkTarget);
 		contentEl.setText(extractWikilinkDisplay(value));
-		contentEl.setAttribute("aria-label", value);
 
 		// Click on content opens the file
 		contentEl.addEventListener("click", (e) => {
 			e.stopPropagation();
 			e.preventDefault();
-			openWikilinkFile(app, extractWikilinkTarget(value));
+			openWikilinkFile(app, linkTarget);
 		});
 	} else {
 		pill.createDiv({ cls: "multi-select-pill-content", text: value });
@@ -906,7 +1034,7 @@ function setupComboboxButtonHandlers(
 	};
 
 	button.onkeydown = (e) => {
-		if (e.key === " " || e.key === "Spacebar") {
+		if (e.key === " ") {
 			e.preventDefault();
 			e.stopPropagation();
 			onOpen();
@@ -921,6 +1049,8 @@ export class FilterBuilder {
 	onRefresh: () => void;
 	onDeleteView?: () => void;
 	availableProperties: PropertyDef[];
+	/** Pending auto-open action after refresh. Consumed by renderFilterRow. */
+	private pendingAutoOpen: { filter: Filter; action: "operator" | "value" } | null = null;
 
 	constructor(plugin: CustomViewsPlugin, root: FilterGroup, onSave: () => void, onRefresh: () => void, onDeleteView?: () => void) {
 		this.plugin = plugin;
@@ -941,7 +1071,8 @@ export class FilterBuilder {
 			"file.folder": "folder",
 			"file.size": "file size",
 			"file.ctime": "created time",
-			"file.mtime": "modified time"
+			"file.mtime": "modified time",
+			"file links": "file links",
 		};
 		return labelMap[key] || key;
 	}
@@ -950,6 +1081,7 @@ export class FilterBuilder {
 	 * Gets the icon for a property
 	 */
 	getPropertyIcon(key: string, type: PropertyType): string {
+		if (key === "file links") return "link";
 		if (key === "file tags") return "tags";
 		if (key === "aliases") return "forward";
 		if (key === "file.ctime" || key === "file.mtime") return "clock";
@@ -1000,6 +1132,7 @@ export class FilterBuilder {
 			["file.ctime", "date"],
 			["file.mtime", "date"],
 			["file.size", "number"],
+			["file links", "list"],
 			["file tags", "list"],
 			["aliases", "list"]
 		];
@@ -1193,7 +1326,7 @@ export class FilterBuilder {
 
 		const openPropertyModal = () => {
 			addFocusClasses(propertyBtn, expression);
-			this.openPropertySuggestModal(
+			this.openCombobox(
 				this.availableProperties.map(p => ({
 					label: this.getPropertyLabel(p.key),
 					value: p.key,
@@ -1202,8 +1335,7 @@ export class FilterBuilder {
 				filter.field,
 				(newVal) => {
 					const newType = this.getPropertyType(newVal);
-					const validOps = OPERATORS[newType === "datetime" ? "date" : newType] || OPERATORS["text"];
-					const newOperator = validOps[0] as FilterOperator;
+					const newOperator = getOperatorsForField(newVal, newType)[0] as FilterOperator;
 
 					// If this is a placeholder, add it to the conditions array
 					if (isPlaceholder && !placeholderAdded) {
@@ -1229,6 +1361,12 @@ export class FilterBuilder {
 						filter.value = "";
 					}
 
+					// Auto-advance: open operator modal after refresh
+					const targetFilter = (isPlaceholder
+						? parentGroup.conditions[parentGroup.conditions.length - 1]
+						: filter) as Filter;
+					this.pendingAutoOpen = { filter: targetFilter, action: "operator" };
+
 					this.onSave();
 					this.onRefresh();
 				},
@@ -1238,18 +1376,13 @@ export class FilterBuilder {
 
 		setupComboboxButtonHandlers(propertyBtn, statement, openPropertyModal);
 
-		let opsKey = currentType;
-		if (currentType === "datetime") opsKey = "date";
-		if (currentType === "unknown") opsKey = "text";
-		if (!OPERATORS[opsKey]) opsKey = "text";
-
-		const validOps = OPERATORS[opsKey] as FilterOperator[];
+		const validOps = getOperatorsForField(filter.field, currentType) as FilterOperator[];
 
 		const operatorBtn = createComboboxButton(expression, filter.operator);
 
 		const openOperatorModal = () => {
 			addFocusClasses(operatorBtn, expression);
-			this.openOperatorSuggestModal(
+			this.openCombobox(
 				validOps.map(op => ({ label: op, value: op })),
 				filter.operator,
 				(newVal) => {
@@ -1268,6 +1401,14 @@ export class FilterBuilder {
 						filter.operator = operator;
 					}
 
+					// Auto-advance: focus value input after refresh (if operator takes a value)
+					if (!["is empty", "is not empty"].includes(operator)) {
+						const targetFilter = (isPlaceholder && placeholderAdded
+							? parentGroup.conditions[parentGroup.conditions.length - 1]
+							: filter) as Filter;
+						this.pendingAutoOpen = { filter: targetFilter, action: "value" };
+					}
+
 					this.onSave();
 					this.onRefresh();
 				},
@@ -1276,6 +1417,14 @@ export class FilterBuilder {
 		};
 
 		setupComboboxButtonHandlers(operatorBtn, statement, openOperatorModal);
+
+		// Auto-advance: open operator modal if pending
+		if (this.pendingAutoOpen?.filter === filter && this.pendingAutoOpen.action === "operator") {
+			this.pendingAutoOpen = null;
+			// Add focus class immediately to prevent flicker between combobox transitions
+			addFocusClasses(operatorBtn, expression);
+			window.setTimeout(() => openOperatorModal(), 50);
+		}
 
 		const handleDelete = () => {
 			if (isPlaceholder) {
@@ -1308,37 +1457,30 @@ export class FilterBuilder {
 
 				this.onSave();
 			}, filter.operator, this.plugin.app, filter.field);
-		}
+
+				// Auto-advance: focus value input if pending
+				if (this.pendingAutoOpen?.filter === filter && this.pendingAutoOpen.action === "value") {
+					this.pendingAutoOpen = null;
+					window.setTimeout(() => {
+						const focusTarget = rhs.querySelector("input, .cv-multi-select-input") as HTMLElement;
+						if (focusTarget) focusTarget.focus();
+					}, 50);
+				}
+			}
+
 
 		const actions = expression.createDiv({ cls: "cv-filter-row-actions" });
 		createDeleteButton(actions, handleDelete);
 	}
 
 
-	openPropertySuggestModal(
-		items: { label: string, value: string, icon?: string }[],
+	openCombobox(
+		items: ComboboxItem[],
 		selectedValue: string,
 		onSelect: (val: string) => void,
 		anchorEl?: HTMLElement
 	) {
-		const modal = new ComboboxSuggestModal(this.plugin.app, items, selectedValue, onSelect, anchorEl);
-		modal.open();
-	}
-
-	openOperatorSuggestModal(
-		items: { label: string, value: string }[],
-		selectedValue: string,
-		onSelect: (val: string) => void,
-		anchorEl?: HTMLElement
-	) {
-		const modal = new ComboboxSuggestModal(
-			this.plugin.app,
-			items,
-			selectedValue,
-			onSelect,
-			anchorEl
-		);
-		modal.open();
+		new ComboboxSuggestModal(this.plugin.app, items, selectedValue, onSelect, anchorEl).open();
 	}
 
 	createSimpleBtn(container: HTMLElement, icon: string, text: string, onClick: () => void) {
