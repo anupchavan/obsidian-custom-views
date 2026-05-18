@@ -280,7 +280,7 @@ class EditViewModal extends Modal {
 					.onChange((value) => {
 						this.view.name = value;
 					});
-				window.requestAnimationFrame(() => {
+				window.window.requestAnimationFrame(() => {
 					text.inputEl.select();
 				});
 			});
@@ -384,7 +384,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<ComboboxItem> {
 		void super.onOpen();
 
 		// Style modal as combobox
-		window.requestAnimationFrame(() => {
+		window.window.requestAnimationFrame(() => {
 			const modalContainer = this.modalEl.closest('.modal-container');
 			if (modalContainer) {
 				modalContainer.addClass('cv-modal-container');
@@ -431,7 +431,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<ComboboxItem> {
 				};
 
 				// Initial state - use requestAnimationFrame to ensure DOM is ready
-				window.requestAnimationFrame(() => {
+				window.window.requestAnimationFrame(() => {
 					updateClearButtonVisibility();
 				});
 
@@ -465,7 +465,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<ComboboxItem> {
 			if (this.anchorEl.getAttribute('tabindex') === '-1') {
 				this.anchorEl.setAttribute('tabindex', '0');
 			}
-			window.requestAnimationFrame(() => {
+			window.window.requestAnimationFrame(() => {
 				this.anchorEl?.focus();
 			});
 		}
@@ -689,7 +689,7 @@ function createFilterValueInput(
 					clearInput();
 					updatePlaceholder();
 					// Focus back to input after creating pill
-					requestAnimationFrame(() => focusInput());
+					window.requestAnimationFrame(() => focusInput());
 				}
 			} else if (e.key === "Tab" && !e.shiftKey) {
 				// Accept the highlighted inline suggestion if open
@@ -734,9 +734,9 @@ function createFilterValueInput(
 						// Focus previous pill or input
 						if (values.length > 0) {
 							const newIndex = Math.max(0, currentIndex - 1);
-							requestAnimationFrame(() => focusPill(newIndex));
+							window.requestAnimationFrame(() => focusPill(newIndex));
 						} else {
-							requestAnimationFrame(() => focusInput());
+							window.requestAnimationFrame(() => focusInput());
 						}
 					}
 				} else if ((e.key === "Tab" && !e.shiftKey) || e.key === "ArrowRight") {
@@ -784,9 +784,9 @@ function createFilterValueInput(
 						// After deletion, focus the previous pill or input
 						if (values.length > 0) {
 							const newIndex = Math.min(index, values.length - 1);
-							requestAnimationFrame(() => focusPill(newIndex));
+							window.requestAnimationFrame(() => focusPill(newIndex));
 						} else {
-							requestAnimationFrame(() => focusInput());
+							window.requestAnimationFrame(() => focusInput());
 						}
 					}
 				}, (pill: HTMLElement) => {
@@ -806,7 +806,7 @@ function createFilterValueInput(
 		updatePlaceholder();
 
 		// Accept text on blur (with delay to avoid conflict with suggest selection)
-		let blurTimeout: ReturnType<typeof setTimeout> | null = null;
+		let blurTimeout: number | null = null;
 		const acceptInputText = (): void => {
 			const text = input.textContent?.trim() || "";
 			if (text.length > 0) {
@@ -818,7 +818,7 @@ function createFilterValueInput(
 			}
 		};
 		input.addEventListener("blur", () => {
-			blurTimeout = setTimeout(() => {
+			blurTimeout = window.setTimeout(() => {
 				blurTimeout = null;
 				acceptInputText();
 			}, 150);
@@ -828,14 +828,14 @@ function createFilterValueInput(
 		if (app) {
 			const addPillFromSuggest = (text: string): void => {
 				// Cancel pending blur acceptance — suggest takes priority
-				if (blurTimeout) { clearTimeout(blurTimeout); blurTimeout = null; }
+				if (blurTimeout) { window.clearTimeout(blurTimeout); blurTimeout = null; }
 				if (text.trim().length > 0 && !values.includes(text.trim())) {
 					values.push(text.trim());
 					onChange(values.join(","));
 					updatePills();
 					clearInput();
 					updatePlaceholder();
-					requestAnimationFrame(() => focusInput());
+					window.requestAnimationFrame(() => focusInput());
 				}
 			};
 
@@ -884,8 +884,8 @@ function createFilterValueInput(
 			setIcon(flair, "pencil");
 
 			const enterEditMode = () => {
-				metadataLink.style.display = "none";
-				input.style.display = "";
+				metadataLink.addClass("cv-hidden");
+				input.removeClass("cv-hidden");
 				input.focus();
 				input.select();
 			};
@@ -903,8 +903,8 @@ function createFilterValueInput(
 			// When input loses focus, restore link display if value is still a wikilink
 			input.addEventListener("blur", () => {
 				if (isWikilink(input.value)) {
-					metadataLink.style.display = "";
-					input.style.display = "none";
+					metadataLink.removeClass("cv-hidden");
+					input.addClass("cv-hidden");
 					const newTarget = extractWikilinkTarget(input.value);
 					const newResolved = app.metadataCache.getFirstLinkpathDest(newTarget, "");
 					linkEl.setText(extractWikilinkDisplay(input.value));
@@ -915,7 +915,7 @@ function createFilterValueInput(
 			});
 
 			// Start with link visible, input hidden
-			input.style.display = "none";
+			input.addClass("cv-hidden");
 
 			// Attach inline suggestions
 			const suggest = createSuggestForInput(app, input, operator, field);
@@ -1093,10 +1093,13 @@ export class FilterBuilder {
 	 * metadataTypeManager registry. Returns null if not available.
 	 */
 	private getObsidianPropertyType(key: string): PropertyType | null {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		// Accessing undocumented Obsidian internal API
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
 		const typeManager = (this.plugin.app as any).metadataTypeManager;
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		if (!typeManager || typeof typeManager.getAssignedType !== "function") return null;
 
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 		const obsidianType = typeManager.getAssignedType(key) as string | undefined;
 		if (!obsidianType) return null;
 
