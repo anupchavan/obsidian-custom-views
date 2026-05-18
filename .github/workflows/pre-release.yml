@@ -35,7 +35,6 @@ jobs:
         uses: actions/attest-build-provenance@v1
         with:
           subject-path: './main.js, ./styles.css'
-        continue-on-error: true
 
       - name: Create pre-release
         env:
