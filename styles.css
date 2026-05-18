@@ -61,15 +61,22 @@
 }
 
 .cv-codemirror-container {
-    height: 250px;
     width: 100%;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--input-radius);
-    overflow: hidden;
+    margin-bottom: 0.75rem;
 }
 
 .cv-codemirror-container .cm-editor {
-    height: 100%;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    font-size: var(--font-inputs);
+    height: 20em;
+    outline: none !important;
+    text-align: left;
+}
+
+.cv-codemirror-container .cm-line,
+.cv-codemirror-container .cm-lineNumbers {
+    font-family: var(--font-monospace);
 }
 
 .cv-codemirror-container .cm-scroller {
@@ -88,8 +95,8 @@
     max-height: 100%;
     z-index: var(--layer-menu);
     user-select: none;
-	padding: var(--size-4-3);
-	--input-height: 28px;
+    padding: var(--size-4-3);
+    --input-height: 28px;
 }
 
 .cv-bases-query-container > .filter-group {
@@ -118,24 +125,31 @@
     width: 100%;
 }
 
-.cv-bases-query-container .filter-group .filter-group-header{
+.cv-bases-query-container .filter-group .filter-group-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding-bottom: var(--size-2-1);
 }
 
-.cv-bases-query-container .filter-group .filter-group-header .conjunction.dropdown {
+.cv-bases-query-container
+    .filter-group
+    .filter-group-header
+    .conjunction.dropdown {
     border: none;
     box-shadow: none;
     background-color: transparent;
+    padding-top: 0;
+    background-color: transparent;
+    font-size: var(--font-ui-small);
+    box-shadow: none;
+    text-align: start;
 }
 
 .cv-bases-query-container .filter-group .filter-group-header-actions {
     --icon-size: var(--icon-s);
     --icon-stroke: var(--icon-s-stroke-width);
-    display: flex
-;
+    display: flex;
 }
 
 .cv-bases-query-container .filter-group .filter-group-statements {
@@ -145,20 +159,14 @@
     flex-direction: column;
 }
 
-.cv-bases-query-container .filter-group .filter-group-header .conjunction.dropdown {
-    padding-top: 0;
-    background-color: transparent;
-    font-size: var(--font-ui-small);
-    box-shadow: none;
-    text-align: start;
-}
-.cv-bases-query-container .filter-group .filter-group-header .conjunction.dropdown:hover {
-	background-color: var(--background-modifier-hover);
+.cv-bases-query-container
+    .filter-group
+    .filter-group-header
+    .conjunction.dropdown:hover {
+    background-color: var(--background-modifier-hover);
 }
 
-
-
-.cv-bases-query-container .filter-row{
+.cv-bases-query-container .filter-row {
     display: flex;
     align-items: center;
     gap: var(--size-4-2);
@@ -174,7 +182,7 @@
     text-align: end;
 }
 .cv-bases-query-container .filter-row.mod-group > .conjunction {
-	display: none;
+    display: none;
 }
 
 .cv-bases-query-container .filter-row .cv-filter-statement {
@@ -212,9 +220,9 @@
 .cv-combobox-button:hover {
     background: var(--background-modifier-hover);
 }
-.cv-combobox-button.cv-has-focus, .cv-combobox-button:focus {
+.cv-combobox-button.cv-has-focus,
+.cv-combobox-button:focus {
     background: var(--metadata-label-background-active);
-
 }
 .metadata-property.cv-has-focus {
     --metadata-divider-color: var(--metadata-divider-color-focus);
@@ -249,8 +257,7 @@
     --icon-size: var(--icon-s);
     --icon-stroke: var(--icon-s-stroke-width);
     color: var(--text-muted);
-    display: flex
-;
+    display: flex;
     align-items: center;
 }
 .cv-combobox-button-icon svg,
@@ -262,8 +269,7 @@
 }
 
 .cv-bases-query-container .cv-filter-rhs-container {
-    display: flex
-;
+    display: flex;
     align-items: center;
 }
 
@@ -290,12 +296,12 @@
     flex: 1 1 auto;
     gap: var(--size-2-3);
     min-height: var(--input-height);
-	-webkit-app-region: no-drag;
+    -webkit-app-region: no-drag;
     background: var(--background-modifier-form-field);
     color: var(--text-normal);
     font-family: inherit;
     padding: var(--input-padding);
-	border-radius: var(--input-radius);
+    border-radius: var(--input-radius);
     outline: none;
 }
 
@@ -311,28 +317,17 @@
 }
 
 .metadata-property-value .cv-multi-select-container {
-font-size: var(--metadata-input-font-size);
+    font-size: var(--metadata-input-font-size);
 }
 
 .cv-multi-select-container:focus {
-	background-color: transparent;
+    background-color: transparent;
 }
-
-
-
-
 
 .multi-select-pill-content {
     word-break: break-word;
     margin-inline-start: var(--pill-padding-x);
 }
-
-
-
-
-
-
-
 
 .cv-multi-select-input {
     cursor: text;
@@ -345,10 +340,6 @@ font-size: var(--metadata-input-font-size);
     word-break: break-word;
 }
 
-
-
-
-
 .cv-multi-select-input[contenteditable="true"]:empty:before {
     content: attr(data-placeholder);
     color: var(--text-muted);
@@ -356,28 +347,26 @@ font-size: var(--metadata-input-font-size);
 }
 
 .cv-bases-query-container .filter-row .cv-filter-row-actions {
-        display: flex;
+    display: flex;
     padding: var(--size-2-1);
     margin-inline-start: auto;
     height: var(--input-height);
 }
 
 .cv-filter-expression {
-	--input-shadow: none;
+    --input-shadow: none;
     --icon-size: var(--icon-s);
     --icon-stroke: var(--icon-s-stroke-width);
     --metadata-divider-width: 0px;
     --metadata-label-width: 7em;
     --metadata-input-font-size: var(--font-ui-small);
-    --metadata-property-box-shadow: 0 0 0 1px var(--background-modifier-border-hover);
+    --metadata-property-box-shadow: 0 0 0 1px
+        var(--background-modifier-border-hover);
     background-color: var(--interactive-normal) !important;
     width: 100%;
     align-items: center;
     display: flex;
 }
-
-
-
 
 .cv-bases-query-container .filter-group .filter-group-actions {
     display: flex;
@@ -446,11 +435,11 @@ font-size: var(--metadata-input-font-size);
     box-shadow: var(--shadow-s);
     border-radius: var(--radius-m);
     max-height: var(--popover-max-height);
-	width: auto;
+    width: auto;
 }
 
 .prompt.cv-suggestion-container.cv-combobox {
-	--prompt-width: 500px;
+    --prompt-width: 500px;
 
     align-self: stretch;
     overflow: hidden;
@@ -460,15 +449,15 @@ font-size: var(--metadata-input-font-size);
     z-index: var(--layer-notice);
 }
 
-.prompt.cv-suggestion-container.cv-combobox .prompt-results{
-	padding: var(--size-2-3);
+.prompt.cv-suggestion-container.cv-combobox .prompt-results {
+    padding: var(--size-2-3);
 }
 
 .prompt-input-container.cv-search-input-container .search-input-clear-button {
-	inset-inline-end: 2px;
-	--search-clear-button-size: 13px !important;
-	align-content: center;
-	    position: absolute;
+    inset-inline-end: 2px;
+    --search-clear-button-size: 13px !important;
+    align-content: center;
+    position: absolute;
     background: transparent;
     border-radius: 50%;
     color: var(--search-clear-button-color);
@@ -482,8 +471,7 @@ font-size: var(--metadata-input-font-size);
     margin: auto;
     padding: 0 0;
     text-align: center;
-    display: flex
-;
+    display: flex;
     justify-content: center;
     align-items: center;
     transition: color var(--anim-duration-fast) ease-in-out;
@@ -532,7 +520,7 @@ font-size: var(--metadata-input-font-size);
     top: calc((var(--input-height) - var(--search-icon-size)) / 2);
     inset-inline-start: var(--size-4-2);
     position: absolute;
-    content: '';
+    content: "";
     height: var(--search-icon-size);
     width: var(--search-icon-size);
     display: block;
@@ -543,7 +531,7 @@ font-size: var(--metadata-input-font-size);
     mask-repeat: no-repeat;
 }
 
-.cv-combobox .cv-search-input-container input[type=search] {
+.cv-combobox .cv-search-input-container input[type="search"] {
     border: 0;
     box-shadow: none;
     background-color: transparent;
@@ -729,7 +717,8 @@ font-size: var(--metadata-input-font-size);
     flex-shrink: 0;
 }
 
-.cv-view-drag-handle:active, .cv-view-list-item:active {
+.cv-view-drag-handle:active,
+.cv-view-list-item:active {
     cursor: grabbing;
 }
 
@@ -798,7 +787,9 @@ font-size: var(--metadata-input-font-size);
 }
 
 /* Ensure the editor is accessible in Live Preview mode when custom view is active */
-.markdown-source-view:has(~ .obsidian-custom-view-render.obsidian-custom-view-live-preview) {
+.markdown-source-view:has(
+    ~ .obsidian-custom-view-render.obsidian-custom-view-live-preview
+) {
     /* Keep editor visible but behind custom view */
     position: relative;
     z-index: 1;
@@ -883,13 +874,13 @@ font-size: var(--metadata-input-font-size);
 }
 
 .cv-suggestion-container .prompt-input-container input {
-	color: var(--text-normal);
+    color: var(--text-normal);
     font-family: inherit;
     padding: var(--input-padding);
-	padding-inline-start: 36px;
+    padding-inline-start: 36px;
     font-size: var(--font-ui-small);
     border-radius: var(--input-radius);
-	height: var(--input-height);
+    height: var(--input-height);
     outline: none;
 }
 
@@ -919,7 +910,6 @@ font-size: var(--metadata-input-font-size);
 }
 
 /* Show clear button */
-
 
 .cv-clear-button-hidden {
     display: none !important;

@@ -1,6 +1,8 @@
 import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
+import { createTemplateEditor } from "./editor";
+import type { EditorView } from "@codemirror/view";
 
 
 type PropertyType = "text" | "number" | "date" | "datetime" | "list" | "checkbox" | "file" | "unknown";
@@ -230,6 +232,7 @@ class EditViewModal extends Modal {
 	viewIndex: number;
 	onSave: () => void;
 	private nameTextComponent: TextComponent | null = null;
+	private templateEditor: EditorView | null = null;
 
 	constructor(app: App, plugin: CustomViewsPlugin, view: ViewConfig, viewIndex: number, onSave: () => void) {
 		super(app);
@@ -272,15 +275,14 @@ class EditViewModal extends Modal {
 		builder.render(rulesContainer);
 
 		contentEl.createEl("h3", { text: "HTML template" });
-		const templateContainer = contentEl.createDiv({ cls: "cv-bases-template-container" });
-		const textarea = templateContainer.createEl("textarea", {
-			cls: "cv-textarea",
-			text: this.view.template
+		const templateContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
+		this.templateEditor = createTemplateEditor({
+			initialContent: this.view.template,
+			onChange: (content: string) => {
+				this.view.template = content;
+			},
 		});
-		textarea.addEventListener("input", (e: Event) => {
-			const target = e.target as HTMLTextAreaElement;
-			this.view.template = target.value;
-		});
+		templateContainer.appendChild(this.templateEditor.dom);
 
 		const buttonContainer = contentEl.createDiv('modal-button-container');
 
@@ -304,6 +306,10 @@ class EditViewModal extends Modal {
 	}
 
 	onClose() {
+		if (this.templateEditor) {
+			this.templateEditor.destroy();
+			this.templateEditor = null;
+		}
 		const { contentEl } = this;
 		contentEl.empty();
 	}

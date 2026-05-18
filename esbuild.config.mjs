@@ -30,7 +30,6 @@ const context = await esbuild.context({
 		"@codemirror/autocomplete",
 		"@codemirror/collab",
 		"@codemirror/commands",
-		"@codemirror/lang-html",
 		"@codemirror/language",
 		"@codemirror/lint",
 		"@codemirror/search",
