@@ -785,6 +785,48 @@ body .cv-suggestion-container.modal {
     border-radius: var(--radius-m);
 }
 
+/* ─── Editable Content Mode ─────────────────────────────────────────────────── */
+
+/* In editable mode, hide the reading preview but NOT the source/editor view */
+.obsidian-custom-view-editable .markdown-preview-view {
+    display: none !important;
+}
+
+/* The template overlay in editable mode uses same layout as readonly */
+.obsidian-custom-view-editable .obsidian-custom-view-render {
+    padding: 30px;
+    height: 100%;
+    overflow-y: auto;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-color: var(--background-primary);
+    z-index: 10;
+}
+
+/* The editor embedded in the content placeholder should flow naturally */
+.obsidian-custom-view-editable [data-cv-editable-placeholder] .markdown-source-view {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: relative !important;
+}
+
+.obsidian-custom-view-editable [data-cv-editable-placeholder] .cm-editor {
+    height: auto !important;
+    max-height: none !important;
+}
+
+.obsidian-custom-view-editable [data-cv-editable-placeholder] .cm-scroller {
+    overflow: visible !important;
+}
+
+/* The zero-height frontmatter widget */
+.cv-frontmatter-hidden {
+    display: none;
+}
+
 .cv-suggestion-container.modal .modal-content {
     padding: 0;
     max-height: 300px;
@@ -831,4 +873,16 @@ body .cv-modal-bg-hidden {
 
 body .cv-clear-button-hidden {
     display: none;
+}
+
+/* ─── Per-view Display Options ─────────────────────────────────────────────── */
+
+/* Hide properties/metadata section when the view opts out */
+[data-cv-hide-properties="true"] .metadata-container {
+    display: none !important;
+}
+
+/* Hide inline title when the view opts out */
+[data-cv-hide-inline-title="true"] .inline-title {
+    display: none !important;
 }

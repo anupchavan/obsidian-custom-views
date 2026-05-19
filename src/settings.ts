@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, ButtonComponent, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch } from "obsidian";
+import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 import { createTemplateEditor } from "./editor";
@@ -60,6 +60,7 @@ export interface CustomViewsSettings {
 	enabled: boolean;
 	workInLivePreview: boolean;
 	workInCanvas: boolean;
+	editableContent: boolean;
 	views: ViewConfig[];
 }
 
@@ -67,6 +68,7 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 	enabled: true,
 	workInLivePreview: true,
 	workInCanvas: false,
+	editableContent: false,
 	views: [
 		{
 			id: 'default-1',
@@ -119,6 +121,22 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						this.plugin.processAllCanvasNodes();
 					} else {
 						this.plugin.restoreAllCanvasNodes();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName("Editable content in live preview (experimental)")
+			.setDesc("When enabled, the {{file.content}} area becomes an editable live editor instead of a read-only render. Requires 'Work in live preview' to be on.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.editableContent)
+				.onChange(async (value) => {
+					this.plugin.settings.editableContent = value;
+					await this.plugin.saveSettings();
+					const file = this.app.workspace.getActiveFile();
+					if (file) {
+						this.plugin.processActiveView(file).catch(() => {
+							// Error handling for processActiveView
+						});
 					}
 				}));
 
@@ -252,16 +270,16 @@ class EditViewModal extends Modal {
 	plugin: CustomViewsPlugin;
 	view: ViewConfig;
 	viewIndex: number;
-	onSave: () => void;
+	onClose_cb: () => void;
 	private nameTextComponent: TextComponent | null = null;
 	private templateEditor: EditorView | null = null;
 
-	constructor(app: App, plugin: CustomViewsPlugin, view: ViewConfig, viewIndex: number, onSave: () => void) {
+	constructor(app: App, plugin: CustomViewsPlugin, view: ViewConfig, viewIndex: number, onClose_cb: () => void) {
 		super(app);
 		this.plugin = plugin;
-		this.view = JSON.parse(JSON.stringify(view)) as ViewConfig;
+		this.view = view; // Edit the original directly — changes auto-save
 		this.viewIndex = viewIndex;
-		this.onSave = onSave;
+		this.onClose_cb = onClose_cb;
 		this.setTitle('Edit view');
 	}
 
@@ -271,6 +289,8 @@ class EditViewModal extends Modal {
 		contentEl.addClass("cv-edit-view-modal");
 
 
+		const autoSave = () => { void this.plugin.saveSettings(); };
+
 		new Setting(contentEl)
 			.setName("View name")
 			.setDesc("The name of the view will be displayed in the view selector.")
@@ -279,11 +299,42 @@ class EditViewModal extends Modal {
 				text.setValue(this.view.name)
 					.onChange((value) => {
 						this.view.name = value;
+						autoSave();
 					});
 				window.window.requestAnimationFrame(() => {
 					text.inputEl.select();
 				});
 			});
+
+		// Display options — only shown when editableContent is enabled
+		if (this.plugin.settings.editableContent) {
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+			const obsidianShowInlineTitle = (this.app.vault as any).getConfig("showInlineTitle") as boolean;
+
+			contentEl.createEl("h3", { text: "Display options" });
+
+			new Setting(contentEl)
+				.setName("Show properties")
+				.setDesc("Show the properties/metadata section when this view is active.")
+				.addToggle(toggle => toggle
+					.setValue(this.view.showProperties ?? true)
+					.onChange((value) => {
+						this.view.showProperties = value;
+						autoSave();
+					}));
+
+			if (obsidianShowInlineTitle) {
+				new Setting(contentEl)
+					.setName("Show inline title")
+					.setDesc("Show the inline title when this view is active.")
+					.addToggle(toggle => toggle
+						.setValue(this.view.showInlineTitle ?? true)
+						.onChange((value) => {
+							this.view.showInlineTitle = value;
+							autoSave();
+						}));
+			}
+		}
 
 		contentEl.createEl("h3", { text: "Rules" });
 		const rulesContainer = contentEl.createDiv({ cls: "cv-bases-query-container" });
@@ -291,7 +342,7 @@ class EditViewModal extends Modal {
 		const builder = new FilterBuilder(
 			this.plugin,
 			this.view.rules,
-			() => { void this.plugin.saveSettings(); },
+			autoSave,
 			() => { rulesContainer.empty(); builder.render(rulesContainer); }
 		);
 		builder.render(rulesContainer);
@@ -302,29 +353,10 @@ class EditViewModal extends Modal {
 			initialContent: this.view.template,
 			onChange: (content: string) => {
 				this.view.template = content;
+				autoSave();
 			},
 		});
 		templateContainer.appendChild(this.templateEditor.dom);
-
-		const buttonContainer = contentEl.createDiv('modal-button-container');
-
-
-
-		new ButtonComponent(buttonContainer)
-			.setButtonText("Save")
-			.setCta()
-			.onClick(async () => {
-				this.plugin.settings.views[this.viewIndex] = this.view;
-				await this.plugin.saveSettings();
-				this.onSave();
-				this.close();
-			});
-
-		new ButtonComponent(buttonContainer)
-			.setButtonText("Cancel")
-			.onClick(() => {
-				this.close();
-			});
 	}
 
 	onClose() {
@@ -334,6 +366,7 @@ class EditViewModal extends Modal {
 		}
 		const { contentEl } = this;
 		contentEl.empty();
+		this.onClose_cb();
 	}
 }
 

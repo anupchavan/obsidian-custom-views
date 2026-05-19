@@ -34,4 +34,8 @@ export interface ViewConfig {
 	name: string;
 	rules: FilterGroup;
 	template: string;
+	/** When true, hide the properties/metadata section in this view */
+	showProperties?: boolean;
+	/** When true, hide the inline title in this view */
+	showInlineTitle?: boolean;
 }

@@ -2,19 +2,41 @@ import { App, TFile, MarkdownRenderer, Component } from "obsidian";
 import { applyFilterChain } from "./filters";
 
 /**
+ * Checks whether a template contains an unfiltered {{file.content}} or {{content}}
+ * placeholder, making it eligible for editable content mode.
+ * Returns false if the content placeholder has a filter pipe (e.g. {{file.content | uppercase}})
+ * or if there is no content placeholder at all.
+ */
+export function templateHasEditableContent(template: string): boolean {
+	// Match {{file.content}} or {{content}} with optional filter
+	const contentRegex = /\{\{(?:file\.)?content(?:\s*\|.*?)?\}\}/g;
+	let match;
+	while ((match = contentRegex.exec(template)) !== null) {
+		if (match[0].includes("|")) return false;
+		return true;
+	}
+	return false;
+}
+
+/** Attribute added to the content placeholder div when in editable mode */
+export const EDITABLE_PLACEHOLDER_ATTR = "data-cv-editable-placeholder";
+
+/**
  * Renders a template into a container.
  * @param app - The Obsidian app instance
  * @param template - The template to render
  * @param file - The file to render the template for
  * @param container - The container to render the template into
  * @param component - The component to render the template with
+ * @param editableMode - When true, the content placeholder is left empty for the editor to be reparented into
  */
 export async function renderTemplate(
 	app: App,
 	template: string,
 	file: TFile,
 	container: HTMLElement,
-	component: Component
+	component: Component,
+	editableMode: boolean = false
 ) {
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
@@ -135,13 +157,20 @@ export async function renderTemplate(
 
 	const contentEl = container.querySelector(`#${contentPlaceholderId}`) as HTMLElement;
 	if (contentEl) {
-		const sizer = activeDocument.createElement("div");
-		sizer.addClass("markdown-preview-sizer");
-		sizer.addClass("markdown-preview-section");
-		contentEl.appendChild(sizer);
+		if (editableMode) {
+			// In editable mode, leave the placeholder empty — the caller will
+			// reparent the real CM6 editor into it.
+			contentEl.setAttribute(EDITABLE_PLACEHOLDER_ATTR, "true");
+			contentEl.removeAttribute("id");
+		} else {
+			const sizer = activeDocument.createElement("div");
+			sizer.addClass("markdown-preview-sizer");
+			sizer.addClass("markdown-preview-section");
+			contentEl.appendChild(sizer);
 
-		await MarkdownRenderer.render(app, bodyContent, sizer, file.path, component);
-		contentEl.removeAttribute("id");
+			await MarkdownRenderer.render(app, bodyContent, sizer, file.path, component);
+			contentEl.removeAttribute("id");
+		}
 	}
 
 	executeScripts(container);
