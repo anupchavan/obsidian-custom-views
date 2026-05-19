@@ -1,5 +1,6 @@
 import { App, TFile, MarkdownRenderer, Component } from "obsidian";
 import { applyFilterChain } from "./filters";
+import type { ViewConfig } from "./types";
 
 /**
  * Checks whether a template contains an unfiltered {{file.content}} or {{content}}
@@ -29,6 +30,7 @@ export const EDITABLE_PLACEHOLDER_ATTR = "data-cv-editable-placeholder";
  * @param container - The container to render the template into
  * @param component - The component to render the template with
  * @param editableMode - When true, the content placeholder is left empty for the editor to be reparented into
+ * @param viewConfig - Optional ViewConfig for CSS/JS injection
  */
 export async function renderTemplate(
 	app: App,
@@ -36,7 +38,8 @@ export async function renderTemplate(
 	file: TFile,
 	container: HTMLElement,
 	component: Component,
-	editableMode: boolean = false
+	editableMode: boolean = false,
+	viewConfig?: ViewConfig
 ) {
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
@@ -173,7 +176,89 @@ export async function renderTemplate(
 		}
 	}
 
+	// Inject CSS from the separate CSS field (with template resolution)
+	if (viewConfig?.css) {
+		const resolvedCss = resolveTemplateRaw(viewConfig.css, file, frontmatter, bodyContent);
+		if (resolvedCss.trim()) {
+			const styleEl = activeDocument.createElement("style");
+			styleEl.textContent = resolvedCss;
+			container.prepend(styleEl);
+		}
+	}
+
+	// Execute inline scripts from the HTML template
 	executeScripts(container);
+
+	// Execute JS from the separate JS field (with template resolution)
+	if (viewConfig?.js) {
+		const resolvedJs = resolveTemplateRaw(viewConfig.js, file, frontmatter, bodyContent);
+		if (resolvedJs.trim()) {
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-implied-eval
+				const fn = new Function(resolvedJs);
+				fn.call(container);
+			} catch (e) {
+				console.error('[Custom Views] Error executing view JS:', e);
+			}
+		}
+	}
+}
+
+/**
+ * Resolves {{}} template placeholders with raw string insertion (no Markdown rendering).
+ * Used for CSS and JS fields where we don't want HTML/Markdown processing.
+ */
+function resolveTemplateRaw(
+	template: string,
+	file: TFile,
+	frontmatter: Record<string, unknown> | undefined,
+	bodyContent: string
+): string {
+	const regex = /\{\{(file\.)?([a-zA-Z0-9_.-]+)(\[(\d+)\])?(?:\s*\|(.*?))?\}\}/g;
+
+	return template.replace(
+		regex,
+		(_match: string, filePrefix: string | undefined, key: string, _bracket: string | undefined, index: string | undefined, filterChain: string | undefined) => {
+			const isFileProperty = filePrefix === 'file.';
+
+			if (key === "content") {
+				return bodyContent;
+			}
+
+			let value: string | number | boolean | string[] | null = null;
+
+			// Handle file properties
+			if (isFileProperty) {
+				if (key === "name") value = file.name;
+				else if (key === "basename") value = file.basename;
+				else if (key === "size") value = file.stat.size;
+				else if (key === "ctime") value = file.stat.ctime;
+				else if (key === "mtime") value = file.stat.mtime;
+			}
+
+			// Check frontmatter
+			if (frontmatter && frontmatter[key] !== undefined) {
+				value = frontmatter[key] as string | number | boolean | string[];
+			}
+
+			if (value === null) return "";
+
+			// Handle array indexing
+			if (index !== undefined && Array.isArray(value)) {
+				const i = parseInt(index);
+				value = i < value.length ? value[i] : "";
+			}
+
+			// Apply filters
+			if (filterChain) {
+				const filtered = applyFilterChain(value, filterChain.trim());
+				if (filtered === null || filtered === undefined) return "";
+				return String(filtered);
+			}
+
+			return String(value ?? "");
+		}
+	);
 }
 
 /**

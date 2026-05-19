@@ -273,6 +273,8 @@ class EditViewModal extends Modal {
 	onClose_cb: () => void;
 	private nameTextComponent: TextComponent | null = null;
 	private templateEditor: EditorView | null = null;
+	private cssEditor: EditorView | null = null;
+	private jsEditor: EditorView | null = null;
 
 	constructor(app: App, plugin: CustomViewsPlugin, view: ViewConfig, viewIndex: number, onClose_cb: () => void) {
 		super(app);
@@ -283,12 +285,27 @@ class EditViewModal extends Modal {
 		this.setTitle('Edit view');
 	}
 
+	/** Scans the vault for frontmatter property names (for template autocomplete) */
+	private getVaultPropertyNames(): string[] {
+		const props = new Set<string>();
+		const files = this.app.vault.getMarkdownFiles();
+		for (const file of files) {
+			const cache = this.app.metadataCache.getFileCache(file);
+			if (cache?.frontmatter) {
+				for (const key of Object.keys(cache.frontmatter)) {
+					if (key !== "position") props.add(key);
+				}
+			}
+		}
+		return Array.from(props).sort();
+	}
+
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("cv-edit-view-modal");
 
-
+		const templateVariables = this.getVaultPropertyNames();
 		const autoSave = () => { void this.plugin.saveSettings(); };
 
 		new Setting(contentEl)
@@ -347,22 +364,60 @@ class EditViewModal extends Modal {
 		);
 		builder.render(rulesContainer);
 
-		contentEl.createEl("h3", { text: "HTML template" });
+		contentEl.createEl("h3", { text: "Template" });
+
+		contentEl.createEl("h4", { text: "HTML" });
 		const templateContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
 		this.templateEditor = createTemplateEditor({
 			initialContent: this.view.template,
+			language: "html",
+			templateVariables,
 			onChange: (content: string) => {
 				this.view.template = content;
 				autoSave();
 			},
 		});
 		templateContainer.appendChild(this.templateEditor.dom);
+
+		contentEl.createEl("h4", { text: "CSS" });
+		const cssContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
+		this.cssEditor = createTemplateEditor({
+			initialContent: this.view.css ?? "",
+			language: "css",
+			templateVariables,
+			onChange: (content: string) => {
+				this.view.css = content;
+				autoSave();
+			},
+		});
+		cssContainer.appendChild(this.cssEditor.dom);
+
+		contentEl.createEl("h4", { text: "JavaScript" });
+		const jsContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
+		this.jsEditor = createTemplateEditor({
+			initialContent: this.view.js ?? "",
+			language: "javascript",
+			templateVariables,
+			onChange: (content: string) => {
+				this.view.js = content;
+				autoSave();
+			},
+		});
+		jsContainer.appendChild(this.jsEditor.dom);
 	}
 
 	onClose() {
 		if (this.templateEditor) {
 			this.templateEditor.destroy();
 			this.templateEditor = null;
+		}
+		if (this.cssEditor) {
+			this.cssEditor.destroy();
+			this.cssEditor = null;
+		}
+		if (this.jsEditor) {
+			this.jsEditor.destroy();
+			this.jsEditor = null;
 		}
 		const { contentEl } = this;
 		contentEl.empty();
