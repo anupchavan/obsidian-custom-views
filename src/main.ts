@@ -188,31 +188,10 @@ export default class CustomViewsPlugin extends Plugin {
 		if (this.processing) return;
 		this.processing = true;
 
-		// Capture focused element before any DOM manipulation so keyboard
-		// navigation (e.g. cmd+up/down in the file explorer) isn't interrupted.
-		const previouslyFocused = activeDocument.activeElement as HTMLElement | null;
-
 		try {
 			await this._processActiveView(file);
 		} finally {
 			this.processing = false;
-
-			// Restore focus after all DOM manipulation completes.
-			// Use requestAnimationFrame so the restore runs after any pending
-			// layout passes triggered by requestMeasure() or MarkdownRenderer.
-			if (previouslyFocused) {
-				const activeView = this.app.workspace.getLeaf(false)?.view;
-				const viewContentEl = activeView instanceof MarkdownView ? activeView.contentEl : null;
-				window.requestAnimationFrame(() => {
-					if (
-						previouslyFocused !== activeDocument.activeElement &&
-						activeDocument.contains(previouslyFocused) &&
-						(!viewContentEl || !viewContentEl.contains(previouslyFocused))
-					) {
-						previouslyFocused.focus();
-					}
-				});
-			}
 		}
 	}
 
@@ -303,8 +282,12 @@ export default class CustomViewsPlugin extends Plugin {
 					const href = link.getAttribute("data-href") || link.getAttribute("href");
 
 					if (href) {
+						// Use the current active file (not a stale closure) so link
+						// resolution is correct even when the overlay element is reused
+						// across file navigations.
+						const currentFile = this.app.workspace.getActiveFile();
 						const newLeaf = Keymap.isModEvent(evt);
-						void this.app.workspace.openLinkText(href, file.path, newLeaf);
+						void this.app.workspace.openLinkText(href, currentFile?.path ?? "", newLeaf);
 					}
 				}
 			});
@@ -401,8 +384,9 @@ export default class CustomViewsPlugin extends Plugin {
 				evt.preventDefault();
 				const href = link.getAttribute("data-href") || link.getAttribute("href");
 				if (href) {
+					const currentFile = this.app.workspace.getActiveFile();
 					const newLeaf = Keymap.isModEvent(evt);
-					void this.app.workspace.openLinkText(href, file.path, newLeaf);
+					void this.app.workspace.openLinkText(href, currentFile?.path ?? "", newLeaf);
 				}
 			}
 		});
