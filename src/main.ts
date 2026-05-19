@@ -293,7 +293,7 @@ export default class CustomViewsPlugin extends Plugin {
 			});
 		}
 
-		await renderTemplate(this.app, template, file, customEl, this);
+		await renderTemplate(this.app, template, file, customEl, this, false, viewConfig);
 
 		// Apply per-view display options
 		this.applyViewDisplayOptions(container, viewConfig);
@@ -361,7 +361,7 @@ export default class CustomViewsPlugin extends Plugin {
 		}
 
 		// Render template with editableMode=true (content placeholder left empty)
-		await renderTemplate(this.app, template, file, customEl, this, true);
+		await renderTemplate(this.app, template, file, customEl, this, true, viewConfig);
 
 		// Find the content placeholder
 		const placeholder = customEl.querySelector(`[${EDITABLE_PLACEHOLDER_ATTR}]`) as HTMLElement;
@@ -536,17 +536,17 @@ export default class CustomViewsPlugin extends Plugin {
 		if (!(file instanceof TFile)) return;
 
 		const cache = this.app.metadataCache.getFileCache(file);
-		let matchedTemplate = "";
+		let matchedConfig: ViewConfig | null = null;
 
 		for (const viewConfig of this.settings.views) {
 			const isMatch = checkRules(this.app, viewConfig.rules, file, cache?.frontmatter);
 			if (isMatch) {
-				matchedTemplate = viewConfig.template;
+				matchedConfig = viewConfig;
 				break;
 			}
 		}
 
-		if (!matchedTemplate) {
+		if (!matchedConfig) {
 			this.restoreCanvasNode(node);
 			return;
 		}
@@ -559,7 +559,7 @@ export default class CustomViewsPlugin extends Plugin {
 		const previewContainer = nodeEl.querySelector(".markdown-preview-view") as HTMLElement;
 		if (!previewContainer) return;
 
-		await this.injectCustomView(previewContainer, file, matchedTemplate);
+		await this.injectCustomView(previewContainer, file, matchedConfig.template, matchedConfig);
 	}
 
 	/**

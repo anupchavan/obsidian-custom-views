@@ -34,6 +34,10 @@ export interface ViewConfig {
 	name: string;
 	rules: FilterGroup;
 	template: string;
+	/** Optional CSS for the view (injected via <style> tag) */
+	css?: string;
+	/** Optional JavaScript for the view (executed after render) */
+	js?: string;
 	/** When true, hide the properties/metadata section in this view */
 	showProperties?: boolean;
 	/** When true, hide the inline title in this view */

@@ -14,7 +14,7 @@ import {
 	obsidianTheme,
 	obsidianHighlightStyle,
 	obsidianExtension,
-	templateEditorExtensions,
+	buildEditorExtensions,
 	createTemplateEditor,
 	setEditorContent,
 	autoCloseHTMLTags,
@@ -139,13 +139,26 @@ describe("obsidian theme exports", () => {
 });
 
 // ---------------------------------------------------------------------------
-// templateEditorExtensions
+// buildEditorExtensions
 // ---------------------------------------------------------------------------
 
-describe("templateEditorExtensions", () => {
-	it("is a non-empty array", () => {
-		expect(Array.isArray(templateEditorExtensions)).toBe(true);
-		expect(templateEditorExtensions.length).toBeGreaterThan(0);
+describe("buildEditorExtensions", () => {
+	it("returns a non-empty array for html", () => {
+		const exts = buildEditorExtensions("html");
+		expect(Array.isArray(exts)).toBe(true);
+		expect(exts.length).toBeGreaterThan(0);
+	});
+
+	it("returns a non-empty array for css", () => {
+		const exts = buildEditorExtensions("css");
+		expect(Array.isArray(exts)).toBe(true);
+		expect(exts.length).toBeGreaterThan(0);
+	});
+
+	it("returns a non-empty array for javascript", () => {
+		const exts = buildEditorExtensions("javascript");
+		expect(Array.isArray(exts)).toBe(true);
+		expect(exts.length).toBeGreaterThan(0);
 	});
 });
 
