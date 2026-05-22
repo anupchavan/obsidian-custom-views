@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySug
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 import { createTemplateEditor } from "./editor";
+import type { TemplateVariable } from "./editor";
 import { FileSuggest, FolderSuggest, TagSuggest, PropertySuggest, FrontmatterValueSuggest, isWikilink, extractWikilinkTarget, extractWikilinkDisplay, openWikilinkFile } from "./suggests";
 import type { EditorView } from "@codemirror/view";
 
@@ -285,19 +286,63 @@ class EditViewModal extends Modal {
 		this.setTitle('Edit view');
 	}
 
-	/** Scans the vault for frontmatter property names (for template autocomplete) */
-	private getVaultPropertyNames(): string[] {
-		const props = new Set<string>();
+	/** Scans the vault for frontmatter properties with their types (for template autocomplete icons) */
+	private getVaultProperties(): TemplateVariable[] {
+		const propMap = new Map<string, TemplateVariable["type"]>();
 		const files = this.app.vault.getMarkdownFiles();
+
+		// Access Obsidian's undocumented metadataTypeManager for assigned types
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+		const typeManager = (this.app as any).metadataTypeManager;
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		const hasTypeManager = typeManager && typeof typeManager.getAssignedType === "function";
+
+		const obsidianTypeMap: Record<string, TemplateVariable["type"]> = {
+			"text": "text", "number": "number", "date": "date",
+			"datetime": "datetime", "checkbox": "checkbox",
+			"tags": "list", "aliases": "list", "multitext": "list",
+		};
+
 		for (const file of files) {
 			const cache = this.app.metadataCache.getFileCache(file);
 			if (cache?.frontmatter) {
-				for (const key of Object.keys(cache.frontmatter)) {
-					if (key !== "position") props.add(key);
+				for (const [key, val] of Object.entries(cache.frontmatter)) {
+					if (key === "position") continue;
+					if (propMap.has(key) && propMap.get(key) !== "unknown") continue;
+
+					// Try Obsidian's assigned type first
+					if (hasTypeManager) {
+						// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+						const obsType = typeManager.getAssignedType(key) as string | undefined;
+						if (obsType && obsidianTypeMap[obsType]) {
+							propMap.set(key, obsidianTypeMap[obsType]);
+							continue;
+						}
+					}
+
+					// Fall back to value inference
+					if (val === null || val === undefined) {
+						propMap.set(key, "unknown");
+					} else if (Array.isArray(val)) {
+						propMap.set(key, "list");
+					} else if (typeof val === "number") {
+						propMap.set(key, "number");
+					} else if (typeof val === "boolean") {
+						propMap.set(key, "checkbox");
+					} else if (typeof val === "string") {
+						if (/^\d{4}-\d{2}-\d{2}T/.test(val)) propMap.set(key, "datetime");
+						else if (/^\d{4}-\d{2}-\d{2}$/.test(val)) propMap.set(key, "date");
+						else propMap.set(key, "text");
+					} else {
+						propMap.set(key, "text");
+					}
 				}
 			}
 		}
-		return Array.from(props).sort();
+
+		return Array.from(propMap.entries())
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([name, type]) => ({ name, type }));
 	}
 
 	onOpen() {
@@ -305,7 +350,7 @@ class EditViewModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass("cv-edit-view-modal");
 
-		const templateVariables = this.getVaultPropertyNames();
+		const templateVariables = this.getVaultProperties();
 		const autoSave = () => { void this.plugin.saveSettings(); };
 
 		new Setting(contentEl)

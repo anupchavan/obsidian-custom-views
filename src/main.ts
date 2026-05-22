@@ -187,7 +187,6 @@ export default class CustomViewsPlugin extends Plugin {
 		// Guard against concurrent calls (file-open + layout-change can fire together)
 		if (this.processing) return;
 		this.processing = true;
-
 		try {
 			await this._processActiveView(file);
 		} finally {
@@ -195,19 +194,36 @@ export default class CustomViewsPlugin extends Plugin {
 		}
 	}
 
+	/**
+	 * Computes a state key that uniquely identifies what should currently be
+	 * displayed. When the key matches what's already applied, we skip all DOM
+	 * work — avoiding the event cascade that our overlay injection triggers
+	 * (active-leaf-change → file-open → layout-change → re-inject).
+	 */
+	private computeStateKey(
+		file: TFile,
+		view: MarkdownView,
+		matchedConfig: ViewConfig | null
+	): string {
+		const state = view.getState();
+		const mode = state.mode === 'source'
+			? (state.source ? 'source' : 'livepreview')
+			: 'preview';
+		const configId = matchedConfig?.id ?? 'none';
+		return `${file.path}::${configId}::${mode}`;
+	}
+
 	private async _processActiveView(file: TFile) {
 		const leaf = this.app.workspace.getLeaf(false);
 		if (!(leaf.view instanceof MarkdownView)) return;
 
 		const view = leaf.view;
-
-		// Always clean up editable state first — before any mode/template checks.
-		// This ensures the editor is back in its original position before we decide
-		// what to do next.
-		this.restoreEditableView(view);
+		const container = view.contentEl;
 
 		if (!this.settings.enabled) {
+			this.restoreEditableView(view);
 			this.restoreDefaultView(view);
+			container.removeAttribute("data-cv-state");
 			return;
 		}
 
@@ -222,8 +238,20 @@ export default class CustomViewsPlugin extends Plugin {
 			}
 		}
 
+		const stateKey = this.computeStateKey(file, view, matchedConfig);
+		const appliedKey = container.getAttribute("data-cv-state");
+
+		// Skip if nothing changed — prevents DOM churn and event cascades
+		if (stateKey === appliedKey) return;
+
+		// Always clean up editable state first — before any mode/template checks.
+		// This ensures the editor is back in its original position before we decide
+		// what to do next.
+		this.restoreEditableView(view);
+
 		if (!matchedConfig) {
 			this.restoreDefaultView(view);
+			container.setAttribute("data-cv-state", stateKey);
 			return;
 		}
 
@@ -236,14 +264,17 @@ export default class CustomViewsPlugin extends Plugin {
 
 		if (isTrueSourceMode) {
 			this.restoreDefaultView(view);
+			container.setAttribute("data-cv-state", stateKey);
 			return;
 		}
 
 		if (!this.settings.workInLivePreview && !isReadingMode) {
 			this.restoreDefaultView(view);
+			container.setAttribute("data-cv-state", stateKey);
 			return;
 		} else if (!isReadingMode && !isLivePreviewMode) {
 			this.restoreDefaultView(view);
+			container.setAttribute("data-cv-state", stateKey);
 			return;
 		}
 
@@ -261,6 +292,8 @@ export default class CustomViewsPlugin extends Plugin {
 		} else {
 			await this.injectCustomView(view.contentEl, file, matchedTemplate, matchedConfig);
 		}
+
+		container.setAttribute("data-cv-state", stateKey);
 	}
 
 	// ─── Read-only Overlay (existing behavior) ─────────────────────────────────

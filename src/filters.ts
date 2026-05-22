@@ -1,5 +1,11 @@
 import { moment } from "obsidian";
 
+/** Split a string into lowercase words for kebab/snake/pascal casing */
+const WORD_SPLIT_RE = /[A-Z]{2,}(?=[A-Z][a-z]+[0-9]*|\b)|[A-Z]?[a-z]+[0-9]*|[A-Z]|[0-9]+/g;
+function splitWords(str: string): string[] | null {
+	return str.match(WORD_SPLIT_RE)?.map(w => w.toLowerCase()) ?? null;
+}
+
 /**
  * Parse arguments like: "YYYY-MM-DD" or ("a", "b")
  * @param argString - The string to parse
@@ -71,8 +77,8 @@ const filters: Record<string, FilterFunction> = {
 	lower: (val: string) => String(val).toLowerCase(),
 	title: (val: string) => String(val).replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase()),
 	camel: (val: string) => String(val).toLowerCase().replace(/[^a-zA-Z0-9]+(.)/g, (_m: string, chr: string) => chr.toUpperCase()),
-	kebab: (val: string) => String(val).match(/[A-Z]{2,}(?=[A-Z][a-z]+[0-9]*|\b)|[A-Z]?[a-z]+[0-9]*|[A-Z]|[0-9]+/g)?.map(x => x.toLowerCase()).join('-') || val,
-	snake: (val: string) => String(val).match(/[A-Z]{2,}(?=[A-Z][a-z]+[0-9]*|\b)|[A-Z]?[a-z]+[0-9]*|[A-Z]|[0-9]+/g)?.map(x => x.toLowerCase()).join('_') || val,
+	kebab: (val: string) => splitWords(String(val))?.join('-') || val,
+	snake: (val: string) => splitWords(String(val))?.join('_') || val,
 	trim: (val: string) => String(val).trim(),
 
 	replace: (val: FilterValue, search: unknown, replaceWith?: unknown) => {
@@ -104,9 +110,8 @@ const filters: Record<string, FilterFunction> = {
 	},
 	blockquote: (val: string) => val.split('\n').map(line => `> ${line}`).join('\n'),
 
-	strip_tags: (val: FilterValue, keep?: unknown) => {
-		const doc = new DOMParser().parseFromString(String(val), 'text/html');
-		return doc.body.textContent || "";
+	strip_tags: (val: FilterValue) => {
+		return String(val).replace(/<[^>]+>/g, '');
 	},
 
 	split: (val: FilterValue, separator?: unknown) => String(val).split(typeof separator === 'string' ? separator : ","),
@@ -144,6 +149,281 @@ const filters: Record<string, FilterFunction> = {
 			case '^': return Math.pow(base, num);
 			default: return val;
 		}
+	},
+
+	// --- Additional Clipper-style filters ---
+
+	// String case
+	pascal: (val: FilterValue) => {
+		return splitWords(String(val))?.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('') || val;
+	},
+	uncamel: (val: FilterValue) => {
+		return String(val).replace(/([A-Z])/g, ' $1').trim().toLowerCase();
+	},
+
+	// Array operations
+	map: (val: FilterValue, property?: unknown) => {
+		if (!Array.isArray(val)) return val;
+		if (typeof property === 'string') {
+			return val.map(item => {
+				if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+					return (item as Record<string, unknown>)[property] ?? null;
+				}
+				return null;
+			}) as FilterValue;
+		}
+		return val;
+	},
+	unique: (val: FilterValue) => {
+		if (!Array.isArray(val)) return val;
+		const result: string[] = [...new Set(val.map(v => String(v)))];
+		return result;
+	},
+	list: (val: FilterValue) => {
+		if (Array.isArray(val)) return val;
+		return [String(val)];
+	},
+	nth: (val: FilterValue, n?: unknown) => {
+		if (!Array.isArray(val)) return val;
+		const idx = typeof n === 'number' ? n : 0;
+		return idx >= 0 && idx < val.length ? val[idx] : null;
+	},
+	merge: (val: FilterValue, ...rest: unknown[]) => {
+		if (!Array.isArray(val)) return val;
+		const result: string[] = val.map(v => String(v));
+		for (const item of rest) {
+			if (Array.isArray(item)) {
+				result.push(...item.map((v: unknown) => String(v)));
+			} else if (item !== undefined) {
+				// eslint-disable-next-line @typescript-eslint/no-base-to-string
+				result.push(typeof item === 'object' ? JSON.stringify(item) : String(item));
+			}
+		}
+		return result;
+	},
+	reverse: (val: FilterValue) => {
+		if (Array.isArray(val)) return [...val].reverse() as FilterValue;
+		if (typeof val === 'string') return val.split('').reverse().join('');
+		return val;
+	},
+	length: (val: FilterValue) => {
+		if (Array.isArray(val)) return val.length;
+		if (typeof val === 'string') return val.length;
+		return 0;
+	},
+
+	// Numeric
+	round: (val: FilterValue, decimals?: unknown) => {
+		const n = parseFloat(String(val));
+		if (isNaN(n)) return val;
+		const d = typeof decimals === 'number' ? decimals : 0;
+		const factor = Math.pow(10, d);
+		return Math.round(n * factor) / factor;
+	},
+	number_format: (val: FilterValue, decimals?: unknown, decPoint?: unknown, thousandsSep?: unknown) => {
+		const n = parseFloat(String(val));
+		if (isNaN(n)) return val;
+		const d = typeof decimals === 'number' ? decimals : 0;
+		const dp = typeof decPoint === 'string' ? decPoint : '.';
+		const ts = typeof thousandsSep === 'string' ? thousandsSep : ',';
+		const fixed = n.toFixed(d);
+		const [intPart, fracPart] = fixed.split('.');
+		const withSep = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ts);
+		return fracPart ? withSep + dp + fracPart : withSep;
+	},
+
+	// Date/Time
+	duration: (val: FilterValue) => {
+		const ms = parseFloat(String(val));
+		if (isNaN(ms)) return val;
+		const dur = moment.duration(ms);
+		const parts: string[] = [];
+		if (dur.years()) parts.push(`${dur.years()}y`);
+		if (dur.months()) parts.push(`${dur.months()}mo`);
+		if (dur.days()) parts.push(`${dur.days()}d`);
+		if (dur.hours()) parts.push(`${dur.hours()}h`);
+		if (dur.minutes()) parts.push(`${dur.minutes()}m`);
+		if (dur.seconds()) parts.push(`${dur.seconds()}s`);
+		return parts.join(' ') || '0s';
+	},
+
+	// Markdown
+	callout: (val: FilterValue, type?: unknown, title?: unknown) => {
+		const calloutType = typeof type === 'string' ? type : 'info';
+		const calloutTitle = typeof title === 'string' ? title : '';
+		const header = calloutTitle ? `> [!${calloutType}] ${calloutTitle}` : `> [!${calloutType}]`;
+		const body = String(val).split('\n').map(line => `> ${line}`).join('\n');
+		return `${header}\n${body}`;
+	},
+	footnote: (val: FilterValue, id?: unknown) => {
+		const noteId = typeof id === 'string' ? id : String(Math.random()).substring(2, 8);
+		return `[^${noteId}]: ${String(val)}`;
+	},
+	fragment_link: (val: FilterValue, fragment?: unknown) => {
+		const frag = typeof fragment === 'string' ? fragment : '';
+		return `[[${String(val)}#${frag}]]`;
+	},
+	markdown: (val: FilterValue) => {
+		// Basic HTML to Markdown conversion
+		let str = String(val);
+		str = str.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
+		str = str.replace(/<b>(.*?)<\/b>/gi, '**$1**');
+		str = str.replace(/<em>(.*?)<\/em>/gi, '*$1*');
+		str = str.replace(/<i>(.*?)<\/i>/gi, '*$1*');
+		str = str.replace(/<a href="(.*?)">(.*?)<\/a>/gi, '[$2]($1)');
+		str = str.replace(/<br\s*\/?>/gi, '\n');
+		str = str.replace(/<p>(.*?)<\/p>/gi, '$1\n\n');
+		str = str.replace(/<h([1-6])>(.*?)<\/h\1>/gi, (_m: string, level: string, text: string) => '#'.repeat(parseInt(level)) + ' ' + text + '\n');
+		str = str.replace(/<li>(.*?)<\/li>/gi, '- $1\n');
+		str = str.replace(/<[^>]+>/g, '');
+		return str.trim();
+	},
+	strip_md: (val: FilterValue) => {
+		let str = String(val);
+		str = str.replace(/#{1,6}\s/g, '');
+		str = str.replace(/(\*\*|__)(.*?)\1/g, '$2');
+		str = str.replace(/(\*|_)(.*?)\1/g, '$2');
+		str = str.replace(/~~(.*?)~~/g, '$1');
+		str = str.replace(/`{1,3}(.*?)`{1,3}/g, '$1');
+		str = str.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+		str = str.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1');
+		str = str.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m: string, target: string, display: string) => display || target);
+		str = str.replace(/^>\s/gm, '');
+		str = str.replace(/^[-*+]\s/gm, '');
+		str = str.replace(/^\d+\.\s/gm, '');
+		return str;
+	},
+	table: (val: FilterValue) => {
+		// Convert a 2D array into a markdown table
+		if (!Array.isArray(val)) return val;
+		const rows = val.map(row => {
+			if (Array.isArray(row)) return '| ' + row.map(cell => String(cell)).join(' | ') + ' |';
+			return '| ' + String(row) + ' |';
+		});
+		if (rows.length > 0) {
+			const firstRow = Array.isArray(val[0]) ? val[0] : [val[0]];
+			const separator = '| ' + firstRow.map(() => '---').join(' | ') + ' |';
+			return [rows[0], separator, ...rows.slice(1)].join('\n');
+		}
+		return '';
+	},
+
+	// HTML processing
+	remove_html: (val: FilterValue) => {
+		return String(val).replace(/<[^>]+>/g, '');
+	},
+	remove_tags: (val: FilterValue, ...tagsToRemove: unknown[]) => {
+		let str = String(val);
+		for (const tag of tagsToRemove) {
+			if (typeof tag === 'string') {
+				const regex = new RegExp(`<${tag}[^>]*>.*?<\\/${tag}>`, 'gis');
+				str = str.replace(regex, '');
+			}
+		}
+		return str;
+	},
+	strip_attr: (val: FilterValue, ...attrsToStrip: unknown[]) => {
+		let str = String(val);
+		if (attrsToStrip.length === 0) {
+			// Strip all attributes
+			str = str.replace(/<(\w+)\s[^>]*>/g, '<$1>');
+		} else {
+			for (const attr of attrsToStrip) {
+				if (typeof attr === 'string') {
+					const regex = new RegExp(`\\s${attr}="[^"]*"`, 'gi');
+					str = str.replace(regex, '');
+					const regex2 = new RegExp(`\\s${attr}='[^']*'`, 'gi');
+					str = str.replace(regex2, '');
+				}
+			}
+		}
+		return str;
+	},
+	remove_attr: (val: FilterValue, ...attrsToRemove: unknown[]) => {
+		// Alias for strip_attr
+		return filters.strip_attr(val, ...attrsToRemove);
+	},
+	replace_tags: (val: FilterValue, oldTag?: unknown, newTag?: unknown) => {
+		if (typeof oldTag !== 'string' || typeof newTag !== 'string') return val;
+		let str = String(val);
+		str = str.replace(new RegExp(`<${oldTag}(\\s[^>]*)?>`, 'gi'), `<${newTag}$1>`);
+		str = str.replace(new RegExp(`</${oldTag}>`, 'gi'), `</${newTag}>`);
+		return str;
+	},
+	unescape: (val: FilterValue) => {
+		let str = String(val);
+		str = str.replace(/&amp;/g, '&');
+		str = str.replace(/&lt;/g, '<');
+		str = str.replace(/&gt;/g, '>');
+		str = str.replace(/&quot;/g, '"');
+		str = str.replace(/&#039;/g, "'");
+		str = str.replace(/&#x27;/g, "'");
+		str = str.replace(/&#x2F;/g, '/');
+		return str;
+	},
+
+	// Object / Utility
+	object: (val: FilterValue) => {
+		// Convert key-value pairs to object
+		if (Array.isArray(val) && val.length >= 2) {
+			const obj: Record<string, FilterValue> = {};
+			for (let i = 0; i < val.length - 1; i += 2) {
+				obj[String(val[i])] = val[i + 1];
+			}
+			return JSON.stringify(obj);
+		}
+		if (typeof val === 'string') {
+			try {
+				JSON.parse(val);
+				return val;
+			} catch {
+				return val;
+			}
+		}
+		return val;
+	},
+	template: (val: FilterValue, templateStr?: unknown) => {
+		if (typeof templateStr !== 'string') return val;
+		return templateStr.replace(/\{\{value\}\}/g, String(val));
+	},
+	safe_name: (val: FilterValue) => {
+		return String(val)
+			.replace(/[<>:"/\\|?*]/g, '-')
+			.replace(/\s+/g, ' ')
+			.trim();
+	},
+	html_to_json: (val: FilterValue) => {
+		// Basic HTML to JSON structure
+		const str = String(val);
+		const doc = new DOMParser().parseFromString(str, 'text/html');
+		const body = doc.body;
+		function nodeToJson(node: Element): Record<string, unknown> {
+			const result: Record<string, unknown> = { tag: node.tagName.toLowerCase() };
+			if (node.attributes.length > 0) {
+				const attrs: Record<string, string> = {};
+				for (let i = 0; i < node.attributes.length; i++) {
+					attrs[node.attributes[i].name] = node.attributes[i].value;
+				}
+				result.attributes = attrs;
+			}
+			const children: unknown[] = [];
+			node.childNodes.forEach(child => {
+				if (child.nodeType === 3) {
+					const text = child.textContent?.trim();
+					if (text) children.push(text);
+				} else if (child.nodeType === 1) {
+					children.push(nodeToJson(child as Element));
+				}
+			});
+			if (children.length > 0) result.children = children;
+			return result;
+		}
+		const children: unknown[] = [];
+		body.childNodes.forEach(child => {
+			if (child.nodeType === 1) children.push(nodeToJson(child as Element));
+			else if (child.nodeType === 3 && child.textContent?.trim()) children.push(child.textContent.trim());
+		});
+		return JSON.stringify(children.length === 1 ? children[0] : children);
 	}
 };
 

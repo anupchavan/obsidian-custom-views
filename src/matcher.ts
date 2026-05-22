@@ -1,6 +1,26 @@
 import { App, TFile, FrontMatterCache } from "obsidian";
 import { FilterGroup, Filter } from "./types";
 
+/** Regex for extracting [[wikilink]] targets from strings */
+const WIKILINK_PATTERN = /\[\[([^\]]+)\]\]/g;
+
+/**
+ * Extracts wiki-link targets from a frontmatter value (string, array, or nested).
+ * Returns raw link targets (e.g. "Target" from "[[Target|Alias]]").
+ */
+function extractFrontmatterLinks(value: string | number | boolean | string[] | undefined): string[] {
+	if (value === undefined || value === null) return [];
+	if (Array.isArray(value)) return value.flatMap(item => extractFrontmatterLinks(item));
+	const strValue = String(value);
+	const results: string[] = [];
+	let match;
+	while ((match = WIKILINK_PATTERN.exec(strValue)) !== null) {
+		// Handle [[Target|Alias]] → use Target
+		results.push(match[1].split("|")[0]);
+	}
+	return results;
+}
+
 /**
  * Collects all tag names (without # prefix) from a file's body and frontmatter.
  */
@@ -82,36 +102,8 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 				// Also check frontmatter properties for links
 				if (frontmatter) {
 					const frontmatterRecord = frontmatter as Record<string, string | number | boolean | string[] | undefined>;
-
-					// Extract links from frontmatter values
-					const extractLinks = (value: string | number | boolean | string[] | undefined): string[] => {
-						if (value === undefined || value === null) return [];
-
-						// Handle arrays (like categories: ["[[Books]]", "songs"])
-						if (Array.isArray(value)) {
-							return value.flatMap(item => extractLinks(item));
-						}
-
-						// Convert to string and extract [[...]] patterns
-						const strValue = String(value);
-						const linkPattern = /\[\[([^\]]+)\]\]/g;
-						const matches: string[] = [];
-						let match;
-
-						while ((match = linkPattern.exec(strValue)) !== null) {
-							matches.push(match[1]);
-						}
-
-						return matches;
-					};
-
-					// Check all frontmatter properties for links
 					for (const key of Object.keys(frontmatterRecord)) {
-						const value = frontmatterRecord[key];
-						const extractedLinks = extractLinks(value);
-
-						// Resolve each extracted link
-						for (const linkText of extractedLinks) {
+						for (const linkText of extractFrontmatterLinks(frontmatterRecord[key])) {
 							const resolvedPath = app.metadataCache.getFirstLinkpathDest(linkText, file.path);
 							if (resolvedPath?.path) {
 								linkPaths.push(resolvedPath.path);
@@ -202,23 +194,11 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 		// Also check frontmatter for wikilinks
 		if (frontmatter) {
 			const fmRecord = frontmatter as Record<string, string | number | boolean | string[] | undefined>;
-			const extractFmLinks = (value: string | number | boolean | string[] | undefined): string[] => {
-				if (value === undefined || value === null) return [];
-				if (Array.isArray(value)) return value.flatMap(item => extractFmLinks(item));
-				const strValue = String(value);
-				const linkPattern = /\[\[([^\]]+)\]\]/g;
-				const matches: string[] = [];
-				let match;
-				while ((match = linkPattern.exec(strValue)) !== null) {
-					// Handle [[Target|Alias]] → use Target
-					const linkTarget = match[1].split("|")[0];
-					const resolved = app.metadataCache.getFirstLinkpathDest(linkTarget, file.path);
-					if (resolved) matches.push(resolved.path.replace(/\.md$/, ""));
-				}
-				return matches;
-			};
 			for (const key of Object.keys(fmRecord)) {
-				bodyLinks.push(...extractFmLinks(fmRecord[key]));
+				for (const linkTarget of extractFrontmatterLinks(fmRecord[key])) {
+					const resolved = app.metadataCache.getFirstLinkpathDest(linkTarget, file.path);
+					if (resolved) bodyLinks.push(resolved.path.replace(/\.md$/, ""));
+				}
 			}
 		}
 
