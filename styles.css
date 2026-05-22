@@ -11,7 +11,7 @@
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
     font-size: var(--font-inputs);
-    height: 20em;
+    height: 24em;
     outline: none;
     text-align: left;
 }
@@ -24,6 +24,121 @@
 .cv-codemirror-container .cm-scroller {
     font-family: var(--font-monospace);
     font-size: var(--font-text-size);
+}
+
+.cv-codemirror-container .cm-search.cm-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-4-2);
+    padding: var(--size-4-2);
+}
+
+.cv-codemirror-container .cm-panels.cm-panels-bottom {
+    margin: var(--size-2-3);
+    border-radius: var(--radius-s);
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--menu-background);
+}
+.cv-codemirror-container .cm-panels.cm-panels-bottom button[name="close"] {
+    position: absolute;
+    top: var(--size-2-3);
+    inset-inline-end: var(--size-2-3);
+    padding: var(--size-2-2);
+
+    -webkit-app-region: no-drag;
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--size-2-2) var(--size-2-3);
+    cursor: var(--cursor);
+    border-radius: var(--clickable-icon-radius);
+    color: var(--icon-color);
+    height: auto;
+    corner-shape: var(--corner-shape);
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    outline: none;
+    cursor: var(--cursor);
+    color: var(--icon-color);
+    height: auto;
+    corner-shape: var(--corner-shape);
+}
+
+.cv-codemirror-container
+    .cm-panels.cm-panels-bottom
+    button[name="close"]:hover {
+    box-shadow: none;
+    color: var(--icon-color-hover);
+    background-color: var(--background-modifier-hover);
+}
+
+.cv-codemirror-container
+    .cm-panels.cm-panels-bottom
+    button[name="close"]:active {
+    color: var(--icon-color-focused);
+    background-color: var(--background-modifier-hover);
+}
+.cv-codemirror-container
+    .cm-panels.cm-panels-bottom
+    button[name="close"]:active {
+    background: var(--background-modifier-active);
+}
+
+.cv-codemirror-container .cm-search input.cm-textfield {
+    -webkit-app-region: no-drag;
+    background: var(--background-modifier-form-field);
+    border: var(--input-border-width) solid var(--background-modifier-border);
+    color: var(--text-normal);
+    font-family: inherit;
+    padding: var(--input-padding);
+    font-size: var(--font-ui-small);
+    border-radius: var(--input-radius);
+    corner-shape: var(--input-corner-shape);
+    outline: none;
+    display: block;
+    width: 100%;
+    margin-right: var(--size-4-6);
+}
+
+.cv-codemirror-container .cm-search button {
+    --text-color: var(--text-normal);
+    -webkit-app-region: no-drag;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-color);
+    font-size: var(--font-ui-small);
+    border-radius: var(--button-radius);
+    corner-shape: var(--button-corner-shape);
+    border: 0;
+    padding: var(--size-4-1) var(--size-4-3);
+    height: var(--input-height);
+    font-weight: var(--input-font-weight);
+    cursor: var(--cursor);
+    font-family: inherit;
+    outline: none;
+    user-select: none;
+    white-space: nowrap;
+    background: var(--interactive-normal);
+    box-shadow: var(--input-shadow);
+}
+
+.cv-codemirror-container .cm-panels.cm-panels-bottom label {
+    align-items: center;
+    display: flex;
+    flex-direction: row;
+    gap: var(--size-2-1);
+    justify-content: center;
+    width: fit-content;
+    font-size: var(--font-ui-small);
+    color: var(--text-muted);
+}
+.cv-codemirror-container .cm-panels.cm-panels-bottom label input {
+    margin: 0;
+    padding: 0;
 }
 
 .cv-bases-query-container {
@@ -504,7 +619,6 @@
     padding-inline-start: 36px;
 }
 
-
 .cv-suggestion {
     overflow-y: auto;
     padding: var(--size-2-3);
@@ -561,19 +675,16 @@
     margin-inline-end: auto;
 }
 
-
 .cv-suggestion-item.cv-mod-toggle .cv-mod-checked {
     --icon-size: var(--icon-xs);
     --icon-stroke: var(--icon-xs-stroke-width);
     order: 2;
 }
 
-
 .cv-suggestion-flair .svg-icon {
     --icon-size: var(--icon-s);
     --icon-stroke: var(--icon-s-stroke-width);
 }
-
 
 .cv-list-value-container {
     display: flex;
@@ -728,7 +839,6 @@
     z-index: 10;
 }
 
-
 .obsidian-custom-view-hidden {
     position: relative;
 }
@@ -806,7 +916,9 @@ body .cv-suggestion-container.modal {
 }
 
 /* The editor embedded in the content placeholder should flow naturally */
-.obsidian-custom-view-editable [data-cv-editable-placeholder] .markdown-source-view {
+.obsidian-custom-view-editable
+    [data-cv-editable-placeholder]
+    .markdown-source-view {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;

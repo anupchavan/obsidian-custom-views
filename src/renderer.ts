@@ -1,6 +1,158 @@
 import { App, TFile, MarkdownRenderer, Component } from "obsidian";
 import { applyFilterChain } from "./filters";
+import { isExpressionMode, evaluateExpression, processLogicBlocks } from "./expression";
+import type { ExprContext } from "./expression";
 import type { ViewConfig } from "./types";
+
+// ---------------------------------------------------------------------------
+// Cross-file property resolution helpers
+// ---------------------------------------------------------------------------
+
+/** A single segment in a property chain like `cast[0].cover[1]` */
+interface PropertySegment {
+	key: string;
+	index?: number; // array index, if present
+}
+
+/**
+ * Parse a property path like `cast[0].cover[1]` into segments.
+ * Each segment has a `key` and an optional numeric `index`.
+ */
+export function parsePropertyPath(path: string): PropertySegment[] {
+	const segments: PropertySegment[] = [];
+	// Split on dots, then extract optional [N] from each part
+	const parts = path.split(".");
+	for (const part of parts) {
+		const bracketMatch = part.match(/^([a-zA-Z0-9_-]+)\[(\d+)\]$/);
+		if (bracketMatch) {
+			segments.push({ key: bracketMatch[1], index: parseInt(bracketMatch[2]) });
+		} else if (part) {
+			segments.push({ key: part });
+		}
+	}
+	return segments;
+}
+
+/**
+ * Extract a wiki-link target from a string like `[[Adarsh Gourav]]` or
+ * `[[folder/Adarsh Gourav|display text]]`.
+ * Returns the link target (without display alias) or null if not a wiki-link.
+ */
+export function extractWikiLink(value: string): string | null {
+	if (typeof value !== "string") return null;
+	const match = value.trim().match(/^\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/);
+	return match ? match[1].trim() : null;
+}
+
+/**
+ * Resolve a file from a wiki-link target string using Obsidian's metadata cache.
+ * Handles both full paths and basename-only links.
+ */
+function resolveLinkedFile(app: App, linkTarget: string, sourcePath: string): TFile | null {
+	// Use Obsidian's built-in link resolution which handles all link formats
+	const linkedFile = app.metadataCache.getFirstLinkpathDest(linkTarget, sourcePath);
+	return linkedFile;
+}
+
+/**
+ * Resolve a full property chain that may cross file boundaries.
+ *
+ * For example, given frontmatter `{ cast: ["[[Adarsh Gourav]]", "[[Someone]]"] }`:
+ *   - `cast[0].cover[0]` → resolves `cast[0]` to `[[Adarsh Gourav]]`,
+ *     finds that file, reads its frontmatter `cover` property, indexes [0].
+ *   - `cast[0].puchi.content` → resolves across two linked files, reading
+ *     the body content of the final linked file.
+ *
+ * @param app - Obsidian App instance for file lookups
+ * @param segments - parsed property segments
+ * @param file - the current file (source of the template)
+ * @param frontmatter - the current file's frontmatter
+ * @param bodyContent - the current file's body content
+ * @returns the resolved value, or null if resolution fails
+ */
+export async function resolvePropertyChain(
+	app: App,
+	segments: PropertySegment[],
+	file: TFile,
+	frontmatter: Record<string, unknown> | undefined,
+	bodyContent: string
+): Promise<unknown> {
+	if (segments.length === 0) return null;
+
+	let currentFrontmatter = frontmatter;
+	let currentFile = file;
+	let currentBodyContent = bodyContent;
+
+	for (let i = 0; i < segments.length; i++) {
+		const seg = segments[i];
+
+		// Try to resolve the key against file properties or frontmatter
+		let value: unknown = undefined;
+
+		// Check built-in file properties at every level — these work for
+		// the source file and any linked file we've resolved to
+		if (seg.key === "name") value = currentFile.name;
+		else if (seg.key === "basename") value = currentFile.basename;
+		else if (seg.key === "size") value = currentFile.stat.size;
+		else if (seg.key === "ctime") value = currentFile.stat.ctime;
+		else if (seg.key === "mtime") value = currentFile.stat.mtime;
+		else if (seg.key === "content") value = currentBodyContent;
+
+		// Check frontmatter (frontmatter property takes priority over builtins
+		// only when explicitly defined — but builtins like "content" should
+		// not be overridden by frontmatter)
+		if (value === undefined && currentFrontmatter && currentFrontmatter[seg.key] !== undefined) {
+			value = currentFrontmatter[seg.key];
+		}
+
+		if (value === undefined) return null;
+
+		// Apply array index if present
+		if (seg.index !== undefined) {
+			if (Array.isArray(value)) {
+				value = seg.index < value.length ? value[seg.index] : null;
+			} else {
+				return null; // tried to index a non-array
+			}
+		}
+
+		if (value === null || value === undefined) return null;
+
+		// If there are more segments, the current value must be a wiki-link
+		// that we can resolve to another file
+		if (i < segments.length - 1) {
+			const linkTarget = extractWikiLink(typeof value === "string" ? value : "");
+			if (!linkTarget) {
+				// Not a wiki-link — can't chain further
+				return null;
+			}
+
+			const linkedFile = resolveLinkedFile(app, linkTarget, currentFile.path);
+			if (!linkedFile) return null;
+
+			// Get the linked file's frontmatter
+			const linkedCache = app.metadataCache.getFileCache(linkedFile);
+			currentFrontmatter = linkedCache?.frontmatter;
+			currentFile = linkedFile;
+
+			// Read body content of the linked file so that `.content`
+			// works at every level of the chain
+			const rawLinked = await app.vault.cachedRead(linkedFile);
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+			const linkedEndOffset = (currentFrontmatter as any)?.position?.end?.offset;
+			if (typeof linkedEndOffset === "number") {
+				currentBodyContent = rawLinked.substring(linkedEndOffset).trim();
+			} else {
+				currentBodyContent = rawLinked;
+			}
+		} else {
+			// Last segment — return the value
+			return value;
+		}
+	}
+
+	return null;
+}
 
 /**
  * Checks whether a template contains an unfiltered {{file.content}} or {{content}}
@@ -55,82 +207,58 @@ export async function renderTemplate(
 	const markdownQueue: { id: string, content: string }[] = [];
 	const contentPlaceholderId = `custom-view-content-${Date.now()}`;
 
-	const resolveValue = (key: string, index?: string, isFileProperty: boolean = false): string | number | boolean | string[] | null => {
-		let value: string | number | boolean | string[] | undefined;
-
-		// Handle file properties (only when using file. prefix)
-		if (isFileProperty) {
-			if (key === "name") value = file.name;
-			else if (key === "basename") value = file.basename;
-			else if (key === "size") value = file.stat.size;
-			else if (key === "ctime") value = file.stat.ctime; // Timestamp for dates
-			else if (key === "mtime") value = file.stat.mtime;
-			else if (key === "content") {
-				// Special case: content is handled separately
-				return null;
-			}
-		}
-
-		// Check frontmatter (works for both file.property and property syntax)
-		if (frontmatter && frontmatter[key] !== undefined) {
-			const frontmatterValue = frontmatter[key] as string | number | boolean | string[] | undefined;
-			value = frontmatterValue;
-		}
-
-		// If not found and not a file property, return null
-		if (value === undefined) return null;
-
-		if (index !== undefined && Array.isArray(value)) {
-			const i = parseInt(index);
-			return i < value.length ? value[i] : "";
-		}
-		return value ?? null;
+	// Build expression context for logic blocks and expression mode
+	const exprCtx: ExprContext = {
+		app,
+		file,
+		frontmatter,
+		bodyContent,
+		variables: {},
 	};
 
-	// Match both {{file.property}} and {{property}} patterns
-	const regex = /\{\{(file\.)?([a-zA-Z0-9_.-]+)(\[(\d+)\])?(?:\s*\|(.*?))?\}\}/g;
+	// Process Clipper-style logic blocks first: {% if %}, {% for %}, {% set %}
+	let processedTemplate = template;
+	if (template.includes('{%')) {
+		processedTemplate = await processLogicBlocks(template, exprCtx);
+	}
 
-	const filledTemplate = template.replace(
-		regex,
-		(_match: string, filePrefix: string | undefined, key: string, _bracket: string | undefined, index: string | undefined, filterChain: string | undefined, offset: number, fullString: string) => {
-			// Determine if this is a file.property pattern
-			const isFileProperty = filePrefix === 'file.';
+	const matches = collectTemplateMatches(processedTemplate);
 
-			if (key === "content") {
-				return `<div id="${contentPlaceholderId}" class="markdown-rendered-content"></div>`;
-			}
+	// Resolve all values (potentially async for cross-file chains)
+	const resolvedValues: string[] = [];
+	for (const match of matches) {
+		const { innerExpr, offset } = match;
 
-			let value = resolveValue(key, index, isFileProperty);
-			if (value === null) return "";
-
-			if (filterChain) {
-				const filteredValue = applyFilterChain(value, filterChain.trim());
-				// Convert FilterValue to the expected return type
-				if (filteredValue === null || filteredValue === undefined) return "";
-				if (Array.isArray(filteredValue) && filteredValue.length > 0 && typeof filteredValue[0] === 'number') {
-					// Convert number[] to string[] for consistency
-					const numArray = filteredValue as number[];
-					value = numArray.map((v: number) => String(v));
-				} else {
-					value = filteredValue as string | number | boolean | string[] | null;
-				}
-				if (value === null) return "";
-			}
-
-			const prefix = fullString.substring(0, offset);
-			const doubleQuotes = prefix.split('"').length - 1;
-			const singleQuotes = prefix.split("'").length - 1;
-			const isInsideAttribute = (doubleQuotes % 2 !== 0) || (singleQuotes % 2 !== 0);
-
-			if (isInsideAttribute) {
-				return String(value);
-			} else {
-				const placeholderId = `cv-md-${markdownQueue.length}-${Date.now()}`;
-				markdownQueue.push({ id: placeholderId, content: String(value) });
-				return `<span id="${placeholderId}"></span>`;
-			}
+		// Special content placeholder
+		if (innerExpr === "content" || innerExpr === "file.content") {
+			resolvedValues.push(
+				`<div id="${contentPlaceholderId}" class="markdown-rendered-content"></div>`
+			);
+			continue;
 		}
-	);
+
+		const finalValue = await resolveExprValue(innerExpr, exprCtx, app, file, frontmatter, bodyContent);
+
+		if (finalValue === null || finalValue === undefined) {
+			resolvedValues.push("");
+			continue;
+		}
+
+		const prefix = processedTemplate.substring(0, offset);
+		const doubleQuotes = prefix.split('"').length - 1;
+		const singleQuotes = prefix.split("'").length - 1;
+		const isInsideAttribute = (doubleQuotes % 2 !== 0) || (singleQuotes % 2 !== 0);
+
+		if (isInsideAttribute) {
+			resolvedValues.push(resultToString(finalValue));
+		} else {
+			const placeholderId = `cv-md-${markdownQueue.length}-${Date.now()}`;
+			markdownQueue.push({ id: placeholderId, content: resultToString(finalValue) });
+			resolvedValues.push(`<span id="${placeholderId}"></span>`);
+		}
+	}
+
+	const filledTemplate = applyReplacements(processedTemplate, matches, resolvedValues);
 
 	// Use DOMParser to safely parse HTML instead of innerHTML
 	const parser = new DOMParser();
@@ -178,7 +306,7 @@ export async function renderTemplate(
 
 	// Inject CSS from the separate CSS field (with template resolution)
 	if (viewConfig?.css) {
-		const resolvedCss = resolveTemplateRaw(viewConfig.css, file, frontmatter, bodyContent);
+		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent);
 		if (resolvedCss.trim()) {
 			const styleEl = activeDocument.createElement("style");
 			styleEl.textContent = resolvedCss;
@@ -191,7 +319,7 @@ export async function renderTemplate(
 
 	// Execute JS from the separate JS field (with template resolution)
 	if (viewConfig?.js) {
-		const resolvedJs = resolveTemplateRaw(viewConfig.js, file, frontmatter, bodyContent);
+		const resolvedJs = await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent);
 		if (resolvedJs.trim()) {
 			try {
 				// eslint-disable-next-line @typescript-eslint/no-implied-eval
@@ -204,61 +332,150 @@ export async function renderTemplate(
 	}
 }
 
+/** Find the first pipe character outside of quotes */
+function findFirstPipe(str: string): number {
+	let inQuote = false;
+	let quoteChar = '';
+	for (let i = 0; i < str.length; i++) {
+		const ch = str[i];
+		if (!inQuote && (ch === '"' || ch === "'")) {
+			inQuote = true;
+			quoteChar = ch;
+		} else if (inQuote && ch === quoteChar) {
+			inQuote = false;
+		} else if (!inQuote && ch === '|') {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// ---------------------------------------------------------------------------
+// Shared template resolution helpers
+// ---------------------------------------------------------------------------
+
+/** Template regex for matching {{ expressions }} */
+const TEMPLATE_EXPR_RE = /\{\{((?:[^{}]|\{[^{]|\}[^}])*?)\}\}/g;
+
+/** A matched {{ expression }} in the template string */
+interface TemplateMatch {
+	fullMatch: string;
+	innerExpr: string;
+	offset: number;
+}
+
+/** Collect all {{ expression }} matches in a template string */
+function collectTemplateMatches(template: string): TemplateMatch[] {
+	const matches: TemplateMatch[] = [];
+	let m;
+	while ((m = TEMPLATE_EXPR_RE.exec(template)) !== null) {
+		matches.push({ fullMatch: m[0], innerExpr: m[1].trim(), offset: m.index });
+	}
+	TEMPLATE_EXPR_RE.lastIndex = 0; // reset for reuse
+	return matches;
+}
+
+/** Replace all matched expressions in reverse order (so offsets stay valid) */
+function applyReplacements(template: string, matches: TemplateMatch[], values: string[]): string {
+	let result = template;
+	for (let i = matches.length - 1; i >= 0; i--) {
+		const { fullMatch, offset } = matches[i];
+		result = result.substring(0, offset) + values[i] + result.substring(offset + fullMatch.length);
+	}
+	return result;
+}
+
+/** Convert an expression/property result to a plain string */
+function resultToString(value: unknown): string {
+	if (value === null || value === undefined) return "";
+	if (typeof value === "string") return value;
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	if (Array.isArray(value)) {
+		return value.map(v => {
+			if (v === null || v === undefined) return "";
+			if (typeof v === "object") return JSON.stringify(v);
+			return String(v);
+		}).join(", ");
+	}
+	return JSON.stringify(value);
+}
+
+/**
+ * Resolve a single template expression (expression mode or legacy pipe mode)
+ * to a raw value. Returns undefined if resolution fails.
+ */
+async function resolveExprValue(
+	innerExpr: string,
+	exprCtx: ExprContext,
+	app: App,
+	file: TFile,
+	frontmatter: Record<string, unknown> | undefined,
+	bodyContent: string
+): Promise<unknown> {
+	if (isExpressionMode(innerExpr)) {
+		return evaluateExpression(innerExpr, exprCtx);
+	}
+
+	// Legacy mode: property chain with optional pipe filters
+	let chain = innerExpr;
+	let filterChain: string | undefined;
+
+	const pipeIdx = findFirstPipe(chain);
+	if (pipeIdx !== -1) {
+		filterChain = chain.substring(pipeIdx + 1).trim();
+		chain = chain.substring(0, pipeIdx).trim();
+	}
+
+	if (chain.startsWith("file.")) {
+		chain = chain.substring(5);
+	}
+
+	const segments = parsePropertyPath(chain);
+	if (segments.length === 0) return null;
+
+	const value = await resolvePropertyChain(app, segments, file, frontmatter, bodyContent);
+	if (value === null || value === undefined) return null;
+
+	if (filterChain) {
+		return applyFilterChain(value as Parameters<typeof applyFilterChain>[0], filterChain);
+	}
+
+	return value;
+}
+
 /**
  * Resolves {{}} template placeholders with raw string insertion (no Markdown rendering).
  * Used for CSS and JS fields where we don't want HTML/Markdown processing.
+ * Supports cross-file property chaining, expression mode, and logic blocks.
  */
-function resolveTemplateRaw(
+async function resolveTemplateRaw(
+	app: App,
 	template: string,
 	file: TFile,
 	frontmatter: Record<string, unknown> | undefined,
 	bodyContent: string
-): string {
-	const regex = /\{\{(file\.)?([a-zA-Z0-9_.-]+)(\[(\d+)\])?(?:\s*\|(.*?))?\}\}/g;
+): Promise<string> {
+	const exprCtx: ExprContext = { app, file, frontmatter, bodyContent, variables: {} };
 
-	return template.replace(
-		regex,
-		(_match: string, filePrefix: string | undefined, key: string, _bracket: string | undefined, index: string | undefined, filterChain: string | undefined) => {
-			const isFileProperty = filePrefix === 'file.';
+	let processedTemplate = template;
+	if (template.includes('{%')) {
+		processedTemplate = await processLogicBlocks(template, exprCtx);
+	}
 
-			if (key === "content") {
-				return bodyContent;
-			}
+	const matches = collectTemplateMatches(processedTemplate);
+	if (matches.length === 0) return processedTemplate;
 
-			let value: string | number | boolean | string[] | null = null;
-
-			// Handle file properties
-			if (isFileProperty) {
-				if (key === "name") value = file.name;
-				else if (key === "basename") value = file.basename;
-				else if (key === "size") value = file.stat.size;
-				else if (key === "ctime") value = file.stat.ctime;
-				else if (key === "mtime") value = file.stat.mtime;
-			}
-
-			// Check frontmatter
-			if (frontmatter && frontmatter[key] !== undefined) {
-				value = frontmatter[key] as string | number | boolean | string[];
-			}
-
-			if (value === null) return "";
-
-			// Handle array indexing
-			if (index !== undefined && Array.isArray(value)) {
-				const i = parseInt(index);
-				value = i < value.length ? value[i] : "";
-			}
-
-			// Apply filters
-			if (filterChain) {
-				const filtered = applyFilterChain(value, filterChain.trim());
-				if (filtered === null || filtered === undefined) return "";
-				return String(filtered);
-			}
-
-			return String(value ?? "");
+	const resolvedValues: string[] = [];
+	for (const match of matches) {
+		if (match.innerExpr === "content" || match.innerExpr === "file.content") {
+			resolvedValues.push(bodyContent);
+			continue;
 		}
-	);
+		const value = await resolveExprValue(match.innerExpr, exprCtx, app, file, frontmatter, bodyContent);
+		resolvedValues.push(resultToString(value));
+	}
+
+	return applyReplacements(processedTemplate, matches, resolvedValues);
 }
 
 /**
