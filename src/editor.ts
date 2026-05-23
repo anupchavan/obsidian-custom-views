@@ -1111,8 +1111,8 @@ export const obsidianTheme = EditorView.theme(
 		".cm-completionIcon::after": {
 			content: "' '",
 			display: "inline-block",
-			width: "24px",
-			height: "24px",
+			width: "1em",
+			height: "1em",
 			verticalAlign: "-2px",
 			background: "currentColor",
 			maskSize: "contain",

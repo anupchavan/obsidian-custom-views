@@ -95,6 +95,12 @@ export default class CustomViewsPlugin extends Plugin {
 	/** Guard against concurrent processActiveView calls */
 	private processing = false;
 
+	/** Bumped on settings save to invalidate stateKey cache */
+	private settingsVersion = 0;
+
+	/** Counter for generating unique per-container scope IDs */
+	private nextScopeId = 0;
+
 	async onload() {
 		await this.loadSettings();
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
@@ -188,7 +194,10 @@ export default class CustomViewsPlugin extends Plugin {
 		if (this.processing) return;
 		this.processing = true;
 		try {
-			await this._processActiveView(file);
+			const leaf = this.app.workspace.getLeaf(false);
+			if (leaf.view instanceof MarkdownView) {
+				await this._processLeaf(leaf.view, file);
+			}
 		} finally {
 			this.processing = false;
 		}
@@ -210,14 +219,10 @@ export default class CustomViewsPlugin extends Plugin {
 			? (state.source ? 'source' : 'livepreview')
 			: 'preview';
 		const configId = matchedConfig?.id ?? 'none';
-		return `${file.path}::${configId}::${mode}`;
+		return `${file.path}::${configId}::${mode}::${this.settingsVersion}`;
 	}
 
-	private async _processActiveView(file: TFile) {
-		const leaf = this.app.workspace.getLeaf(false);
-		if (!(leaf.view instanceof MarkdownView)) return;
-
-		const view = leaf.view;
+	private async _processLeaf(view: MarkdownView, file: TFile) {
 		const container = view.contentEl;
 
 		if (!this.settings.enabled) {
@@ -272,10 +277,6 @@ export default class CustomViewsPlugin extends Plugin {
 			this.restoreDefaultView(view);
 			container.setAttribute("data-cv-state", stateKey);
 			return;
-		} else if (!isReadingMode && !isLivePreviewMode) {
-			this.restoreDefaultView(view);
-			container.setAttribute("data-cv-state", stateKey);
-			return;
 		}
 
 		// Check if we should use editable mode
@@ -326,7 +327,15 @@ export default class CustomViewsPlugin extends Plugin {
 			});
 		}
 
-		await renderTemplate(this.app, template, file, customEl, this, false, viewConfig);
+		// Assign a unique scope ID to the parent container so CSS can be
+		// scoped per-leaf, preventing styles from leaking between tabs.
+		let scopeId = container.getAttribute("data-cv-id");
+		if (!scopeId) {
+			scopeId = `cv-${this.nextScopeId++}`;
+			container.setAttribute("data-cv-id", scopeId);
+		}
+
+		await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId);
 
 		// Apply per-view display options
 		this.applyViewDisplayOptions(container, viewConfig);
@@ -340,6 +349,7 @@ export default class CustomViewsPlugin extends Plugin {
 		container.removeClass(EDITABLE_MODE_CLASS);
 		container.removeAttribute("data-cv-hide-properties");
 		container.removeAttribute("data-cv-hide-inline-title");
+		container.removeAttribute("data-cv-id");
 		const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
 		if (customEl) customEl.remove();
 	}
@@ -393,8 +403,15 @@ export default class CustomViewsPlugin extends Plugin {
 			container.appendChild(customEl);
 		}
 
+		// Assign a unique scope ID for CSS isolation
+		let scopeId = container.getAttribute("data-cv-id");
+		if (!scopeId) {
+			scopeId = `cv-${this.nextScopeId++}`;
+			container.setAttribute("data-cv-id", scopeId);
+		}
+
 		// Render template with editableMode=true (content placeholder left empty)
-		await renderTemplate(this.app, template, file, customEl, this, true, viewConfig);
+		await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId);
 
 		// Find the content placeholder
 		const placeholder = customEl.querySelector(`[${EDITABLE_PLACEHOLDER_ATTR}]`) as HTMLElement;
@@ -532,6 +549,22 @@ export default class CustomViewsPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	/**
+	 * Bump the settings version and re-render all open views.
+	 * Called after view config changes (edit modal close, view deletion, etc.)
+	 */
+	refreshAllViews() {
+		this.settingsVersion++;
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			if (leaf.view instanceof MarkdownView && leaf.view.file) {
+				void this._processLeaf(leaf.view, leaf.view.file);
+			}
+		});
+		if (this.settings.workInCanvas) {
+			void this.processAllCanvasNodes();
+		}
+	}
+
 	// ─── Canvas Support ────────────────────────────────────────────────────────
 
 	/**
@@ -606,6 +639,7 @@ export default class CustomViewsPlugin extends Plugin {
 		if (!previewContainer) return;
 
 		previewContainer.removeClass(HIDE_MARKDOWN_CLASS);
+		previewContainer.removeAttribute("data-cv-id");
 		const customEl = previewContainer.querySelector(`.${CUSTOM_VIEW_CLASS}`);
 		if (customEl) customEl.remove();
 	}
