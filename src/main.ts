@@ -351,7 +351,9 @@ export default class CustomViewsPlugin extends Plugin {
 		container.removeAttribute("data-cv-hide-inline-title");
 		container.removeAttribute("data-cv-id");
 		const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
-		if (customEl) customEl.remove();
+		if (customEl) {
+			customEl.remove();
+		}
 	}
 
 	// ─── Editable Content Mode ─────────────────────────────────────────────────
@@ -640,8 +642,12 @@ export default class CustomViewsPlugin extends Plugin {
 
 		previewContainer.removeClass(HIDE_MARKDOWN_CLASS);
 		previewContainer.removeAttribute("data-cv-id");
+		previewContainer.removeAttribute("data-cv-hide-properties");
+		previewContainer.removeAttribute("data-cv-hide-inline-title");
 		const customEl = previewContainer.querySelector(`.${CUSTOM_VIEW_CLASS}`);
-		if (customEl) customEl.remove();
+		if (customEl) {
+			customEl.remove();
+		}
 	}
 
 	/**

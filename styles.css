@@ -818,6 +818,17 @@
     display: none;
 }
 
+/* Restore display for the content container inside our overlay (it has
+   markdown-preview-view class for CSS inheritance but must not be hidden) */
+.obsidian-custom-view-render .markdown-preview-view.markdown-preview-view {
+    display: block;
+}
+
+/* Restore display for preview views rendered inside embeds within templates */
+.obsidian-custom-view-hidden .markdown-embed-content .markdown-preview-view.markdown-preview-view {
+    display: block;
+}
+
 .obsidian-custom-view-render {
     padding: 30px;
     height: 100%;
@@ -842,37 +853,6 @@
     padding: 0;
 }
 
-.obsidian-custom-view-render .markdown-preview-section ul,
-.obsidian-custom-view-render .markdown-preview-section ol {
-    padding-left: 1.625em;
-    margin-block-start: 1em;
-    margin-block-end: 1em;
-}
-
-.obsidian-custom-view-render .markdown-preview-section li {
-    margin-block-start: 0.3em;
-    margin-block-end: 0.3em;
-}
-
-.obsidian-custom-view-render .markdown-preview-section li > ul,
-.obsidian-custom-view-render .markdown-preview-section li > ol {
-    margin-block-start: 0.3em;
-    margin-block-end: 0.3em;
-}
-
-.obsidian-custom-view-render .markdown-preview-section p {
-    margin-block-start: 1em;
-    margin-block-end: 1em;
-}
-
-.obsidian-custom-view-render .markdown-preview-section p:first-child {
-    margin-block-start: 0;
-}
-
-.obsidian-custom-view-render .markdown-preview-section p:last-child {
-    margin-block-end: 0;
-}
-
 /* Override modal styles for suggestion modals — needs body prefix for specificity over .modal */
 body .cv-suggestion-container.modal {
     position: fixed;
@@ -891,6 +871,16 @@ body .cv-suggestion-container.modal {
 /* In editable mode, hide the reading preview but NOT the source/editor view */
 .obsidian-custom-view-editable .markdown-preview-view.markdown-preview-view {
     display: none;
+}
+
+/* Restore display for the content container inside our overlay in editable mode */
+.obsidian-custom-view-editable .obsidian-custom-view-render .markdown-preview-view.markdown-preview-view {
+    display: block;
+}
+
+/* Restore display for preview views rendered inside embeds within templates */
+.obsidian-custom-view-editable .markdown-embed-content .markdown-preview-view.markdown-preview-view {
+    display: block;
 }
 
 /* The template overlay in editable mode uses same layout as readonly */
@@ -981,11 +971,11 @@ body .cv-clear-button-hidden {
 /* ─── Per-view Display Options ─────────────────────────────────────────────── */
 
 /* Hide properties/metadata section when the view opts out */
-[data-cv-hide-properties="true"] .metadata-container.metadata-container {
-    display: none;
+[data-cv-hide-properties="true"] .metadata-container {
+    display: none !important;
 }
 
 /* Hide inline title when the view opts out */
-[data-cv-hide-inline-title="true"] .inline-title.inline-title {
-    display: none;
+[data-cv-hide-inline-title="true"] .inline-title {
+    display: none !important;
 }
