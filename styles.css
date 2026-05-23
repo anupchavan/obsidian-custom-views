@@ -44,27 +44,20 @@
     position: absolute;
     top: var(--size-2-3);
     inset-inline-end: var(--size-2-3);
-    padding: var(--size-2-2);
-
     -webkit-app-region: no-drag;
-    background-color: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: var(--size-2-2) var(--size-2-3);
     cursor: var(--cursor);
     border-radius: var(--clickable-icon-radius);
+    corner-shape: var(--corner-shape);
     color: var(--icon-color);
     height: auto;
-    corner-shape: var(--corner-shape);
     background: transparent;
     border: none;
     box-shadow: none;
     outline: none;
-    cursor: var(--cursor);
-    color: var(--icon-color);
-    height: auto;
-    corner-shape: var(--corner-shape);
 }
 
 .cv-codemirror-container

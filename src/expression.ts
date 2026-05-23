@@ -1549,7 +1549,7 @@ export function isExpressionMode(expr: string): boolean {
 		}
 	}
 	// If no parens or pipes, check for operators
-	if (/[+\-*/<>=!&|]/.test(expr)) return true;
+	if (/[+\-*/<>=!&|%]/.test(expr)) return true;
 	return false;
 }
 

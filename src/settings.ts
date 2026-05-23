@@ -166,6 +166,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					const newIndex = this.plugin.settings.views.length - 1;
 					new EditViewModal(this.app, this.plugin, newView, newIndex, () => {
 						this.display();
+						this.plugin.refreshAllViews();
 					}).open();
 				}));
 
@@ -196,6 +197,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			e.stopPropagation();
 			new EditViewModal(this.app, this.plugin, view, index, () => {
 				this.display();
+				this.plugin.refreshAllViews();
 			}).open();
 		};
 
@@ -207,6 +209,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			this.plugin.settings.views.splice(index, 1);
 			await this.plugin.saveSettings();
 			this.display();
+			this.plugin.refreshAllViews();
 		};
 
 		listItem.addEventListener("dragstart", (e) => {
@@ -294,7 +297,7 @@ class EditViewModal extends Modal {
 		// Access Obsidian's undocumented metadataTypeManager for assigned types
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
 		const typeManager = (this.app as any).metadataTypeManager;
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
 		const hasTypeManager = typeManager && typeof typeManager.getAssignedType === "function";
 
 		const obsidianTypeMap: Record<string, TemplateVariable["type"]> = {
@@ -363,7 +366,7 @@ class EditViewModal extends Modal {
 						this.view.name = value;
 						autoSave();
 					});
-				window.window.requestAnimationFrame(() => {
+				window.requestAnimationFrame(() => {
 					text.inputEl.select();
 				});
 			});
@@ -517,7 +520,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<ComboboxItem> {
 		void super.onOpen();
 
 		// Style modal as combobox
-		window.window.requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			const modalContainer = this.modalEl.closest('.modal-container');
 			if (modalContainer) {
 				modalContainer.addClass('cv-modal-container');
@@ -564,7 +567,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<ComboboxItem> {
 				};
 
 				// Initial state - use requestAnimationFrame to ensure DOM is ready
-				window.window.requestAnimationFrame(() => {
+				window.requestAnimationFrame(() => {
 					updateClearButtonVisibility();
 				});
 
@@ -598,7 +601,7 @@ class ComboboxSuggestModal extends FuzzySuggestModal<ComboboxItem> {
 			if (this.anchorEl.getAttribute('tabindex') === '-1') {
 				this.anchorEl.setAttribute('tabindex', '0');
 			}
-			window.window.requestAnimationFrame(() => {
+			window.requestAnimationFrame(() => {
 				this.anchorEl?.focus();
 			});
 		}

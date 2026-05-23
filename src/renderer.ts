@@ -183,6 +183,7 @@ export const EDITABLE_PLACEHOLDER_ATTR = "data-cv-editable-placeholder";
  * @param component - The component to render the template with
  * @param editableMode - When true, the content placeholder is left empty for the editor to be reparented into
  * @param viewConfig - Optional ViewConfig for CSS/JS injection
+ * @param scopeId - Optional unique ID for CSS scoping (set on the container's parent via data-cv-id)
  */
 export async function renderTemplate(
 	app: App,
@@ -191,7 +192,8 @@ export async function renderTemplate(
 	container: HTMLElement,
 	component: Component,
 	editableMode: boolean = false,
-	viewConfig?: ViewConfig
+	viewConfig?: ViewConfig,
+	scopeId?: string
 ) {
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
@@ -265,6 +267,10 @@ export async function renderTemplate(
 	const doc = parser.parseFromString(filledTemplate, 'text/html');
 	const tempContainer = doc.body;
 
+	// Disconnect any previous CSS-scoping MutationObserver from a prior render
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+	if ((container as any).__cvScopeObserver) { (container as any).__cvScopeObserver.disconnect(); (container as any).__cvScopeObserver = null; }
+
 	// Clear the container and move nodes from temporary container
 	while (container.firstChild) {
 		container.removeChild(container.firstChild);
@@ -328,6 +334,52 @@ export async function renderTemplate(
 			} catch (e) {
 				console.error('[Custom Views] Error executing view JS:', e);
 			}
+		}
+	}
+
+	// Scope all <style> elements inside the container so CSS doesn't leak
+	// between tabs.  The parent container has data-cv-id="<scopeId>", and
+	// this element (customEl) is a child of it.  Wrapping each stylesheet's
+	// content with `[data-cv-id="<scopeId>"] { … }` uses CSS nesting to
+	// restrict every rule to descendants of that specific parent.
+	if (scopeId) {
+		scopeStyleElements(container, scopeId);
+
+		// Watch for <style> elements injected later by async JS (e.g. after
+		// an image loads) so they get scoped too.
+		const observer = new MutationObserver((mutations) => {
+			for (const m of mutations) {
+				for (const node of Array.from(m.addedNodes)) {
+					if (node.nodeType !== Node.ELEMENT_NODE) continue;
+					const el = node as HTMLElement;
+					if (el.tagName === "STYLE" || el.querySelector("style")) {
+						scopeStyleElements(container, scopeId);
+						return;
+					}
+				}
+			}
+		});
+		observer.observe(container, { childList: true, subtree: true });
+
+		// Store the observer so it can be disconnected on re-render
+		// (the container is cleared at the top of renderTemplate, which
+		// removes all children but the observer still watches the element).
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+		(container as any).__cvScopeObserver = observer;
+	}
+}
+
+/**
+ * Wrap all unscoped <style> elements inside a container with a CSS nesting
+ * selector that restricts rules to a specific data-cv-id scope.
+ */
+function scopeStyleElements(container: HTMLElement, scopeId: string) {
+	const styles = container.querySelectorAll("style");
+	for (const style of Array.from(styles)) {
+		const raw = style.textContent;
+		if (raw && !style.hasAttribute("data-cv-scoped")) {
+			style.textContent = `[data-cv-id="${scopeId}"] {\n${raw}\n}`;
+			style.setAttribute("data-cv-scoped", "true");
 		}
 	}
 }
