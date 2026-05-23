@@ -161,8 +161,8 @@ export async function resolvePropertyChain(
  * or if there is no content placeholder at all.
  */
 export function templateHasEditableContent(template: string): boolean {
-	// Match {{file.content}} or {{content}} with optional filter
-	const contentRegex = /\{\{(?:file\.)?content(?:\s*\|.*?)?\}\}/g;
+	// Match {{ file.content }} or {{ content }} with optional filter, allowing whitespace
+	const contentRegex = /\{\{\s*(?:file\.)?content\s*(?:\|.*?)?\}\}/g;
 	let match;
 	while ((match = contentRegex.exec(template)) !== null) {
 		if (match[0].includes("|")) return false;
@@ -234,7 +234,7 @@ export async function renderTemplate(
 		// Special content placeholder
 		if (innerExpr === "content" || innerExpr === "file.content") {
 			resolvedValues.push(
-				`<div id="${contentPlaceholderId}" class="markdown-rendered-content"></div>`
+				`<div id="${contentPlaceholderId}" class="markdown-rendered-content markdown-preview-view markdown-rendered"></div>`
 			);
 			continue;
 		}
@@ -385,7 +385,7 @@ function scopeStyleElements(container: HTMLElement, scopeId: string) {
 }
 
 /** Find the first pipe character outside of quotes */
-function findFirstPipe(str: string): number {
+export function findFirstPipe(str: string): number {
 	let inQuote = false;
 	let quoteChar = '';
 	for (let i = 0; i < str.length; i++) {
@@ -438,7 +438,7 @@ function applyReplacements(template: string, matches: TemplateMatch[], values: s
 }
 
 /** Convert an expression/property result to a plain string */
-function resultToString(value: unknown): string {
+export function resultToString(value: unknown): string {
 	if (value === null || value === undefined) return "";
 	if (typeof value === "string") return value;
 	if (typeof value === "number" || typeof value === "boolean") return String(value);
