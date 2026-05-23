@@ -585,19 +585,17 @@
     position: relative;
 }
 
-.cv-search-input-container:before {
+.cv-search-icon {
+    position: absolute;
     top: calc((var(--input-height) - var(--search-icon-size)) / 2);
     inset-inline-start: var(--size-4-2);
-    position: absolute;
-    content: "";
     height: var(--search-icon-size);
     width: var(--search-icon-size);
-    display: block;
-    background-color: var(--search-icon-color);
-    -webkit-mask-image: url("data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27><circle cx=%2711%27 cy=%2711%27 r=%278%27></circle><line x1=%2721%27 y1=%2721%27 x2=%2716.65%27 y2=%2716.65%27></line></svg>");
-    mask-image: url("data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27><circle cx=%2711%27 cy=%2711%27 r=%278%27></circle><line x1=%2721%27 y1=%2721%27 x2=%2716.65%27 y2=%2716.65%27></line></svg>");
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--search-icon-color);
+    pointer-events: none;
 }
 
 .cv-combobox .cv-search-input-container input[type="search"] {
@@ -814,10 +812,10 @@
     margin-left: auto;
 }
 
-/* Needs !important to override Obsidian's layout system which sets display on these elements */
-.obsidian-custom-view-hidden .markdown-source-view,
-.obsidian-custom-view-hidden .markdown-preview-view {
-    display: none !important;
+/* Doubled selectors override Obsidian's layout system without !important */
+.obsidian-custom-view-hidden .markdown-source-view.markdown-source-view,
+.obsidian-custom-view-hidden .markdown-preview-view.markdown-preview-view {
+    display: none;
 }
 
 .obsidian-custom-view-render {
@@ -891,8 +889,8 @@ body .cv-suggestion-container.modal {
 /* ─── Editable Content Mode ─────────────────────────────────────────────────── */
 
 /* In editable mode, hide the reading preview but NOT the source/editor view */
-.obsidian-custom-view-editable .markdown-preview-view {
-    display: none !important;
+.obsidian-custom-view-editable .markdown-preview-view.markdown-preview-view {
+    display: none;
 }
 
 /* The template overlay in editable mode uses same layout as readonly */
@@ -911,20 +909,20 @@ body .cv-suggestion-container.modal {
 /* The editor embedded in the content placeholder should flow naturally */
 .obsidian-custom-view-editable
     [data-cv-editable-placeholder]
-    .markdown-source-view {
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-    position: relative !important;
+    .markdown-source-view.markdown-source-view {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    position: relative;
 }
 
-.obsidian-custom-view-editable [data-cv-editable-placeholder] .cm-editor {
-    height: auto !important;
-    max-height: none !important;
+.obsidian-custom-view-editable [data-cv-editable-placeholder] .cm-editor.cm-editor {
+    height: auto;
+    max-height: none;
 }
 
-.obsidian-custom-view-editable [data-cv-editable-placeholder] .cm-scroller {
-    overflow: visible !important;
+.obsidian-custom-view-editable [data-cv-editable-placeholder] .cm-scroller.cm-scroller {
+    overflow: visible;
 }
 
 /* The zero-height frontmatter widget */
@@ -983,11 +981,11 @@ body .cv-clear-button-hidden {
 /* ─── Per-view Display Options ─────────────────────────────────────────────── */
 
 /* Hide properties/metadata section when the view opts out */
-[data-cv-hide-properties="true"] .metadata-container {
-    display: none !important;
+[data-cv-hide-properties="true"] .metadata-container.metadata-container {
+    display: none;
 }
 
 /* Hide inline title when the view opts out */
-[data-cv-hide-inline-title="true"] .inline-title {
-    display: none !important;
+[data-cv-hide-inline-title="true"] .inline-title.inline-title {
+    display: none;
 }
