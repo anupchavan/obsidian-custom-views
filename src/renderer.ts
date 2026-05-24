@@ -193,7 +193,8 @@ export async function renderTemplate(
 	component: Component,
 	editableMode: boolean = false,
 	viewConfig?: ViewConfig,
-	scopeId?: string
+	scopeId?: string,
+	allowJavaScript: boolean = true
 ) {
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
@@ -320,19 +321,22 @@ export async function renderTemplate(
 		}
 	}
 
-	// Execute inline scripts from the HTML template
-	executeScripts(container);
+	// Execute scripts only when JavaScript execution is allowed
+	if (allowJavaScript) {
+		// Execute inline scripts from the HTML template
+		executeScripts(container);
 
-	// Execute JS from the separate JS field (with template resolution)
-	if (viewConfig?.js) {
-		const resolvedJs = await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent);
-		if (resolvedJs.trim()) {
-			try {
-				// eslint-disable-next-line @typescript-eslint/no-implied-eval
-				const fn = new Function(resolvedJs);
-				fn.call(container);
-			} catch (e) {
-				console.error('[Custom Views] Error executing view JS:', e);
+		// Execute JS from the separate JS field (with template resolution)
+		if (viewConfig?.js) {
+			const resolvedJs = await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent);
+			if (resolvedJs.trim()) {
+				try {
+					// eslint-disable-next-line @typescript-eslint/no-implied-eval
+					const fn = new Function(resolvedJs);
+					fn.call(container);
+				} catch (e) {
+					console.error('[Custom Views] Error executing view JS:', e);
+				}
 			}
 		}
 	}

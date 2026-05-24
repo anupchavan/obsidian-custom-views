@@ -166,14 +166,8 @@ export default class CustomViewsPlugin extends Plugin {
 	async setPluginState(enabled: boolean) {
 		this.settings.enabled = enabled;
 		await this.saveSettings();
-
 		new Notice(enabled ? "Custom Views Enabled" : "Custom Views Disabled");
-
-		const file = this.app.workspace.getActiveFile();
-
-		if (file) {
-			void this.processActiveView(file);
-		}
+		this.refreshAllViews();
 	}
 
 	onunload() {
@@ -316,9 +310,6 @@ export default class CustomViewsPlugin extends Plugin {
 					const href = link.getAttribute("data-href") || link.getAttribute("href");
 
 					if (href) {
-						// Use the current active file (not a stale closure) so link
-						// resolution is correct even when the overlay element is reused
-						// across file navigations.
 						const currentFile = this.app.workspace.getActiveFile();
 						const newLeaf = Keymap.isModEvent(evt);
 						void this.app.workspace.openLinkText(href, currentFile?.path ?? "", newLeaf);
@@ -327,29 +318,26 @@ export default class CustomViewsPlugin extends Plugin {
 			});
 		}
 
-		// Assign a unique scope ID to the parent container so CSS can be
-		// scoped per-leaf, preventing styles from leaking between tabs.
 		let scopeId = container.getAttribute("data-cv-id");
 		if (!scopeId) {
 			scopeId = `cv-${this.nextScopeId++}`;
 			container.setAttribute("data-cv-id", scopeId);
 		}
 
-		await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId);
+		await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId, this.settings.allowJavaScript);
 
-		// Apply per-view display options
 		this.applyViewDisplayOptions(container, viewConfig);
-
 		container.addClass(HIDE_MARKDOWN_CLASS);
 	}
 
 	restoreDefaultView(view: MarkdownView) {
 		const container = view.contentEl;
+
+		this.restoreDisplayOptions(container);
 		container.removeClass(HIDE_MARKDOWN_CLASS);
 		container.removeClass(EDITABLE_MODE_CLASS);
-		container.removeAttribute("data-cv-hide-properties");
-		container.removeAttribute("data-cv-hide-inline-title");
 		container.removeAttribute("data-cv-id");
+
 		const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
 		if (customEl) {
 			customEl.remove();
@@ -413,7 +401,7 @@ export default class CustomViewsPlugin extends Plugin {
 		}
 
 		// Render template with editableMode=true (content placeholder left empty)
-		await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId);
+		await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId, this.settings.allowJavaScript);
 
 		// Find the content placeholder
 		const placeholder = customEl.querySelector(`[${EDITABLE_PLACEHOLDER_ATTR}]`) as HTMLElement;
@@ -505,10 +493,11 @@ export default class CustomViewsPlugin extends Plugin {
 			// Editor may have been destroyed
 		}
 
-		// Remove editable mode class, display options, and overlay
+		this.restoreDisplayOptions(container);
+
+		// Remove editable mode class and overlay
 		container.removeClass(EDITABLE_MODE_CLASS);
-		container.removeAttribute("data-cv-hide-properties");
-		container.removeAttribute("data-cv-hide-inline-title");
+
 		const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
 		if (customEl) customEl.remove();
 
@@ -519,25 +508,22 @@ export default class CustomViewsPlugin extends Plugin {
 	// ─── Per-view Display Options ──────────────────────────────────────────────
 
 	/**
-	 * Applies per-view display options (show/hide properties and inline title)
-	 * via data attributes on the container element.
+	 * Applies per-view display options (show/hide properties and inline title).
+	 * Uses CSS classes following the obsidian-hider pattern.
+	 *
+	 * Note: these options only take effect in editing view (live preview)
+	 * because MarkdownRenderer.render() does not produce the native
+	 * .metadata-container or .inline-title elements in reading view.
 	 */
 	private applyViewDisplayOptions(container: HTMLElement, viewConfig?: ViewConfig) {
 		if (!viewConfig) return;
+		container.toggleClass("cv-hide-properties", viewConfig.showProperties === false);
+		container.toggleClass("cv-hide-inline-title", viewConfig.showInlineTitle === false);
+	}
 
-		// showProperties defaults to true if not set
-		if (viewConfig.showProperties === false) {
-			container.setAttribute("data-cv-hide-properties", "true");
-		} else {
-			container.removeAttribute("data-cv-hide-properties");
-		}
-
-		// showInlineTitle defaults to true if not set
-		if (viewConfig.showInlineTitle === false) {
-			container.setAttribute("data-cv-hide-inline-title", "true");
-		} else {
-			container.removeAttribute("data-cv-hide-inline-title");
-		}
+	private restoreDisplayOptions(container: HTMLElement) {
+		container.removeClass("cv-hide-properties");
+		container.removeClass("cv-hide-inline-title");
 	}
 
 	// ─── Settings ──────────────────────────────────────────────────────────────
@@ -640,10 +626,11 @@ export default class CustomViewsPlugin extends Plugin {
 		const previewContainer = nodeEl.querySelector(".markdown-preview-view") as HTMLElement;
 		if (!previewContainer) return;
 
+		this.restoreDisplayOptions(previewContainer);
+
 		previewContainer.removeClass(HIDE_MARKDOWN_CLASS);
 		previewContainer.removeAttribute("data-cv-id");
-		previewContainer.removeAttribute("data-cv-hide-properties");
-		previewContainer.removeAttribute("data-cv-hide-inline-title");
+
 		const customEl = previewContainer.querySelector(`.${CUSTOM_VIEW_CLASS}`);
 		if (customEl) {
 			customEl.remove();

@@ -27,6 +27,14 @@ describe("DEFAULT_SETTINGS", () => {
 		expect(DEFAULT_SETTINGS.workInCanvas).toBe(false);
 	});
 
+	it("has editableContent: false by default", () => {
+		expect(DEFAULT_SETTINGS.editableContent).toBe(false);
+	});
+
+	it("has allowJavaScript: true by default", () => {
+		expect(DEFAULT_SETTINGS.allowJavaScript).toBe(true);
+	});
+
 	it("has at least one default view", () => {
 		expect(DEFAULT_SETTINGS.views.length).toBeGreaterThan(0);
 	});
@@ -88,8 +96,8 @@ function inferType(val: unknown) {
 	const fb = new FilterBuilder(
 		makeStubPlugin(),
 		{ type: "group", operator: "AND", conditions: [] },
-		() => {},
-		() => {}
+		() => { },
+		() => { }
 	);
 	return fb.inferType(val);
 }
@@ -117,4 +125,59 @@ describe("FilterBuilder.inferType", () => {
 	it("returns 'text' for a URL-like string", () => expect(inferType("https://example.com")).toBe("text"));
 	it("returns 'text' for a numeric string (e.g. '42')", () => expect(inferType("42")).toBe("text"));
 	it("returns 'text' for a wikilink string", () => expect(inferType("[[My Note]]")).toBe("text"));
+});
+
+// ---------------------------------------------------------------------------
+// ViewConfig defaults
+// ---------------------------------------------------------------------------
+
+import type { ViewConfig } from "../types";
+
+describe("ViewConfig optional fields", () => {
+	it("default views do not set showProperties (defaults to undefined)", () => {
+		for (const view of DEFAULT_SETTINGS.views) {
+			expect(view.showProperties).toBeUndefined();
+		}
+	});
+
+	it("default views do not set showInlineTitle (defaults to undefined)", () => {
+		for (const view of DEFAULT_SETTINGS.views) {
+			expect(view.showInlineTitle).toBeUndefined();
+		}
+	});
+
+	it("default views do not set css (defaults to undefined)", () => {
+		for (const view of DEFAULT_SETTINGS.views) {
+			expect(view.css).toBeUndefined();
+		}
+	});
+
+	it("default views do not set js (defaults to undefined)", () => {
+		for (const view of DEFAULT_SETTINGS.views) {
+			expect(view.js).toBeUndefined();
+		}
+	});
+
+	it("showProperties=true means properties are shown (not hidden)", () => {
+		const view: ViewConfig = {
+			id: "test",
+			name: "Test",
+			rules: { type: "group", operator: "AND", conditions: [] },
+			template: "<p>test</p>",
+			showProperties: true,
+		};
+		// showProperties=true means show, showProperties=false means hide
+		expect(view.showProperties).toBe(true);
+	});
+
+	it("showProperties=false means properties are hidden", () => {
+		const view: ViewConfig = {
+			id: "test",
+			name: "Test",
+			rules: { type: "group", operator: "AND", conditions: [] },
+			template: "<p>test</p>",
+			showProperties: false,
+		};
+		expect(view.showProperties).toBe(false);
+	});
 });

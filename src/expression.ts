@@ -19,7 +19,7 @@ import { App, TFile, moment } from "obsidian";
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface ExprValueArray extends Array<ExprValue> {}
+export interface ExprValueArray extends Array<ExprValue> { }
 export interface ExprValueRecord { [key: string]: ExprValue; }
 
 export type ExprValue =

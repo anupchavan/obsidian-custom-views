@@ -158,7 +158,7 @@ function createMockFile(
 		vault: {} as unknown,
 		parent: null,
 		extension: "md",
-	// eslint-disable-next-line obsidianmd/no-tfile-tfolder-cast -- test mock
+		// eslint-disable-next-line obsidianmd/no-tfile-tfolder-cast -- test mock
 	} as unknown as TFile;
 }
 

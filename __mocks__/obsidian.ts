@@ -12,7 +12,7 @@ export const moment = momentLib;
 
 // Stub classes — tests create plain objects that satisfy the shapes they need,
 // but TypeScript still needs these exports to resolve imports.
-export class App {}
+export class App { }
 export class Plugin {
 	app = new App();
 }
@@ -24,17 +24,17 @@ export class TFile {
 	stat = { ctime: 0, mtime: 0, size: 0 };
 	parent: { path: string } | null = null;
 }
-export class Component {}
-export class MarkdownView {}
-export class PluginSettingTab {}
-export class Setting {}
-export class Modal {}
-export class Notice {}
-export class FuzzySuggestModal {}
+export class Component { }
+export class MarkdownView { }
+export class PluginSettingTab { }
+export class Setting { }
+export class Modal { }
+export class Notice { }
+export class FuzzySuggestModal { }
 export class AbstractInputSuggest {
-	constructor(_app: unknown, _inputEl: unknown) {}
+	constructor(_app: unknown, _inputEl: unknown) { }
 	limit = 100;
-	close() {}
+	close() { }
 	onSelect(_callback: unknown) { return this; }
 }
 export class TFolder {
@@ -49,11 +49,11 @@ export class TAbstractFile {
 	name = "";
 	parent: { path: string } | null = null;
 }
-export class ButtonComponent {}
-export class TextComponent {}
-export class WorkspaceLeaf {}
+export class ButtonComponent { }
+export class TextComponent { }
+export class WorkspaceLeaf { }
 export const Keymap = { isModEvent: () => false };
-export function setIcon() {}
+export function setIcon() { }
 export function getAllTags() { return []; }
 export function prepareFuzzySearch() { return () => null; }
-export function renderResults() {}
+export function renderResults() { }

@@ -825,7 +825,9 @@
 }
 
 /* Restore display for preview views rendered inside embeds within templates */
-.obsidian-custom-view-hidden .markdown-embed-content .markdown-preview-view.markdown-preview-view {
+.obsidian-custom-view-hidden
+    .markdown-embed-content
+    .markdown-preview-view.markdown-preview-view {
     display: block;
 }
 
@@ -874,12 +876,16 @@ body .cv-suggestion-container.modal {
 }
 
 /* Restore display for the content container inside our overlay in editable mode */
-.obsidian-custom-view-editable .obsidian-custom-view-render .markdown-preview-view.markdown-preview-view {
+.obsidian-custom-view-editable
+    .obsidian-custom-view-render
+    .markdown-preview-view.markdown-preview-view {
     display: block;
 }
 
 /* Restore display for preview views rendered inside embeds within templates */
-.obsidian-custom-view-editable .markdown-embed-content .markdown-preview-view.markdown-preview-view {
+.obsidian-custom-view-editable
+    .markdown-embed-content
+    .markdown-preview-view.markdown-preview-view {
     display: block;
 }
 
@@ -906,12 +912,16 @@ body .cv-suggestion-container.modal {
     position: relative;
 }
 
-.obsidian-custom-view-editable [data-cv-editable-placeholder] .cm-editor.cm-editor {
+.obsidian-custom-view-editable
+    [data-cv-editable-placeholder]
+    .cm-editor.cm-editor {
     height: auto;
     max-height: none;
 }
 
-.obsidian-custom-view-editable [data-cv-editable-placeholder] .cm-scroller.cm-scroller {
+.obsidian-custom-view-editable
+    [data-cv-editable-placeholder]
+    .cm-scroller.cm-scroller {
     overflow: visible;
 }
 
@@ -968,14 +978,35 @@ body .cv-clear-button-hidden {
     display: none;
 }
 
-/* ─── Per-view Display Options ─────────────────────────────────────────────── */
+/* ─── Disabled JS Editor ───────────────────────────────────────────────────── */
 
-/* Hide properties/metadata section when the view opts out */
-[data-cv-hide-properties="true"] .metadata-container {
-    display: none !important;
+.cv-editor-disabled {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
-/* Hide inline title when the view opts out */
-[data-cv-hide-inline-title="true"] .inline-title {
-    display: none !important;
+.cv-js-disabled-notice {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    margin-top: 0;
+}
+
+/* ─── Per-view Display Options ─────────────────────────────────────────────── */
+/* Follows obsidian-hider's pattern: a class on the container hides
+   descendant elements via CSS.  These only take effect in editing view
+   (live preview) where the editor is reparented into the overlay.
+   Properties are always hidden in reading view (MarkdownRenderer.render
+   does not produce the native .metadata-container or .inline-title). */
+
+.cv-hide-properties .markdown-source-view .metadata-container {
+    display: none;
+}
+.cv-hide-properties
+    .markdown-source-view.is-live-preview.show-properties
+    .metadata-container:not(.mod-error) {
+    display: none;
+}
+
+.cv-hide-inline-title .markdown-source-view .inline-title {
+    display: none;
 }
