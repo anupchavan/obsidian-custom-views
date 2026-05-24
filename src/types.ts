@@ -38,8 +38,8 @@ export interface ViewConfig {
 	css?: string;
 	/** Optional JavaScript for the view (executed after render) */
 	js?: string;
-	/** When true, hide the properties/metadata section in this view */
+	/** When true, show the properties/metadata section in editing view */
 	showProperties?: boolean;
-	/** When true, hide the inline title in this view */
+	/** When true, show the inline title in editing view */
 	showInlineTitle?: boolean;
 }

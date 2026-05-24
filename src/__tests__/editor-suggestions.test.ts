@@ -463,17 +463,17 @@ describe("templateCompletionSource integration", () => {
 	const source = templateCompletionSource(testVars);
 
 	it("returns null outside template braces", () => {
-const result = source(mockCompletionContext("hello world"));
+		const result = source(mockCompletionContext("hello world"));
 		expect(result).toBeNull();
 	});
 
 	it("returns null after closed braces", () => {
-const result = source(mockCompletionContext("{{title}} more"));
+		const result = source(mockCompletionContext("{{title}} more"));
 		expect(result).toBeNull();
 	});
 
 	it("returns root suggestions inside empty braces", () => {
-const result = source(mockCompletionContext("{{"));
+		const result = source(mockCompletionContext("{{"));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 		// Should have functions
@@ -489,7 +489,7 @@ const result = source(mockCompletionContext("{{"));
 	});
 
 	it("root suggestions have correct types for icons", () => {
-const result = source(mockCompletionContext("{{"));
+		const result = source(mockCompletionContext("{{"));
 		expect(result).not.toBeNull();
 		const linkFn = result!.options.find(o => o.label === "link()");
 		expect(linkFn).toBeDefined();
@@ -518,7 +518,7 @@ const result = source(mockCompletionContext("{{"));
 	});
 
 	it("suggests functions with apply field for cursor positioning", () => {
-const result = source(mockCompletionContext("{{l"));
+		const result = source(mockCompletionContext("{{l"));
 		expect(result).not.toBeNull();
 		const linkFn = result!.options.find(o => o.label === "link()");
 		expect(linkFn).toBeDefined();
@@ -531,7 +531,7 @@ const result = source(mockCompletionContext("{{l"));
 
 	it("suggests file methods/properties after .asFile().", () => {
 		const text = '{{link("Books").asFile().';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -553,7 +553,7 @@ const result = source(mockCompletionContext(text));
 
 	it("suggests link methods after link().", () => {
 		const text = '{{link("Books").';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -566,7 +566,7 @@ const result = source(mockCompletionContext(text));
 
 	it("suggests date methods after now().", () => {
 		const text = "{{now().";
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -577,7 +577,7 @@ const result = source(mockCompletionContext(text));
 
 	it("suggests string methods after .content().", () => {
 		const text = '{{file("x").content().';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -589,7 +589,7 @@ const result = source(mockCompletionContext(text));
 
 	it("suggests list methods after .split().", () => {
 		const text = '{{name.split(",").';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -602,7 +602,7 @@ const result = source(mockCompletionContext(text));
 
 	it("suggests number methods after .length().", () => {
 		const text = "{{tags.length().";
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -613,7 +613,7 @@ const result = source(mockCompletionContext(text));
 
 	it("suggests frontmatter properties after comparison operator", () => {
 		const text = '{{link("Books").asFile().ctime == ';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -626,7 +626,7 @@ const result = source(mockCompletionContext(text));
 
 	it("suggests filters after pipe in legacy mode", () => {
 		const text = "{{title | ";
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -643,7 +643,7 @@ const result = source(mockCompletionContext(text));
 
 	it("suggests filters after pipe in expression mode too", () => {
 		const text = '{{link("x").asFile().basename | ';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 
@@ -656,7 +656,7 @@ const result = source(mockCompletionContext(text));
 		// is the variable context. But the completion targets the filter.
 		// Let's test that typing the variable before a pipe works in legacy mode.
 		const text = "{{file.";
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		// In expression mode (no pipe yet), dot triggers method suggestions
 		// Since "file" isn't a recognized type producer, it'll be "unknown"
@@ -670,7 +670,7 @@ const result = source(mockCompletionContext(text));
 		// Text with pipe after bracket → legacy mode
 		const text = "{{cast[0].";
 		// In expression mode (default when ambiguous), [0]. should work
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 		expect(labels).toContain("basename");
@@ -679,7 +679,7 @@ const result = source(mockCompletionContext(text));
 
 	it("handles partial word after dot for filtering", () => {
 		const text = '{{link("Books").asFile().ba';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		// The `from` should be at the start of "ba"
 		expect(result!.from).toBe(text.length - 2);
@@ -689,7 +689,7 @@ const result = source(mockCompletionContext(text));
 
 	it("dot suggestions have correct types", () => {
 		const text = '{{link("Books").asFile().';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 
 		const contentMethod = result!.options.find(o => o.label === "content()");
@@ -714,7 +714,7 @@ const result = source(mockCompletionContext(text));
 
 	it("filter suggestions have function type for icons", () => {
 		const text = "{{title | u";
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const upper = result!.options.find(o => o.label === "upper");
 		expect(upper!.type).toBe("function");
@@ -722,7 +722,7 @@ const result = source(mockCompletionContext(text));
 
 	it("handles today().", () => {
 		const text = "{{today().";
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 		expect(labels).toContain("format()");
@@ -731,7 +731,7 @@ const result = source(mockCompletionContext(text));
 
 	it("handles chained methods like .asFile().content().", () => {
 		const text = '{{link("x").asFile().content().';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 		// content() returns string
@@ -741,7 +741,7 @@ const result = source(mockCompletionContext(text));
 
 	it("handles .tags. (list property on file)", () => {
 		const text = '{{file("x").tags.';
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 		// tags is a list
@@ -752,7 +752,7 @@ const result = source(mockCompletionContext(text));
 
 	it("handles != comparison operator", () => {
 		const text = "{{rating != ";
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 		const labels = result!.options.map(o => o.label);
 		expect(labels).toContain("album");
@@ -766,7 +766,7 @@ const result = source(mockCompletionContext(text));
 
 	it("handles >= comparison operator", () => {
 		const text = "{{rating >= ";
-const result = source(mockCompletionContext(text));
+		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
 	});
 });

@@ -214,12 +214,12 @@ describe("count", () => {
 // ---------------------------------------------------------------------------
 
 describe("calc", () => {
-	it("adds", () => expect(apply(10, "calc:\"+5\""  )).toBe(15));
-	it("subtracts", () => expect(apply(10, "calc:\"-3\""  )).toBe(7));
-	it("multiplies", () => expect(apply(4,  "calc:\"*3\""  )).toBe(12));
-	it("divides", () => expect(apply(10, "calc:\"/2\""  )).toBe(5));
-	it("raises to power with ^", () => expect(apply(2,  "calc:\"^10\"" )).toBe(1024));
-	it("raises to power with **", () => expect(apply(2,  "calc:\"**10\"")).toBe(1024));
+	it("adds", () => expect(apply(10, "calc:\"+5\"")).toBe(15));
+	it("subtracts", () => expect(apply(10, "calc:\"-3\"")).toBe(7));
+	it("multiplies", () => expect(apply(4, "calc:\"*3\"")).toBe(12));
+	it("divides", () => expect(apply(10, "calc:\"/2\"")).toBe(5));
+	it("raises to power with ^", () => expect(apply(2, "calc:\"^10\"")).toBe(1024));
+	it("raises to power with **", () => expect(apply(2, "calc:\"**10\"")).toBe(1024));
 	it("returns original value for non-numeric input", () => {
 		expect(apply("hello", "calc:\"+1\"")).toBe("hello");
 	});

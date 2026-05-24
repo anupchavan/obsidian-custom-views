@@ -5,6 +5,7 @@ import { createTemplateEditor } from "./editor";
 import type { TemplateVariable } from "./editor";
 import { FileSuggest, FolderSuggest, TagSuggest, PropertySuggest, FrontmatterValueSuggest, isWikilink, extractWikilinkTarget, extractWikilinkDisplay, openWikilinkFile } from "./suggests";
 import type { EditorView } from "@codemirror/view";
+import { EditorState, StateEffect } from "@codemirror/state";
 
 
 type PropertyType = "text" | "number" | "date" | "datetime" | "list" | "checkbox" | "file" | "unknown";
@@ -62,6 +63,7 @@ export interface CustomViewsSettings {
 	workInLivePreview: boolean;
 	workInCanvas: boolean;
 	editableContent: boolean;
+	allowJavaScript: boolean;
 	views: ViewConfig[];
 }
 
@@ -70,6 +72,7 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 	workInLivePreview: true,
 	workInCanvas: false,
 	editableContent: false,
+	allowJavaScript: true,
 	views: [
 		{
 			id: 'default-1',
@@ -102,43 +105,42 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.workInLivePreview = value;
 					await this.plugin.saveSettings();
-					const file = this.app.workspace.getActiveFile();
-					if (file) {
-						this.plugin.processActiveView(file).catch(() => {
-							// Error handling for processActiveView
-						});
-					}
+					this.plugin.refreshAllViews();
+					this.display();
 				}));
 
 		new Setting(containerEl)
 			.setName("Work in canvas (experimental)")
-			// .setDesc("Enable to apply custom views to markdown file nodes in canvas files.")
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.workInCanvas)
 				.onChange(async (value) => {
 					this.plugin.settings.workInCanvas = value;
 					await this.plugin.saveSettings();
-					if (value) {
-						this.plugin.processAllCanvasNodes();
-					} else {
-						this.plugin.restoreAllCanvasNodes();
-					}
+					this.plugin.refreshAllViews();
 				}));
 
+		if (this.plugin.settings.workInLivePreview) {
+			new Setting(containerEl)
+				.setName("Editable content in live preview (experimental)")
+				.setDesc("When enabled, the {{file.content}} area becomes an editable live editor instead of a read-only render.")
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.editableContent)
+					.onChange(async (value) => {
+						this.plugin.settings.editableContent = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllViews();
+					}));
+		}
+
 		new Setting(containerEl)
-			.setName("Editable content in live preview (experimental)")
-			.setDesc("When enabled, the {{file.content}} area becomes an editable live editor instead of a read-only render. Requires 'Work in live preview' to be on.")
+			.setName("Allow JavaScript execution")
+			.setDesc("When enabled, inline <script> tags and per-view JS fields are executed. Disable if you only use HTML/CSS templates and want to prevent dynamic code execution.")
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.editableContent)
+				.setValue(this.plugin.settings.allowJavaScript)
 				.onChange(async (value) => {
-					this.plugin.settings.editableContent = value;
+					this.plugin.settings.allowJavaScript = value;
 					await this.plugin.saveSettings();
-					const file = this.app.workspace.getActiveFile();
-					if (file) {
-						this.plugin.processActiveView(file).catch(() => {
-							// Error handling for processActiveView
-						});
-					}
+					this.plugin.refreshAllViews();
 				}));
 
 
@@ -379,8 +381,8 @@ class EditViewModal extends Modal {
 			contentEl.createEl("h3", { text: "Display options" });
 
 			new Setting(contentEl)
-				.setName("Show properties")
-				.setDesc("Show the properties/metadata section when this view is active.")
+				.setName("Show properties in editing view")
+				.setDesc("Show the properties/metadata section in live preview. Properties are always hidden in reading view.")
 				.addToggle(toggle => toggle
 					.setValue(this.view.showProperties ?? true)
 					.onChange((value) => {
@@ -390,8 +392,8 @@ class EditViewModal extends Modal {
 
 			if (obsidianShowInlineTitle) {
 				new Setting(contentEl)
-					.setName("Show inline title")
-					.setDesc("Show the inline title when this view is active.")
+					.setName("Show inline title in editing view")
+					.setDesc("Show the inline title in live preview. The inline title is always hidden in reading view.")
 					.addToggle(toggle => toggle
 						.setValue(this.view.showInlineTitle ?? true)
 						.onChange((value) => {
@@ -441,6 +443,14 @@ class EditViewModal extends Modal {
 		cssContainer.appendChild(this.cssEditor.dom);
 
 		contentEl.createEl("h4", { text: "JavaScript" });
+		const jsDisabled = !this.plugin.settings.allowJavaScript;
+		if (jsDisabled) {
+			contentEl.createEl("p", {
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- quoting exact setting name
+				text: "JavaScript execution is disabled. Enable \"Allow JavaScript execution\" in the plugin settings to use this feature.",
+				cls: "cv-js-disabled-notice",
+			});
+		}
 		const jsContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
 		this.jsEditor = createTemplateEditor({
 			initialContent: this.view.js ?? "",
@@ -452,6 +462,12 @@ class EditViewModal extends Modal {
 			},
 		});
 		jsContainer.appendChild(this.jsEditor.dom);
+		if (jsDisabled) {
+			jsContainer.addClass("cv-editor-disabled");
+			this.jsEditor.dispatch({
+				effects: StateEffect.appendConfig.of(EditorState.readOnly.of(true)),
+			});
+		}
 	}
 
 	onClose() {
@@ -1601,15 +1617,15 @@ export class FilterBuilder {
 				this.onSave();
 			}, filter.operator, this.plugin.app, filter.field);
 
-				// Auto-advance: focus value input if pending
-				if (this.pendingAutoOpen?.filter === filter && this.pendingAutoOpen.action === "value") {
-					this.pendingAutoOpen = null;
-					window.setTimeout(() => {
-						const focusTarget = rhs.querySelector("input, .cv-multi-select-input") as HTMLElement;
-						if (focusTarget) focusTarget.focus();
-					}, 50);
-				}
+			// Auto-advance: focus value input if pending
+			if (this.pendingAutoOpen?.filter === filter && this.pendingAutoOpen.action === "value") {
+				this.pendingAutoOpen = null;
+				window.setTimeout(() => {
+					const focusTarget = rhs.querySelector("input, .cv-multi-select-input") as HTMLElement;
+					if (focusTarget) focusTarget.focus();
+				}, 50);
 			}
+		}
 
 
 		const actions = expression.createDiv({ cls: "cv-filter-row-actions" });
