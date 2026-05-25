@@ -1345,6 +1345,89 @@ export async function processLogicBlocks(
 	// Process {% if %} blocks
 	result = await processIfBlocks(result, ctx);
 
+	// Resolve {{ }} placeholders that reference context variables (loop vars,
+	// {% set %} vars).  This only runs when there are variables — the top-level
+	// call from renderTemplate has an empty variables map, so it won't interfere
+	// with the normal {{ }} resolution that renderTemplate does afterward.
+	if (Object.keys(ctx.variables).length > 0) {
+		result = await resolveVariablePlaceholders(result, ctx);
+	}
+
+	return result;
+}
+
+/**
+ * Resolve {{ expr }} placeholders that reference context variables.
+ * Uses the expression engine so that `{{image}}`, `{{image | upper}}`,
+ * `{{loop.index}}`, and full expressions all work inside loop bodies.
+ */
+async function resolveVariablePlaceholders(template: string, ctx: ExprContext): Promise<string> {
+	const placeholderRegex = /\{\{((?:[^{}]|\{[^{]|\}[^}])*?)\}\}/g;
+	let match;
+	const replacements: { start: number; end: number; value: string }[] = [];
+
+	while ((match = placeholderRegex.exec(template)) !== null) {
+		const inner = match[1].trim();
+		if (!inner) continue;
+
+		// Check if the expression references a known variable (simple identifier
+		// or dotted access like loop.index).  We only resolve here if a variable
+		// is involved; other placeholders are left for renderTemplate.
+		const rootIdentifier = inner.split(/[.|[\s]/)[0].trim();
+		if (!(rootIdentifier in ctx.variables)) continue;
+
+		// Evaluate the full expression (handles pipes, methods, etc.)
+		let value: ExprValue;
+		if (isExpressionMode(inner)) {
+			value = await evaluateExpression(inner, ctx);
+		} else {
+			// Legacy pipe mode: split property from filters
+			let chain = inner;
+			let filterChain: string | undefined;
+			// Find first pipe outside quotes
+			let inQ = false;
+			let qC = '';
+			for (let i = 0; i < chain.length; i++) {
+				const ch = chain[i];
+				if (!inQ && (ch === '"' || ch === "'")) { inQ = true; qC = ch; }
+				else if (inQ && ch === qC) { inQ = false; }
+				else if (!inQ && ch === '|') {
+					filterChain = chain.substring(i + 1).trim();
+					chain = chain.substring(0, i).trim();
+					break;
+				}
+			}
+
+			// Evaluate the identifier/property through the expression engine
+			try {
+				const ast = parseExpression(chain);
+				value = await evaluate(ast, ctx);
+			} catch {
+				continue; // Can't parse — leave for renderTemplate
+			}
+
+			if (filterChain && value !== null && value !== undefined) {
+				const { applyFilterChain } = await import("./filters");
+				value = applyFilterChain(value as Parameters<typeof applyFilterChain>[0], filterChain);
+			}
+		}
+
+		const strValue = value === null || value === undefined ? "" : (
+			typeof value === "string" ? value :
+			typeof value === "number" || typeof value === "boolean" ? String(value) :
+			Array.isArray(value) ? value.map(v => v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ") :
+			JSON.stringify(value)
+		);
+
+		replacements.push({ start: match.index, end: match.index + match[0].length, value: strValue });
+	}
+
+	// Apply replacements in reverse order to preserve offsets
+	let result = template;
+	for (let i = replacements.length - 1; i >= 0; i--) {
+		const r = replacements[i];
+		result = result.substring(0, r.start) + r.value + result.substring(r.end);
+	}
 	return result;
 }
 
@@ -1372,8 +1455,8 @@ async function processSetBlocks(template: string, ctx: ExprContext): Promise<str
 
 /** Process {% for item in list %}...{% endfor %} */
 async function processForBlocks(template: string, ctx: ExprContext): Promise<string> {
-	// Find innermost {% for %} blocks first (no nesting inside)
-	const forRegex = /\{%\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+(.*?)\s*%\}([\s\S]*?)\{%\s*endfor\s*%\}/g;
+	// Match innermost {% for %} blocks (body must not contain another {% for)
+	const forRegex = /\{%\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^%}]*?)\s*%\}((?:(?!\{%\s*for\s)[\s\S])*?)\{%\s*endfor\s*%\}/g;
 	let result = template;
 	let safety = 0;
 

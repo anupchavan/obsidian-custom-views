@@ -812,7 +812,7 @@
     margin-left: auto;
 }
 
-/* Doubled selectors override Obsidian's layout system without !important */
+/* Doubled selectors override Obsidian's layout system without important */
 .obsidian-custom-view-hidden .markdown-source-view.markdown-source-view,
 .obsidian-custom-view-hidden .markdown-preview-view.markdown-preview-view {
     display: none;

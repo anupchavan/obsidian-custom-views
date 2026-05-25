@@ -1089,21 +1089,18 @@ describe("processLogicBlocks", () => {
 	});
 
 	describe("{% for %}", () => {
-		it("iterates over a list from frontmatter", async () => {
+		it("iterates over a list from frontmatter and resolves loop variables", async () => {
 			const ctx = makeContext({ frontmatter: { tags: ["a", "b", "c"] } });
 			const result = await processLogicBlocks("{% for tag in tags %}[{{tag}}]{% endfor %}", ctx);
-			// Logic blocks expand the loop body per item but do NOT resolve {{}} templates
-			// (that's the renderer's job). The loop variable is set in context for each iteration.
-			expect(result).toBe("[{{tag}}][{{tag}}][{{tag}}]");
+			// Loop variables are now resolved inside the for body
+			expect(result).toBe("[a][b][c]");
 		});
 
 		it("provides loop variable", async () => {
 			const ctx = makeContext({ frontmatter: { items: ["x", "y"] } });
 			const result = await processLogicBlocks("{% for item in items %}{{loop.index}}{% endfor %}", ctx);
-			// loop.index is 1-based in Clipper style — stored as object
-			// The template resolution happens later, but the loop context is set
-			expect(result).toContain("{{loop.index}}");
-			// The for block expands per item, so we get two copies
+			// loop.index is 1-based, resolved inside the loop body
+			expect(result).toBe("12");
 		});
 
 		it("renders empty string for non-array", async () => {
@@ -1117,6 +1114,77 @@ describe("processLogicBlocks", () => {
 			const result = await processLogicBlocks("{% for item in missing %}{{item}}{% endfor %}", ctx);
 			expect(result).toBe("");
 		});
+
+		it("resolves loop variable with filter chains", async () => {
+			const ctx = makeContext({ frontmatter: { names: ["alice", "bob"] } });
+			const result = await processLogicBlocks(
+				"{% for name in names %}{{name | upper}}, {% endfor %}",
+				ctx
+			);
+			expect(result).toBe("ALICE, BOB, ");
+		});
+
+		it("resolves loop variable with replace filter (wiki-link stripping)", async () => {
+			const ctx = makeContext({
+				frontmatter: { assets: ["[[photo1.jpg]]", "[[photo2.jpg]]"] }
+			});
+			const result = await processLogicBlocks(
+				'{% for img in assets %}{{img | replace:"[[","" | replace:"]]",""}},{% endfor %}',
+				ctx
+			);
+			expect(result).toBe("photo1.jpg,photo2.jpg,");
+		});
+
+		it("resolves loop.index0, loop.first, loop.last, loop.length", async () => {
+			const ctx = makeContext({ frontmatter: { items: ["a", "b", "c"] } });
+			const result = await processLogicBlocks(
+				"{% for item in items %}{{loop.index0}}:{{loop.first}}:{{loop.last}} {% endfor %}",
+				ctx
+			);
+			expect(result).toBe("0:true:false 1:false:false 2:false:true ");
+		});
+
+		it("does not resolve frontmatter placeholders (leaves for renderer)", async () => {
+			const ctx = makeContext({ frontmatter: { items: ["x"], title: "My Title" } });
+			const result = await processLogicBlocks(
+				"{% for item in items %}{{item}}:{{title}}{% endfor %}",
+				ctx
+			);
+			// {{item}} is a loop variable so it gets resolved
+			// {{title}} is NOT a loop variable — it's frontmatter, so it stays for the renderer
+			expect(result).toBe("x:{{title}}");
+		});
+
+		it("resolves loop variable used in HTML attributes", async () => {
+			const ctx = makeContext({
+				frontmatter: { images: ["cat.jpg", "dog.jpg"] }
+			});
+			const result = await processLogicBlocks(
+				'{% for src in images %}<img src="{{src}}" alt="">{% endfor %}',
+				ctx
+			);
+			expect(result).toBe('<img src="cat.jpg" alt=""><img src="dog.jpg" alt="">');
+		});
+	});
+
+	describe("{% set %} variable resolution", () => {
+		it("resolves set variables in subsequent placeholders", async () => {
+			const ctx = makeContext({ frontmatter: { name: "world" } });
+			const result = await processLogicBlocks(
+				'{% set greeting = "hello" %}{{greeting}}',
+				ctx
+			);
+			expect(result).toBe("hello");
+		});
+
+		it("resolves set variable with filter chain", async () => {
+			const ctx = makeContext();
+			const result = await processLogicBlocks(
+				'{% set word = "hello" %}{{word | upper}}',
+				ctx
+			);
+			expect(result).toBe("HELLO");
+		});
 	});
 
 	describe("nested logic", () => {
@@ -1126,10 +1194,17 @@ describe("processLogicBlocks", () => {
 				"{% for n in nums %}{% if n > 4 %}{{n}} {% endif %}{% endfor %}",
 				ctx
 			);
-			// Only 5 and 8 pass the filter
-			expect(result.trim()).toContain("{{n}}");
-			// The {{n}} template vars would be resolved by the renderer,
-			// but the logic blocks correctly filter the structure
+			// Only 5 and 8 pass the filter, and {{n}} is resolved to the actual values
+			expect(result.trim()).toBe("5 8");
+		});
+
+		it("for inside for with different variable names", async () => {
+			const ctx = makeContext({ frontmatter: { rows: ["a", "b"], cols: ["1", "2"] } });
+			const result = await processLogicBlocks(
+				"{% for row in rows %}{% for col in cols %}{{row}}{{col}} {% endfor %}{% endfor %}",
+				ctx
+			);
+			expect(result).toBe("a1 a2 b1 b2 ");
 		});
 	});
 });
