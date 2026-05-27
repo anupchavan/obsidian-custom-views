@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for Custom Views? We'd love to hear it! Please describe what you'd like and why it would be useful.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What problem does this solve, or what use case does it address? Is this related to a frustration with the current plugin?
+      placeholder: "I want to be able to ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe how you'd like this to work. Include template examples, UI mockups, or screenshots if helpful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any workarounds or alternative approaches?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other context, screenshots, or examples that would help us understand the request.
