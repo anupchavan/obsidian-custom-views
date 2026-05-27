@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+    - name: Questions and discussions
+      url: https://github.com/anupchavan/obsidian-custom-views/discussions
+      about: Ask questions, share templates, or discuss ideas before opening an issue.

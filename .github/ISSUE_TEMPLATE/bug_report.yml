@@ -1,0 +1,92 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: "When I do X, Y happens instead of Z."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step instructions to reproduce the behavior.
+      placeholder: |
+        1. Open a note that matches a custom view
+        2. Switch to reading view
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or screen recordings
+      description: If applicable, add screenshots or recordings to help explain the problem.
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: "Found in Settings → Community plugins → Custom Views"
+      placeholder: "0.2.5"
+    validations:
+      required: true
+
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian version
+      description: "Found in Settings → About"
+      placeholder: "1.7.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - iOS
+        - Android
+    validations:
+      required: true
+
+  - type: dropdown
+    id: view-mode
+    attributes:
+      label: Which view mode does this occur in?
+      options:
+        - Reading view
+        - Live preview
+        - Both
+        - Not applicable
+
+  - type: checkboxes
+    id: other-plugins
+    attributes:
+      label: Reproducible with other plugins disabled?
+      description: Try disabling all other community plugins and see if the issue persists.
+      options:
+        - label: I have tested with all other plugins disabled and the issue still occurs.
