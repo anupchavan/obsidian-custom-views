@@ -78,7 +78,7 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 			id: 'default-1',
 			name: 'View 1',
 			rules: JSON.parse(JSON.stringify(DEFAULT_RULES)) as FilterGroup,
-			template: "<h1>{{file.basename}}</h1> <p>{{file.content}}</p>"
+			template: "<h1>{{file.basename}}</h1>\n{{file.content}}"
 		}
 	]
 };
@@ -159,7 +159,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						id: `${Date.now()}`,
 						name: "New View",
 						rules: JSON.parse(JSON.stringify(DEFAULT_RULES)) as FilterGroup,
-						template: "<h1>{{file.basename}}</h1>"
+						template: "<h1>{{file.basename}}</h1>\n{{file.content}}"
 					};
 					this.plugin.settings.views.push(newView);
 					await this.plugin.saveSettings();
