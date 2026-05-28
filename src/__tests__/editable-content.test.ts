@@ -148,8 +148,8 @@ describe("templateHasEditableContent", () => {
 // ---------------------------------------------------------------------------
 
 describe("editableContent setting", () => {
-	it("defaults to false in DEFAULT_SETTINGS", async () => {
+	it("defaults to true in DEFAULT_SETTINGS", async () => {
 		const { DEFAULT_SETTINGS } = await import("../settings");
-		expect(DEFAULT_SETTINGS.editableContent).toBe(false);
+		expect(DEFAULT_SETTINGS.editableContent).toBe(true);
 	});
 });

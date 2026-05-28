@@ -132,25 +132,39 @@ export default class CustomViewsPlugin extends Plugin {
 		});
 
 		this.registerEvent(
-			this.app.workspace.on("file-open", (file) => this.processActiveView(file))
+			this.app.workspace.on("file-open", (file) => {
+				console.log("[cv] file-open fired", file?.name);
+				setTimeout(() => {
+					console.log("[cv] file-open setTimeout fired", file?.name);
+					void this.processActiveView(file);
+				}, 0);
+			})
 		);
 
 		this.registerEvent(
 			this.app.workspace.on("layout-change", () => {
-				const file = this.app.workspace.getActiveFile();
-
-				void this.processActiveView(file);
-				if (this.settings.workInCanvas) {
-					void this.processAllCanvasNodes();
-				}
+				setTimeout(() => {
+					const file = this.app.workspace.getActiveFile();
+					void this.processActiveView(file);
+					if (this.settings.workInCanvas) {
+						void this.processAllCanvasNodes();
+					}
+				}, 0);
 			})
 		);
 
-		// Process canvas nodes when canvas changes
+		// Process canvas nodes and markdown views when active leaf changes
 		this.registerEvent(
-			this.app.workspace.on("active-leaf-change", () => {
+			this.app.workspace.on("active-leaf-change", (leaf) => {
+				console.log("[cv] active-leaf-change fired", leaf?.view?.getViewType(), (leaf?.view as MarkdownView)?.file?.name);
 				if (this.settings.workInCanvas) {
 					void this.processAllCanvasNodes();
+				}
+				if (leaf && leaf.view instanceof MarkdownView && leaf.view.file) {
+					setTimeout(() => {
+						console.log("[cv] active-leaf-change setTimeout fired", (leaf.view as MarkdownView).file?.name);
+						void this.processActiveView((leaf.view as MarkdownView).file);
+					}, 0);
 				}
 			})
 		);
@@ -182,15 +196,27 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	async processActiveView(file: TFile | null) {
+		console.log("[cv] processActiveView called", file?.name, "processing:", this.processing);
 		if (!file) return;
 
 		// Guard against concurrent calls (file-open + layout-change can fire together)
 		if (this.processing) return;
 		this.processing = true;
 		try {
-			const leaf = this.app.workspace.getLeaf(false);
-			if (leaf.view instanceof MarkdownView) {
-				await this._processLeaf(leaf.view, file);
+			// Find the leaf that is actually showing this exact file.
+			// Using getLeaf(false) would always return the active leaf and do DOM work
+			// even before the MarkdownView has updated its .file (e.g. during keyboard nav
+			// in the file explorer), which causes appendChild to steal focus.
+			// iterateAllLeaves with file matching naturally skips processing when the view
+			// hasn't settled yet, preventing the focus steal.
+			let targetView: MarkdownView | null = null;
+			this.app.workspace.iterateAllLeaves((leaf) => {
+				if (leaf.view instanceof MarkdownView && leaf.view.file === file) {
+					targetView = leaf.view as unknown as MarkdownView;
+				}
+			});
+			if (targetView) {
+				await this._processLeaf(targetView, file);
 			}
 		} finally {
 			this.processing = false;
