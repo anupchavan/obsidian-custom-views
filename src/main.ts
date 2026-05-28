@@ -134,6 +134,7 @@ export default class CustomViewsPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("file-open", (file) => {
 				console.log("[cv] file-open fired", file?.name);
+				if (file) this.preHideIfMatch(file);
 				setTimeout(() => {
 					console.log("[cv] file-open setTimeout fired", file?.name);
 					void this.processActiveView(file);
@@ -161,9 +162,11 @@ export default class CustomViewsPlugin extends Plugin {
 					void this.processAllCanvasNodes();
 				}
 				if (leaf && leaf.view instanceof MarkdownView && leaf.view.file) {
+					const file = leaf.view.file;
+					this.preHideIfMatch(file);
 					setTimeout(() => {
 						console.log("[cv] active-leaf-change setTimeout fired", (leaf.view as MarkdownView).file?.name);
-						void this.processActiveView((leaf.view as MarkdownView).file);
+						void this.processActiveView(file);
 					}, 0);
 				}
 			})
@@ -193,6 +196,30 @@ export default class CustomViewsPlugin extends Plugin {
 		});
 		// Clean up canvas nodes
 		this.restoreAllCanvasNodes();
+	}
+
+	/**
+	 * Synchronously hides the markdown content for a file if it matches a view config.
+	 * Called before the setTimeout in event handlers to eliminate flicker — the markdown
+	 * is hidden immediately, then the async render fills in the custom view content.
+	 * Only adds a CSS class (no DOM rearrangement), so it does not steal focus.
+	 */
+	private preHideIfMatch(file: TFile) {
+		if (!this.settings.enabled) return;
+		const cache = this.app.metadataCache.getFileCache(file);
+		const matches = this.settings.views.some(v =>
+			checkRules(this.app, v.rules, file, cache?.frontmatter)
+		);
+		if (!matches) return;
+
+		// Only use iterateAllLeaves with file matching — getLeaf(false) would hide the
+		// active leaf unconditionally, which sets display:none on .cm-editor and causes
+		// Obsidian to lose the file explorer's has-focus tracking.
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			if (leaf.view instanceof MarkdownView && leaf.view.file === file) {
+				leaf.view.contentEl.addClass(HIDE_MARKDOWN_CLASS);
+			}
+		});
 	}
 
 	async processActiveView(file: TFile | null) {
@@ -320,6 +347,12 @@ export default class CustomViewsPlugin extends Plugin {
 	// ─── Read-only Overlay (existing behavior) ─────────────────────────────────
 
 	async injectCustomView(container: HTMLElement, file: TFile, template: string, viewConfig?: ViewConfig) {
+		// Hide markdown immediately — synchronously, before any async template work begins.
+		// This closes the gap where file-open fired but preHideIfMatch didn't catch the leaf
+		// yet (because leaf.view.file hadn't updated). The container is already the correct
+		// one (found via iterateAllLeaves in processActiveView), so this is safe.
+		container.addClass(HIDE_MARKDOWN_CLASS);
+
 		let customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`) as HTMLElement;
 
 		if (!customEl) {
