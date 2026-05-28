@@ -71,7 +71,7 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 	enabled: true,
 	workInLivePreview: true,
 	workInCanvas: false,
-	editableContent: false,
+	editableContent: true,
 	allowJavaScript: true,
 	views: [
 		{
@@ -121,7 +121,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.workInLivePreview) {
 			new Setting(containerEl)
-				.setName("Editable content in live preview (experimental)")
+				.setName("Editable content in live preview")
 				.setDesc("When enabled, the {{file.content}} area becomes an editable live editor instead of a read-only render.")
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.editableContent)

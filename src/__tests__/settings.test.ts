@@ -27,8 +27,8 @@ describe("DEFAULT_SETTINGS", () => {
 		expect(DEFAULT_SETTINGS.workInCanvas).toBe(false);
 	});
 
-	it("has editableContent: false by default", () => {
-		expect(DEFAULT_SETTINGS.editableContent).toBe(false);
+	it("has editableContent: true by default", () => {
+		expect(DEFAULT_SETTINGS.editableContent).toBe(true);
 	});
 
 	it("has allowJavaScript: true by default", () => {
