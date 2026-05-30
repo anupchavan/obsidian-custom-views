@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, ExtraButtonComponent, SettingGroup } from "obsidian";
+import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, ExtraButtonComponent, SettingGroup, SettingDefinitionItem } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 import { createTemplateEditor } from "./editor";
@@ -6,7 +6,6 @@ import type { TemplateVariable } from "./editor";
 import { FileSuggest, FolderSuggest, TagSuggest, PropertySuggest, FrontmatterValueSuggest, isWikilink, extractWikilinkTarget, extractWikilinkDisplay, openWikilinkFile } from "./suggests";
 import type { EditorView } from "@codemirror/view";
 import { EditorState, StateEffect } from "@codemirror/state";
-import { arraymove } from "./utils";
 
 
 type PropertyType = "text" | "number" | "date" | "datetime" | "list" | "checkbox" | "file" | "unknown";
@@ -86,13 +85,123 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 
 export class CustomViewsSettingTab extends PluginSettingTab {
 	plugin: CustomViewsPlugin;
-	private draggedElement: HTMLElement | null = null;
-	private draggedIndex: number | null = null;
 
 	constructor(app: App, plugin: CustomViewsPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
+
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
+		await this.plugin.saveSettings();
+
+		if (key === 'workInLivePreview') {
+			this.plugin.refreshAllViews();
+			this.refreshDomState();
+		} else if (key === 'workInCanvas' || key === 'editableContent' || key === 'allowJavaScript') {
+			this.plugin.refreshAllViews();
+		}
+	}
+
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				type: 'group',
+				items: [
+					{
+						name: "Work in live preview",
+						desc: "Enable to allow custom views in both live preview and reading view. Disable to limit them to reading view only.",
+						control: { type: "toggle", key: "workInLivePreview" },
+					},
+					{
+						name: "Editable content in live preview",
+						desc: "When enabled, the {{file.content}} area becomes an editable live editor instead of a read-only render.",
+						visible: () => this.plugin.settings.workInLivePreview,
+						control: { type: "toggle", key: "editableContent" },
+					},
+					{
+						name: "Work in canvas (experimental)",
+						control: { type: "toggle", key: "workInCanvas" },
+					},
+					{
+						name: "Allow JavaScript execution",
+						desc: "When enabled, inline <script> tags and per-view JS fields are executed. Disable if you only use HTML/CSS templates and want to prevent dynamic code execution.",
+						control: { type: "toggle", key: "allowJavaScript" },
+					},
+				],
+			},
+			{
+				type: "list" as const,
+				heading: "Views",
+				emptyState: "No views added yet.",
+				addItem: {
+					name: "Add view",
+					action: () => { void this.addNewViewAndEdit(); },
+				},
+				onReorder: (oldIndex: number, newIndex: number) => {
+					void this.reorderViews(oldIndex, newIndex);
+				},
+				onDelete: (index: number) => {
+					void this.deleteView(index).then(() => this.update());
+				},
+				items: this.plugin.settings.views.map((view) => ({
+					name: view.name,
+					searchable: false,
+					render: (setting: Setting) => {
+						setting.addExtraButton((btn) =>
+							btn
+								.setIcon("square-pen")
+								.setTooltip("Edit " + view.name)
+								.onClick(() => this.openEditModal(view))
+						);
+					},
+				})),
+			}
+		]
+	}
+
+	// ─── Reusable helpers (shared by declarative & imperative paths) ──────────
+
+	private createNewView(): ViewConfig {
+		return {
+			id: `${Date.now()}`,
+			name: "New View",
+			rules: JSON.parse(JSON.stringify(DEFAULT_RULES)) as FilterGroup,
+			template: "<h1>{{file.basename}}</h1>\n{{file.content}}"
+		};
+	}
+
+	private async addNewViewAndEdit() {
+		const newView = this.createNewView();
+		this.plugin.settings.views.push(newView);
+		await this.plugin.saveSettings();
+		this.update();
+		this.openEditModal(newView);
+	}
+
+	private async deleteView(index: number) {
+		this.plugin.settings.views.splice(index, 1);
+		await this.plugin.saveSettings();
+		this.plugin.refreshAllViews();
+	}
+
+	private async reorderViews(oldIndex: number, newIndex: number) {
+		const views = this.plugin.settings.views;
+		const [moved] = views.splice(oldIndex, 1);
+		if (moved !== undefined) {
+			views.splice(newIndex, 0, moved);
+		}
+		await this.plugin.saveSettings();
+	}
+
+	private openEditModal(view: ViewConfig) {
+		new EditViewModal(this.app, this.plugin, view, () => {
+			this.update();
+			this.plugin.refreshAllViews();
+		}).open();
+	}
+
+	// ─── Legacy imperative display() ──────────────────────────────────────────
 
 	display(): void {
 		const { containerEl } = this;
@@ -113,17 +222,6 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					}));
 		})
 
-		generalSettings.addSetting((setting: Setting) => {
-			setting.setName("Work in canvas (experimental)")
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.workInCanvas)
-					.onChange(async (value) => {
-						this.plugin.settings.workInCanvas = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllViews();
-					}));
-		})
-
 		if (this.plugin.settings.workInLivePreview) {
 			generalSettings.addSetting((setting) => {
 				setting
@@ -139,6 +237,18 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			})
 		}
 
+
+		generalSettings.addSetting((setting: Setting) => {
+			setting.setName("Work in canvas (experimental)")
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.workInCanvas)
+					.onChange(async (value) => {
+						this.plugin.settings.workInCanvas = value;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllViews();
+					}));
+		})
+
 		generalSettings.addSetting((setting: Setting) => {
 			setting
 				.setName("Allow JavaScript execution")
@@ -153,89 +263,53 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		});
 
 
-		const viewsList = new SettingGroup(containerEl)
-		viewsList.setHeading("Views Configuration")
+		const viewsList = new SettingGroup(containerEl);
+		viewsList.setHeading("Views")
 			.addExtraButton((cb: ExtraButtonComponent) => {
 				cb.setIcon("plus")
 					.setTooltip("Add new view")
-					.onClick(async () => {
-						const newView: ViewConfig = {
-							id: `${Date.now()}`,
-							name: "New View",
-							rules: JSON.parse(JSON.stringify(DEFAULT_RULES)) as FilterGroup,
-							template: "<h1>{{file.basename}}</h1>\n{{file.content}}"
-						};
-						this.plugin.settings.views.push(newView);
-						await this.plugin.saveSettings();
-						this.display();
-
-
-						this.display();
-						new EditViewModal(this.app, this.plugin, newView, () => {
-							this.display();
-							this.plugin.refreshAllViews();
-						}).open();
-					})
-			})
+					.onClick(() => this.addNewViewAndEdit());
+			});
 
 		if (this.plugin.settings.views.length === 0) {
 			viewsList.addSetting((setting) => {
-				setting.setName("No views have been added.");
-			})
+				setting.setName("No views added yet.");
+			});
 		}
 		this.plugin.settings.views.forEach((view, index) => {
 			viewsList.addSetting((setting) => {
 				setting
 					.setName(view.name)
 					.addExtraButton((cb: ExtraButtonComponent) => {
-						cb
-							.setIcon("chevron-up")
+						cb.setIcon("chevron-up")
 							.setTooltip("Move up")
 							.onClick(async () => {
-
-								arraymove(
-									this.plugin.settings.views,
-									index,
-									index - 1
-								)
-								await this.plugin.saveData(this.plugin.settings);
+								await this.reorderViews(index, index - 1);
 								this.display();
-							})
-
+							});
 					})
 					.addExtraButton((cb: ExtraButtonComponent) => {
-						cb
-							.setIcon("chevron-down")
+						cb.setIcon("chevron-down")
 							.setTooltip("Move down")
 							.onClick(async () => {
-								arraymove(
-									this.plugin.settings.views,
-									index,
-									index + 1
-								)
-								await this.plugin.saveData(this.plugin.settings);
+								await this.reorderViews(index, index + 1);
 								this.display();
-							})
+							});
 					})
 					.addExtraButton((cb: ExtraButtonComponent) => {
 						cb.setIcon("square-pen")
 							.setTooltip("Edit " + view.name)
-							.onClick(() => new EditViewModal(this.app, this.plugin, view, () => {
-								this.display();
-								this.plugin.refreshAllViews();
-							}).open());
+							.onClick(() => this.openEditModal(view));
 					})
 					.addExtraButton((cb: ExtraButtonComponent) => {
 						cb.setIcon("trash")
 							.setTooltip("Delete " + view.name)
 							.onClick(async () => {
-								this.plugin.settings.views.splice(index, 1);
-								await this.plugin.saveData(this.plugin.settings);
+								await this.deleteView(index);
 								this.display();
-							})
-
-					})
-			})
+							});
+					});
+			});
 		})
 
 	}

@@ -133,10 +133,9 @@ export default class CustomViewsPlugin extends Plugin {
 
 		this.registerEvent(
 			this.app.workspace.on("file-open", (file) => {
-				console.log("[cv] file-open fired", file?.name);
+
 				if (file) this.preHideIfMatch(file);
-				setTimeout(() => {
-					console.log("[cv] file-open setTimeout fired", file?.name);
+				window.setTimeout(() => {
 					void this.processActiveView(file);
 				}, 0);
 			})
@@ -144,7 +143,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 		this.registerEvent(
 			this.app.workspace.on("layout-change", () => {
-				setTimeout(() => {
+				window.setTimeout(() => {
 					const file = this.app.workspace.getActiveFile();
 					void this.processActiveView(file);
 					if (this.settings.workInCanvas) {
@@ -157,15 +156,13 @@ export default class CustomViewsPlugin extends Plugin {
 		// Process canvas nodes and markdown views when active leaf changes
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", (leaf) => {
-				console.log("[cv] active-leaf-change fired", leaf?.view?.getViewType(), (leaf?.view as MarkdownView)?.file?.name);
 				if (this.settings.workInCanvas) {
 					void this.processAllCanvasNodes();
 				}
 				if (leaf && leaf.view instanceof MarkdownView && leaf.view.file) {
 					const file = leaf.view.file;
 					this.preHideIfMatch(file);
-					setTimeout(() => {
-						console.log("[cv] active-leaf-change setTimeout fired", (leaf.view as MarkdownView).file?.name);
+					window.setTimeout(() => {
 						void this.processActiveView(file);
 					}, 0);
 				}
@@ -223,7 +220,6 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	async processActiveView(file: TFile | null) {
-		console.log("[cv] processActiveView called", file?.name, "processing:", this.processing);
 		if (!file) return;
 
 		// Guard against concurrent calls (file-open + layout-change can fire together)
@@ -239,7 +235,7 @@ export default class CustomViewsPlugin extends Plugin {
 			let targetView: MarkdownView | null = null;
 			this.app.workspace.iterateAllLeaves((leaf) => {
 				if (leaf.view instanceof MarkdownView && leaf.view.file === file) {
-					targetView = leaf.view as unknown as MarkdownView;
+					targetView = leaf.view;
 				}
 			});
 			if (targetView) {
