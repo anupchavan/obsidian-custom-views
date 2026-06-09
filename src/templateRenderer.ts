@@ -39,6 +39,9 @@ export async function renderTemplate(
 		if (isFileProperty) {
 			if (key === "name") value = file.name;
 			else if (key === "basename") value = file.basename;
+			else if (key === "path") value = file.path;
+			else if (key === "folder") value = file.parent?.path || "";
+			else if (key === "extension") value = file.extension;
 			else if (key === "size") value = file.stat.size;
 			else if (key === "ctime") value = file.stat.ctime; // Timestamp for dates
 			else if (key === "mtime") value = file.stat.mtime;
