@@ -182,6 +182,8 @@ You can include `<script>` tags in your templates for dynamic behavior. Scripts 
 > [!WARNING]
 > Scripts in templates are executed when the view is rendered. Be careful with scripts from untrusted sources.
 
+Custom Views uses the [`@silentvoid13/rusty_engine`](https://github.com/SilentVoid13/rusty_engine) WASM template engine, originally created for [Templater](https://github.com/SilentVoid13/Templater), to execute template JavaScript.
+
 ## Examples
 
 ### Movie Card View
@@ -329,3 +331,7 @@ Filter arguments can be:
 ## Contributing
 
 Any contributions and PRs are welcome! Feel free to open an issue or submit a pull request.
+
+## Acknowledgements
+
+JavaScript template execution is powered by [`@silentvoid13/rusty_engine`](https://github.com/SilentVoid13/rusty_engine), the WASM engine created for [Templater](https://github.com/SilentVoid13/Templater).

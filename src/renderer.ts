@@ -4,6 +4,8 @@ import { isExpressionMode, evaluateExpression, processLogicBlocks } from "./expr
 import type { ExprContext } from "./expression";
 import { stripFrontmatter } from "./frontmatter";
 import type { ViewConfig } from "./types";
+import { executeCustomViewJavaScript } from "./script-engine";
+import type { CustomViewScriptContext } from "./script-engine";
 
 // ---------------------------------------------------------------------------
 // Cross-file property resolution helpers
@@ -316,17 +318,17 @@ export async function renderTemplate(
 
 	// Execute scripts only when JavaScript execution is allowed
 	if (allowJavaScript) {
+		const scriptContext = createScriptContext(app, file, container, frontmatter, bodyContent, viewConfig);
+
 		// Execute inline scripts from the HTML template
-		executeScripts(container);
+		await executeScripts(container, scriptContext);
 
 		// Execute JS from the separate JS field (with template resolution)
 		if (viewConfig?.js) {
 			const resolvedJs = await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent);
 			if (resolvedJs.trim()) {
 				try {
-					// eslint-disable-next-line @typescript-eslint/no-implied-eval -- runs the user's own per-view JS; opt-in via the allowJavaScript setting
-					const fn = new Function(resolvedJs);
-					fn.call(container);
+					await executeCustomViewJavaScript(resolvedJs, scriptContext);
 				} catch (e) {
 					console.error('[Custom Views] Error executing view JS:', e);
 				}
@@ -363,6 +365,27 @@ export async function renderTemplate(
 		// removes all children but the observer still watches the element).
 		(container as ScopedContainer).__cvScopeObserver = observer;
 	}
+}
+
+function createScriptContext(
+	app: App,
+	file: TFile,
+	container: HTMLElement,
+	frontmatter: Record<string, unknown> | undefined,
+	bodyContent: string,
+	viewConfig: ViewConfig | undefined,
+): CustomViewScriptContext {
+	const ownerDocument = container.ownerDocument;
+	return {
+		app,
+		file,
+		container,
+		frontmatter,
+		bodyContent,
+		viewConfig,
+		activeDocument: ownerDocument,
+		activeWindow: ownerDocument.defaultView ?? activeWindow,
+	};
 }
 
 /**
@@ -532,33 +555,30 @@ async function resolveTemplateRaw(
  * Scripts with a `src` attribute are intentionally ignored — loading external
  * scripts would allow arbitrary remote code execution, which violates
  * Obsidian's plugin guidelines.  Only inline script content (written by the
- * user directly in their template) is evaluated, using the Function constructor
- * rather than dynamic `<script>` element injection so that no external URLs
- * can be loaded.
+ * user directly in their template) is evaluated through the bundled WASM
+ * template engine rather than DOM `<script>` injection, so external URLs
+ * are never loaded.
  *
  * @param container - The container whose inline scripts should be executed
  */
-function executeScripts(container: HTMLElement): void {
+async function executeScripts(
+	container: HTMLElement,
+	scriptContext: CustomViewScriptContext,
+): Promise<void> {
 	const scripts = Array.from(container.querySelectorAll('script'));
 
-	scripts.forEach((script) => {
+	for (const script of scripts) {
 		// Silently drop src-based scripts — external code must never be loaded.
 		if (!script.src) {
 			const code = script.textContent?.trim();
 			if (code) {
 				try {
-					// The Function constructor creates a new function in the
-					// global scope (same as an inline script would) without
-					// injecting a DOM <script> element.  `this` is bound to
-					// the container so template scripts can reference it.
-					// eslint-disable-next-line @typescript-eslint/no-implied-eval -- runs the user's own inline <script> from their template; opt-in via the allowJavaScript setting
-					const fn = new Function(code);
-					fn.call(container);
+					await executeCustomViewJavaScript(code, scriptContext);
 				} catch (e) {
 					console.error('[Custom Views] Error executing template script:', e);
 				}
 			}
 		}
 		script.remove();
-	});
+	}
 }

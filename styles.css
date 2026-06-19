@@ -850,6 +850,11 @@
     -webkit-user-select: text;
 }
 
+.obsidian-custom-view-render.obsidian-custom-view-pending {
+    visibility: hidden;
+    pointer-events: none;
+}
+
 .obsidian-custom-view-hidden {
     position: relative;
 }

@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, ExtraButtonComponent, SettingGroup, SettingDefinitionItem } from "obsidian";
+import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 import { createTemplateEditor } from "./editor";
@@ -98,13 +98,17 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 		if (key === 'workInLivePreview') {
 			this.plugin.refreshAllViews();
-			this.refreshDomState();
+			if (requireApiVersion("1.13.0")) {
+				this.refreshDomState();
+			}
 		} else if (key === 'workInCanvas' || key === 'editableContent' || key === 'allowJavaScript') {
 			this.plugin.refreshAllViews();
 		}
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
+		if (!requireApiVersion("1.13.0")) return [];
+
 		return [
 			{
 				type: 'group',
@@ -143,7 +147,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					void this.reorderViews(oldIndex, newIndex);
 				},
 				onDelete: (index: number) => {
-					void this.deleteView(index).then(() => this.update());
+					void this.deleteView(index).then(() => this.refreshSettingsTab());
 				},
 				items: this.plugin.settings.views.map((view) => ({
 					name: view.name,
@@ -161,7 +165,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		]
 	}
 
-	// ─── Reusable helpers (shared by declarative & imperative paths) ──────────
+	// ─── Reusable helpers ─────────────────────────────────────────────────────
 
 	private createNewView(): ViewConfig {
 		return {
@@ -176,7 +180,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		const newView = this.createNewView();
 		this.plugin.settings.views.push(newView);
 		await this.plugin.saveSettings();
-		this.update();
+		this.refreshSettingsTab();
 		this.openEditModal(newView);
 	}
 
@@ -197,14 +201,24 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 	private openEditModal(view: ViewConfig) {
 		new EditViewModal(this.app, this.plugin, view, () => {
-			this.update();
+			this.refreshSettingsTab();
 			this.plugin.refreshAllViews();
 		}).open();
 	}
 
-	// ─── Legacy imperative display() ──────────────────────────────────────────
+	private refreshSettingsTab() {
+		if (requireApiVersion("1.13.0")) {
+			this.update();
+		} else {
+			this.renderLegacySettings();
+		}
+	}
 
 	display(): void {
+		this.renderLegacySettings();
+	}
+
+	private renderLegacySettings(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 
@@ -219,9 +233,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						this.plugin.settings.workInLivePreview = value;
 						await this.plugin.saveSettings();
 						this.plugin.refreshAllViews();
-						this.display();
+						this.renderLegacySettings();
 					}));
-		})
+		});
 
 		if (this.plugin.settings.workInLivePreview) {
 			generalSettings.addSetting((setting) => {
@@ -235,9 +249,8 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 							this.plugin.refreshAllViews();
 						}));
-			})
+			});
 		}
-
 
 		generalSettings.addSetting((setting: Setting) => {
 			setting.setName("Work in canvas (experimental)")
@@ -248,7 +261,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						this.plugin.refreshAllViews();
 					}));
-		})
+		});
 
 		generalSettings.addSetting((setting: Setting) => {
 			setting
@@ -263,13 +276,12 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					}));
 		});
 
-
 		const viewsList = new SettingGroup(containerEl);
 		viewsList.setHeading("Views")
 			.addExtraButton((cb: ExtraButtonComponent) => {
 				cb.setIcon("plus")
 					.setTooltip("Add new view")
-					.onClick(() => this.addNewViewAndEdit());
+					.onClick(() => { void this.addNewViewAndEdit(); });
 			});
 
 		if (this.plugin.settings.views.length === 0) {
@@ -277,6 +289,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				setting.setName("No views added yet.");
 			});
 		}
+
 		this.plugin.settings.views.forEach((view, index) => {
 			viewsList.addSetting((setting) => {
 				setting
@@ -286,7 +299,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 							.setTooltip("Move up")
 							.onClick(async () => {
 								await this.reorderViews(index, index - 1);
-								this.display();
+								this.renderLegacySettings();
 							});
 					})
 					.addExtraButton((cb: ExtraButtonComponent) => {
@@ -294,7 +307,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 							.setTooltip("Move down")
 							.onClick(async () => {
 								await this.reorderViews(index, index + 1);
-								this.display();
+								this.renderLegacySettings();
 							});
 					})
 					.addExtraButton((cb: ExtraButtonComponent) => {
@@ -307,14 +320,12 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 							.setTooltip("Delete " + view.name)
 							.onClick(async () => {
 								await this.deleteView(index);
-								this.display();
+								this.renderLegacySettings();
 							});
 					});
 			});
-		})
-
+		});
 	}
-
 
 }
 

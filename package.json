@@ -48,6 +48,7 @@
         "vitest": "^4.1.6"
     },
     "dependencies": {
+        "@silentvoid13/rusty_engine": "^0.4.0",
         "nanoid": "^5.1.6"
     },
     "overrides": {
