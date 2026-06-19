@@ -75,6 +75,9 @@ const context = await esbuild.context({
     ],
     format: "cjs",
     target: "es2018",
+    loader: {
+        ".wasm": "binary",
+    },
     logLevel: "info",
     sourcemap: prod ? false : "inline",
     treeShaking: true,

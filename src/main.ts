@@ -5,11 +5,13 @@ import { CustomViewsSettings, DEFAULT_SETTINGS, CustomViewsSettingTab } from "./
 import { checkRules } from "./matcher";
 import { renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR } from "./renderer";
 import { createEditableContentExtensions } from "./editable-content";
+import { warmCustomViewScriptEngine } from "./script-engine";
 import type { ViewConfig } from "./types";
 
 const CUSTOM_VIEW_CLASS = "obsidian-custom-view-render";
 const HIDE_MARKDOWN_CLASS = "obsidian-custom-view-hidden";
 const EDITABLE_MODE_CLASS = "obsidian-custom-view-editable";
+const PENDING_VIEW_CLASS = "obsidian-custom-view-pending";
 
 /**
  * Interface for canvas node structure
@@ -94,6 +96,9 @@ export default class CustomViewsPlugin extends Plugin {
 	/** Guard against concurrent processActiveView calls */
 	private processing = false;
 
+	/** Latest file requested while another render is in progress */
+	private pendingProcessFile: TFile | null = null;
+
 	/** Bumped on settings save to invalidate stateKey cache */
 	private settingsVersion = 0;
 
@@ -102,6 +107,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+		this.prepareScriptEngine();
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
 
 		this.addCommand({
@@ -133,7 +139,11 @@ export default class CustomViewsPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("file-open", (file) => {
 
-				if (file) this.preHideIfMatch(file);
+				if (file) {
+					this.hideStaleActiveOverlay(file);
+					this.preHideIfMatch(file);
+					void this.processActiveView(file);
+				}
 				window.setTimeout(() => {
 					void this.processActiveView(file);
 				}, 0);
@@ -142,8 +152,11 @@ export default class CustomViewsPlugin extends Plugin {
 
 		this.registerEvent(
 			this.app.workspace.on("layout-change", () => {
+				const file = this.app.workspace.getActiveFile();
+				if (file) {
+					this.hideStaleActiveOverlay(file);
+				}
 				window.setTimeout(() => {
-					const file = this.app.workspace.getActiveFile();
 					void this.processActiveView(file);
 					if (this.settings.workInCanvas) {
 						void this.processAllCanvasNodes();
@@ -160,7 +173,9 @@ export default class CustomViewsPlugin extends Plugin {
 				}
 				if (leaf && leaf.view instanceof MarkdownView && leaf.view.file) {
 					const file = leaf.view.file;
+					this.hideStaleOverlay(leaf.view, file);
 					this.preHideIfMatch(file);
+					void this.processActiveView(file);
 					window.setTimeout(() => {
 						void this.processActiveView(file);
 					}, 0);
@@ -192,6 +207,49 @@ export default class CustomViewsPlugin extends Plugin {
 		});
 		// Clean up canvas nodes
 		this.restoreAllCanvasNodes();
+	}
+
+	private prepareScriptEngine() {
+		if (!this.settings.allowJavaScript) return;
+
+		void warmCustomViewScriptEngine().catch((e) => {
+			console.error("[Custom Views] Failed to initialize script engine:", e);
+		});
+	}
+
+	private hideStaleActiveOverlay(file: TFile) {
+		if (!this.settings.enabled) return;
+
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (activeView) {
+			this.hideStaleOverlay(activeView, file);
+		}
+	}
+
+	private hideStaleOverlay(view: MarkdownView, file: TFile) {
+		const container = view.contentEl;
+		const customEl = container.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
+		if (!customEl || this.containerIsRenderedForFile(container, file)) return;
+
+		customEl.addClass(PENDING_VIEW_CLASS);
+	}
+
+	private containerIsRenderedForFile(container: HTMLElement, file: TFile): boolean {
+		const renderedFilePath = container.getAttribute("data-cv-file-path");
+		if (renderedFilePath) return renderedFilePath === file.path;
+
+		const appliedState = container.getAttribute("data-cv-state");
+		return appliedState?.startsWith(`${file.path}::`) ?? false;
+	}
+
+	private setAppliedState(container: HTMLElement, file: TFile, stateKey: string) {
+		container.setAttribute("data-cv-state", stateKey);
+		container.setAttribute("data-cv-file-path", file.path);
+	}
+
+	private clearAppliedState(container: HTMLElement) {
+		container.removeAttribute("data-cv-state");
+		container.removeAttribute("data-cv-file-path");
 	}
 
 	/**
@@ -233,7 +291,10 @@ export default class CustomViewsPlugin extends Plugin {
 		if (!file) return;
 
 		// Guard against concurrent calls (file-open + layout-change can fire together)
-		if (this.processing) return;
+		if (this.processing) {
+			this.pendingProcessFile = file;
+			return;
+		}
 		this.processing = true;
 		try {
 			// Find the leaf that is actually showing this exact file.
@@ -253,6 +314,11 @@ export default class CustomViewsPlugin extends Plugin {
 			}
 		} finally {
 			this.processing = false;
+			const pendingFile = this.pendingProcessFile;
+			this.pendingProcessFile = null;
+			if (pendingFile && pendingFile !== file) {
+				void this.processActiveView(pendingFile);
+			}
 		}
 	}
 
@@ -281,7 +347,7 @@ export default class CustomViewsPlugin extends Plugin {
 		if (!this.settings.enabled) {
 			this.restoreEditableView(view);
 			this.restoreDefaultView(view);
-			container.removeAttribute("data-cv-state");
+			this.clearAppliedState(container);
 			return;
 		}
 
@@ -300,7 +366,11 @@ export default class CustomViewsPlugin extends Plugin {
 		const appliedKey = container.getAttribute("data-cv-state");
 
 		// Skip if nothing changed — prevents DOM churn and event cascades
-		if (stateKey === appliedKey) return;
+		if (stateKey === appliedKey) {
+			const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
+			customEl?.removeClass(PENDING_VIEW_CLASS);
+			return;
+		}
 
 		// Always clean up editable state first — before any mode/template checks.
 		// This ensures the editor is back in its original position before we decide
@@ -309,7 +379,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 		if (!matchedConfig) {
 			this.restoreDefaultView(view);
-			container.setAttribute("data-cv-state", stateKey);
+			this.setAppliedState(container, file, stateKey);
 			return;
 		}
 
@@ -322,13 +392,13 @@ export default class CustomViewsPlugin extends Plugin {
 
 		if (isTrueSourceMode) {
 			this.restoreDefaultView(view);
-			container.setAttribute("data-cv-state", stateKey);
+			this.setAppliedState(container, file, stateKey);
 			return;
 		}
 
 		if (!this.settings.workInLivePreview && !isReadingMode) {
 			this.restoreDefaultView(view);
-			container.setAttribute("data-cv-state", stateKey);
+			this.setAppliedState(container, file, stateKey);
 			return;
 		}
 
@@ -347,12 +417,17 @@ export default class CustomViewsPlugin extends Plugin {
 			await this.injectCustomView(view.contentEl, file, matchedTemplate, matchedConfig);
 		}
 
-		container.setAttribute("data-cv-state", stateKey);
+		this.setAppliedState(container, file, stateKey);
 	}
 
 	// ─── Read-only Overlay (existing behavior) ─────────────────────────────────
 
-	async injectCustomView(container: HTMLElement, file: TFile, template: string, viewConfig?: ViewConfig) {
+	async injectCustomView(
+		container: HTMLElement,
+		file: TFile,
+		template: string,
+		viewConfig?: ViewConfig,
+	) {
 		// Hide markdown immediately — synchronously, before any async template work begins.
 		// This closes the gap where file-open fired but preHideIfMatch didn't catch the leaf
 		// yet (because leaf.view.file hadn't updated). The container is already the correct
@@ -375,7 +450,12 @@ export default class CustomViewsPlugin extends Plugin {
 			container.setAttribute("data-cv-id", scopeId);
 		}
 
-		await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId, this.settings.allowJavaScript);
+		customEl.addClass(PENDING_VIEW_CLASS);
+		try {
+			await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId, this.settings.allowJavaScript);
+		} finally {
+			customEl.removeClass(PENDING_VIEW_CLASS);
+		}
 
 		this.applyViewDisplayOptions(container, viewConfig);
 		container.addClass(HIDE_MARKDOWN_CLASS);
@@ -388,6 +468,7 @@ export default class CustomViewsPlugin extends Plugin {
 		container.removeClass(HIDE_MARKDOWN_CLASS);
 		container.removeClass(EDITABLE_MODE_CLASS);
 		container.removeAttribute("data-cv-id");
+		this.clearAppliedState(container);
 
 		const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
 		if (customEl) {
@@ -490,7 +571,11 @@ export default class CustomViewsPlugin extends Plugin {
 		return entry.compartment;
 	}
 
-	private async injectEditableView(view: MarkdownView, file: TFile, viewConfig: ViewConfig) {
+	private async injectEditableView(
+		view: MarkdownView,
+		file: TFile,
+		viewConfig: ViewConfig,
+	) {
 		const container = view.contentEl;
 		const template = viewConfig.template;
 
@@ -531,7 +616,12 @@ export default class CustomViewsPlugin extends Plugin {
 		}
 
 		// Render template with editableMode=true (content placeholder left empty)
-		await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId, this.settings.allowJavaScript);
+		customEl.addClass(PENDING_VIEW_CLASS);
+		try {
+			await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId, this.settings.allowJavaScript);
+		} finally {
+			customEl.removeClass(PENDING_VIEW_CLASS);
+		}
 
 		// Find the content placeholder
 		const placeholder = customEl.querySelector(`[${EDITABLE_PLACEHOLDER_ATTR}]`) as HTMLElement;
@@ -653,6 +743,7 @@ export default class CustomViewsPlugin extends Plugin {
 	 */
 	refreshAllViews() {
 		this.settingsVersion++;
+		this.prepareScriptEngine();
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView && leaf.view.file) {
 				void this._processLeaf(leaf.view, leaf.view.file);
