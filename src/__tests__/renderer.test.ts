@@ -10,14 +10,17 @@
  *
  * Run with:  npm test
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
 	templateHasEditableContent,
 	findFirstPipe,
 	resultToString,
 	parsePropertyPath,
 	extractWikiLink,
+	renderTemplate,
 } from "../renderer";
+import { Component, TFile } from "obsidian";
+import type { App } from "obsidian";
 
 // ---------------------------------------------------------------------------
 // templateHasEditableContent
@@ -259,5 +262,46 @@ describe("extractWikiLink", () => {
 
 	it("returns null for nested brackets", () => {
 		expect(extractWikiLink("[[a]] [[b]]")).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// renderTemplate source content
+// ---------------------------------------------------------------------------
+
+describe("renderTemplate source content", () => {
+	it("uses already-loaded source content instead of reading the file", async () => {
+		const read = vi.fn(async () => {
+			throw new Error("vault.read should not be called");
+		});
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+			},
+			vault: {
+				read,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Movies/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"<article>{{content | upper}}</article>",
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+			"Already loaded from the active view",
+		);
+
+		expect(read).not.toHaveBeenCalled();
+		expect(container.textContent).toBe("ALREADY LOADED FROM THE ACTIVE VIEW");
 	});
 });

@@ -252,6 +252,16 @@ export default class CustomViewsPlugin extends Plugin {
 		container.removeAttribute("data-cv-file-path");
 	}
 
+	private getViewSourceContent(view: MarkdownView, file: TFile): string | undefined {
+		if (view.file !== file) return undefined;
+
+		try {
+			return view.getViewData();
+		} catch {
+			return undefined;
+		}
+	}
+
 	/**
 	 * Synchronously hides the markdown content for a file if it matches a view config.
 	 * Called before the setTimeout in event handlers to eliminate flicker — the markdown
@@ -414,7 +424,7 @@ export default class CustomViewsPlugin extends Plugin {
 			this.restoreDefaultView(view);
 			await this.injectEditableView(view, file, matchedConfig);
 		} else {
-			await this.injectCustomView(view.contentEl, file, matchedTemplate, matchedConfig);
+			await this.injectCustomView(view.contentEl, file, matchedTemplate, matchedConfig, this.getViewSourceContent(view, file));
 		}
 
 		this.setAppliedState(container, file, stateKey);
@@ -427,6 +437,7 @@ export default class CustomViewsPlugin extends Plugin {
 		file: TFile,
 		template: string,
 		viewConfig?: ViewConfig,
+		sourceContent?: string,
 	) {
 		// Hide markdown immediately — synchronously, before any async template work begins.
 		// This closes the gap where file-open fired but preHideIfMatch didn't catch the leaf
@@ -452,7 +463,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 		customEl.addClass(PENDING_VIEW_CLASS);
 		try {
-			await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId, this.settings.allowJavaScript);
+			await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId, this.settings.allowJavaScript, sourceContent);
 		} finally {
 			customEl.removeClass(PENDING_VIEW_CLASS);
 		}
@@ -578,20 +589,21 @@ export default class CustomViewsPlugin extends Plugin {
 	) {
 		const container = view.contentEl;
 		const template = viewConfig.template;
+		const sourceContent = this.getViewSourceContent(view, file);
 
 		// Get the CM6 editor view
 		const cmView = getCM6EditorView(view);
 		if (!cmView) {
 			// Fallback: if we can't access CM6, use the read-only overlay
 			console.warn("[Custom Views] Could not access CM6 EditorView, falling back to read-only mode.");
-			await this.injectCustomView(container, file, template, viewConfig);
+			await this.injectCustomView(container, file, template, viewConfig, sourceContent);
 			return;
 		}
 
 		// Find the editor element (.markdown-source-view)
 		const editorEl = container.querySelector(".markdown-source-view") as HTMLElement;
 		if (!editorEl) {
-			await this.injectCustomView(container, file, template, viewConfig);
+			await this.injectCustomView(container, file, template, viewConfig, sourceContent);
 			return;
 		}
 
@@ -618,7 +630,7 @@ export default class CustomViewsPlugin extends Plugin {
 		// Render template with editableMode=true (content placeholder left empty)
 		customEl.addClass(PENDING_VIEW_CLASS);
 		try {
-			await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId, this.settings.allowJavaScript);
+			await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId, this.settings.allowJavaScript, sourceContent);
 		} finally {
 			customEl.removeClass(PENDING_VIEW_CLASS);
 		}
