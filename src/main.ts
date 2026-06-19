@@ -253,7 +253,14 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	private getViewSourceContent(view: MarkdownView, file: TFile): string | undefined {
-		if (view.file !== file) return undefined;
+		const state = view.getState();
+		if (state.mode !== "source" || state.source !== false) {
+			return undefined;
+		}
+
+		if (view.file !== file) {
+			return undefined;
+		}
 
 		try {
 			return view.getViewData();
