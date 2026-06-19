@@ -466,6 +466,7 @@ class EditViewModal extends Modal {
 			initialContent: this.view.template,
 			language: "html",
 			templateVariables,
+			root: templateContainer.ownerDocument,
 			onChange: (content: string) => {
 				this.view.template = content;
 				autoSave();
@@ -479,6 +480,7 @@ class EditViewModal extends Modal {
 			initialContent: this.view.css ?? "",
 			language: "css",
 			templateVariables,
+			root: cssContainer.ownerDocument,
 			onChange: (content: string) => {
 				this.view.css = content;
 				autoSave();
@@ -500,6 +502,7 @@ class EditViewModal extends Modal {
 			initialContent: this.view.js ?? "",
 			language: "javascript",
 			templateVariables,
+			root: jsContainer.ownerDocument,
 			onChange: (content: string) => {
 				this.view.js = content;
 				autoSave();
