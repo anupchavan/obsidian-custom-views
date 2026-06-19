@@ -201,7 +201,7 @@ export async function renderTemplate(
 ) {
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
-	const rawContent = sourceContent ?? await app.vault.read(file);
+	const rawContent = sourceContent ?? await app.vault.cachedRead(file);
 
 	const bodyContent = stripFrontmatter(cache, rawContent);
 

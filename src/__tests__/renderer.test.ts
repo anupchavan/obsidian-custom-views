@@ -274,12 +274,16 @@ describe("renderTemplate source content", () => {
 		const read = vi.fn(async () => {
 			throw new Error("vault.read should not be called");
 		});
+		const cachedRead = vi.fn(async () => {
+			throw new Error("vault.cachedRead should not be called");
+		});
 		const app = {
 			metadataCache: {
 				getFileCache: vi.fn(() => null),
 			},
 			vault: {
 				read,
+				cachedRead,
 			},
 		} as unknown as App;
 		const file = new TFile();
@@ -302,6 +306,44 @@ describe("renderTemplate source content", () => {
 		);
 
 		expect(read).not.toHaveBeenCalled();
+		expect(cachedRead).not.toHaveBeenCalled();
 		expect(container.textContent).toBe("ALREADY LOADED FROM THE ACTIVE VIEW");
+	});
+
+	it("uses cachedRead instead of direct vault read when source content is unavailable", async () => {
+		const read = vi.fn(async () => {
+			throw new Error("vault.read should not be called");
+		});
+		const cachedRead = vi.fn(async () => "Cached body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+			},
+			vault: {
+				read,
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Music/Pink Blue.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"<article>{{content | upper}}</article>",
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(cachedRead).toHaveBeenCalledWith(file);
+		expect(read).not.toHaveBeenCalled();
+		expect(container.textContent).toBe("CACHED BODY");
 	});
 });
