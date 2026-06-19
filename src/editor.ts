@@ -1297,6 +1297,13 @@ export interface TemplateEditorOptions {
 	language?: EditorLanguage;
 	/** Extra template variables with type info for autocomplete icons */
 	templateVariables?: TemplateVariable[];
+	/**
+	 * The document (or shadow root) the editor will live in. CodeMirror mounts
+	 * its stylesheet into this root; when omitted it defaults to the main window.
+	 * Pass the owning document of the container so the editor renders correctly
+	 * when Obsidian opens settings in a separate window (1.13+).
+	 */
+	root?: Document | ShadowRoot;
 }
 
 /**
@@ -1320,6 +1327,10 @@ export function createTemplateEditor(
 	}
 
 	const view = new EditorView({
+		// `root` makes CodeMirror mount its styles into the correct document — vital
+		// when settings open in a separate window (Obsidian 1.13+); otherwise the
+		// editor renders unstyled there.
+		root: options.root,
 		state: EditorState.create({
 			doc: options.initialContent,
 			extensions,
