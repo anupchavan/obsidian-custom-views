@@ -2,6 +2,7 @@ import { App, TFile, MarkdownRenderer, Component } from "obsidian";
 import { applyFilterChain } from "./filters";
 import { isExpressionMode, evaluateExpression, processLogicBlocks } from "./expression";
 import type { ExprContext } from "./expression";
+import { stripFrontmatter } from "./frontmatter";
 import type { ViewConfig } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -138,13 +139,7 @@ export async function resolvePropertyChain(
 			// Read body content of the linked file so that `.content`
 			// works at every level of the chain
 			const rawLinked = await app.vault.cachedRead(linkedFile);
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-			const linkedEndOffset = (currentFrontmatter as any)?.position?.end?.offset;
-			if (typeof linkedEndOffset === "number") {
-				currentBodyContent = rawLinked.substring(linkedEndOffset).trim();
-			} else {
-				currentBodyContent = rawLinked;
-			}
+			currentBodyContent = stripFrontmatter(linkedCache, rawLinked);
 		} else {
 			// Last segment — return the value
 			return value;
@@ -200,12 +195,7 @@ export async function renderTemplate(
 	const frontmatter = cache?.frontmatter;
 	const rawContent = await app.vault.read(file);
 
-	let bodyContent = rawContent;
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-	const endOffset = frontmatter?.position?.end?.offset;
-	if (typeof endOffset === "number") {
-		bodyContent = rawContent.substring(endOffset).trim();
-	}
+	const bodyContent = stripFrontmatter(cache, rawContent);
 
 	const markdownQueue: { id: string, content: string }[] = [];
 	const contentPlaceholderId = `custom-view-content-${Date.now()}`;

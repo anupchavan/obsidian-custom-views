@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, ExtraButtonComponent, SettingGroup, SettingDefinitionItem } from "obsidian";
+import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 import { createTemplateEditor } from "./editor";
@@ -91,6 +91,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+
 	async setControlValue(key: string, value: unknown): Promise<void> {
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
 		await this.plugin.saveSettings();
@@ -146,7 +147,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				},
 				items: this.plugin.settings.views.map((view) => ({
 					name: view.name,
-					searchable: false,
+					searchable: true,
 					render: (setting: Setting) => {
 						setting.addExtraButton((btn) =>
 							btn

@@ -1,4 +1,4 @@
-import { Plugin, TFile, MarkdownView, Keymap, Notice, WorkspaceLeaf } from "obsidian";
+import { Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
 import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { CustomViewsSettings, DEFAULT_SETTINGS, CustomViewsSettingTab } from "./settings";
@@ -200,6 +200,13 @@ export default class CustomViewsPlugin extends Plugin {
 	 * Called before the setTimeout in event handlers to eliminate flicker — the markdown
 	 * is hidden immediately, then the async render fills in the custom view content.
 	 * Only adds a CSS class (no DOM rearrangement), so it does not steal focus.
+	 *
+	 * Pre-hiding is restricted to reading mode on purpose. The hide class sets
+	 * `display: none` on `.markdown-source-view`; doing that to a live-preview
+	 * editor while it is performing its first layout makes CM6 measure a
+	 * zero-height viewport and render blank — and editable mode reparents that
+	 * very editor, so it would stay blank. Live preview has nothing to pre-hide
+	 * anyway (the editor is reparented, not replaced), so we simply skip it.
 	 */
 	private preHideIfMatch(file: TFile) {
 		if (!this.settings.enabled) return;
@@ -213,7 +220,11 @@ export default class CustomViewsPlugin extends Plugin {
 		// active leaf unconditionally, which sets display:none on .cm-editor and causes
 		// Obsidian to lose the file explorer's has-focus tracking.
 		this.app.workspace.iterateAllLeaves((leaf) => {
-			if (leaf.view instanceof MarkdownView && leaf.view.file === file) {
+			if (
+				leaf.view instanceof MarkdownView &&
+				leaf.view.file === file &&
+				leaf.view.getState().mode === "preview"
+			) {
 				leaf.view.contentEl.addClass(HIDE_MARKDOWN_CLASS);
 			}
 		});
@@ -356,21 +367,7 @@ export default class CustomViewsPlugin extends Plugin {
 			customEl.addClass(CUSTOM_VIEW_CLASS);
 			container.appendChild(customEl);
 
-			this.registerDomEvent(customEl, "click", (evt: MouseEvent) => {
-				const target = evt.target as HTMLElement;
-				const link = target.closest(".internal-link");
-
-				if (link && link.instanceOf(HTMLAnchorElement)) {
-					evt.preventDefault();
-					const href = link.getAttribute("data-href") || link.getAttribute("href");
-
-					if (href) {
-						const currentFile = this.app.workspace.getActiveFile();
-						const newLeaf = Keymap.isModEvent(evt);
-						void this.app.workspace.openLinkText(href, currentFile?.path ?? "", newLeaf);
-					}
-				}
-			});
+			this.registerOverlayLinkHandlers(customEl, file.path);
 		}
 
 		let scopeId = container.getAttribute("data-cv-id");
@@ -397,6 +394,80 @@ export default class CustomViewsPlugin extends Plugin {
 		if (customEl) {
 			customEl.remove();
 		}
+	}
+
+	/**
+	 * Re-creates Obsidian's native link interactions for links that the
+	 * MarkdownRenderer produced inside our overlay.
+	 *
+	 * The overlay (`.${CUSTOM_VIEW_CLASS}`) is a detached element appended to the
+	 * leaf's contentEl — it is NOT the leaf's reading view, so it does not inherit
+	 * the per-preview link handlers Obsidian attaches for clicks and context
+	 * menus. Without this, right-clicking a rendered link falls through to the
+	 * generic selection menu ("Copy" only) instead of the native file/URL menu,
+	 * and internal links don't open on click.
+	 *
+	 * External-link *clicks* are intentionally left to Obsidian's Electron
+	 * `will-navigate` handler, which already opens http(s) URLs in the default
+	 * browser — handling them here too would open them twice.
+	 *
+	 * @param customEl     overlay element to delegate events from
+	 * @param sourcePath   path of the rendered file, used as the link-resolution base
+	 * @param skipSelector optional selector; events originating inside a matching
+	 *                     element are ignored (the reparented CM6 editor in
+	 *                     editable mode handles its own clicks and context menus)
+	 */
+	private registerOverlayLinkHandlers(customEl: HTMLElement, sourcePath: string, skipSelector?: string) {
+		this.registerDomEvent(customEl, "click", (evt: MouseEvent) => {
+			const target = evt.target as HTMLElement;
+			if (skipSelector && target.closest(skipSelector)) return;
+
+			const link = target.closest(".internal-link");
+			if (link && link.instanceOf(HTMLAnchorElement)) {
+				evt.preventDefault();
+				const href = link.getAttribute("data-href") || link.getAttribute("href");
+				if (href) {
+					const newLeaf = Keymap.isModEvent(evt);
+					void this.app.workspace.openLinkText(href, sourcePath, newLeaf);
+				}
+			}
+		});
+
+		this.registerDomEvent(customEl, "contextmenu", (evt: MouseEvent) => {
+			const target = evt.target as HTMLElement;
+			if (skipSelector && target.closest(skipSelector)) return;
+
+			const internalLink = target.closest(".internal-link");
+			const externalLink = internalLink ? null : target.closest(".external-link");
+			const linkEl = internalLink ?? externalLink;
+			if (!linkEl || !linkEl.instanceOf(HTMLAnchorElement)) return;
+
+			const href = linkEl.getAttribute("data-href") || linkEl.getAttribute("href");
+			if (!href) return;
+
+			// `handleLinkContextMenu` / `handleExternalLinkContextMenu` are internal
+			// Workspace methods (not in the public typings). They build Obsidian's
+			// exact native link menu and fire the `file-menu` / `url-menu` events so
+			// other plugins can contribute. Access them defensively so a future API
+			// change degrades gracefully instead of throwing.
+			const workspace = this.app.workspace as unknown as {
+				handleLinkContextMenu?(menu: Menu, linktext: string, sourcePath: string): boolean;
+				handleExternalLinkContextMenu?(menu: Menu, url: string): boolean;
+			};
+
+			if (internalLink) {
+				if (typeof workspace.handleLinkContextMenu !== "function") return;
+				// Menu.forEvent calls preventDefault, auto-shows on the next tick, and
+				// de-dupes per event — so our items merge with any other contributor
+				// (e.g. the selection "Copy") into a single native menu.
+				const menu = Menu.forEvent(evt);
+				workspace.handleLinkContextMenu(menu, href, sourcePath);
+			} else {
+				if (typeof workspace.handleExternalLinkContextMenu !== "function") return;
+				const menu = Menu.forEvent(evt);
+				workspace.handleExternalLinkContextMenu(menu, href);
+			}
+		});
 	}
 
 	// ─── Editable Content Mode ─────────────────────────────────────────────────
@@ -446,6 +517,11 @@ export default class CustomViewsPlugin extends Plugin {
 			customEl = activeDocument.createElement("div");
 			customEl.addClass(CUSTOM_VIEW_CLASS);
 			container.appendChild(customEl);
+
+			// Wire up link clicks/context menus for the template chrome. Events
+			// originating inside the reparented CM6 editor are skipped so the
+			// editor keeps handling its own links.
+			this.registerOverlayLinkHandlers(customEl, file.path, ".markdown-source-view");
 		}
 
 		// Assign a unique scope ID for CSS isolation
@@ -465,26 +541,6 @@ export default class CustomViewsPlugin extends Plugin {
 			container.addClass(HIDE_MARKDOWN_CLASS);
 			return;
 		}
-
-		// Register click handler for internal links in the template chrome
-		// (not inside the editor — let the editor handle its own clicks)
-		this.registerDomEvent(customEl, "click", (evt: MouseEvent) => {
-			const target = evt.target as HTMLElement;
-
-			// Don't intercept clicks inside the editor
-			if (editorEl.contains(target)) return;
-
-			const link = target.closest(".internal-link");
-			if (link && link.instanceOf(HTMLAnchorElement)) {
-				evt.preventDefault();
-				const href = link.getAttribute("data-href") || link.getAttribute("href");
-				if (href) {
-					const currentFile = this.app.workspace.getActiveFile();
-					const newLeaf = Keymap.isModEvent(evt);
-					void this.app.workspace.openLinkText(href, currentFile?.path ?? "", newLeaf);
-				}
-			}
-		});
 
 		// Save state for restoration
 		const originalParent = editorEl.parentElement!;
