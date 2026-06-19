@@ -195,8 +195,13 @@ const filters: Record<string, FilterFunction> = {
 			if (Array.isArray(item)) {
 				result.push(...item.map((v: unknown) => String(v)));
 			} else if (item !== undefined) {
-				// eslint-disable-next-line @typescript-eslint/no-base-to-string
-				result.push(typeof item === 'object' ? JSON.stringify(item) : String(item));
+				if (typeof item === 'object') {
+					result.push(JSON.stringify(item));
+				} else if (typeof item === 'string') {
+					result.push(item);
+				} else if (typeof item === 'number' || typeof item === 'boolean' || typeof item === 'bigint') {
+					result.push(String(item));
+				}
 			}
 		}
 		return result;

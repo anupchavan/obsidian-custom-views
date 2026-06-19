@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
+import { App, PluginSettingTab, Setting, TextComponent, setIcon, Modal, FuzzySuggestModal, FuzzyMatch, ExtraButtonComponent, SettingGroup, SettingDefinitionItem } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup, Filter, FilterOperator, FilterConjunction } from "./types";
 import { createTemplateEditor } from "./editor";
@@ -340,11 +340,10 @@ class EditViewModal extends Modal {
 		const propMap = new Map<string, TemplateVariable["type"]>();
 		const files = this.app.vault.getMarkdownFiles();
 
-		// Access Obsidian's undocumented metadataTypeManager for assigned types
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-		const typeManager = (this.app as any).metadataTypeManager;
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-		const hasTypeManager = typeManager && typeof typeManager.getAssignedType === "function";
+		// Access Obsidian's undocumented metadataTypeManager for assigned types.
+		const typeManager = (this.app as {
+			metadataTypeManager?: { getAssignedType?(key: string): string | undefined };
+		}).metadataTypeManager;
 
 		const obsidianTypeMap: Record<string, TemplateVariable["type"]> = {
 			"text": "text", "number": "number", "date": "date",
@@ -360,9 +359,8 @@ class EditViewModal extends Modal {
 					if (propMap.has(key) && propMap.get(key) !== "unknown") continue;
 
 					// Try Obsidian's assigned type first
-					if (hasTypeManager) {
-						// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-						const obsType = typeManager.getAssignedType(key) as string | undefined;
+					if (typeManager?.getAssignedType) {
+						const obsType = typeManager.getAssignedType(key);
 						if (obsType && obsidianTypeMap[obsType]) {
 							propMap.set(key, obsidianTypeMap[obsType]);
 							continue;
@@ -419,8 +417,9 @@ class EditViewModal extends Modal {
 
 		// Display options — only shown when editableContent is enabled
 		if (this.plugin.settings.editableContent) {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-			const obsidianShowInlineTitle = (this.app.vault as any).getConfig("showInlineTitle") as boolean;
+			const obsidianShowInlineTitle = (this.app.vault as unknown as {
+				getConfig(key: string): unknown;
+			}).getConfig("showInlineTitle") as boolean;
 
 			contentEl.createEl("h3", { text: "Display options" });
 
@@ -492,8 +491,7 @@ class EditViewModal extends Modal {
 		const jsDisabled = !this.plugin.settings.allowJavaScript;
 		if (jsDisabled) {
 			contentEl.createEl("p", {
-				// eslint-disable-next-line obsidianmd/ui/sentence-case -- quoting exact setting name
-				text: "JavaScript execution is disabled. Enable \"Allow JavaScript execution\" in the plugin settings to use this feature.",
+				text: "JavaScript execution is disabled. Enable it in the plugin settings to use this feature.",
 				cls: "cv-js-disabled-notice",
 			});
 		}
@@ -1297,13 +1295,12 @@ export class FilterBuilder {
 	 */
 	private getObsidianPropertyType(key: string): PropertyType | null {
 		// Accessing undocumented Obsidian internal API
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-		const typeManager = (this.plugin.app as any).metadataTypeManager;
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-		if (!typeManager || typeof typeManager.getAssignedType !== "function") return null;
+		const typeManager = (this.plugin.app as {
+			metadataTypeManager?: { getAssignedType?(key: string): string | undefined };
+		}).metadataTypeManager;
+		if (!typeManager?.getAssignedType) return null;
 
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-		const obsidianType = typeManager.getAssignedType(key) as string | undefined;
+		const obsidianType = typeManager.getAssignedType(key);
 		if (!obsidianType) return null;
 
 		// Map Obsidian's internal type names to our PropertyType

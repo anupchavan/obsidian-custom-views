@@ -10,10 +10,15 @@ import type { CachedMetadata } from "obsidian";
  * `{{file.content}}` instead of being stripped.
  */
 export function stripFrontmatter(cache: CachedMetadata | null | undefined, raw: string): string {
+	// Older Obsidian attached the frontmatter range to the frontmatter object as
+	// an undocumented `position`; current Obsidian exposes it as the official
+	// `frontmatterPosition`. Type the legacy shape explicitly so neither path
+	// needs `any`.
+	const legacyFrontmatter = cache?.frontmatter as
+		| { position?: { end?: { offset?: number } } }
+		| undefined;
 	const endOffset =
-		cache?.frontmatterPosition?.end?.offset ??
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-		((cache?.frontmatter as any)?.position?.end?.offset as number | undefined);
+		cache?.frontmatterPosition?.end?.offset ?? legacyFrontmatter?.position?.end?.offset;
 	if (typeof endOffset === "number") {
 		return raw.substring(endOffset).trim();
 	}

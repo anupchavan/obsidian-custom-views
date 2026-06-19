@@ -39,13 +39,12 @@ function isCanvasView(view: unknown): view is CanvasView {
 
 /**
  * Safely gets the CM6 EditorView from a MarkdownView.
- * Uses the widely-used (view.editor as any).cm pattern.
+ * Uses the widely-used `view.editor.cm` pattern (not in the public typings).
  * Returns null if not available.
  */
 function getCM6EditorView(view: MarkdownView): EditorView | null {
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-		const cm = (view.editor as any).cm;
+		const cm = (view.editor as { cm?: EditorView }).cm;
 		if (cm instanceof EditorView) return cm;
 	} catch {
 		// Fallback: try finding from DOM
