@@ -34,9 +34,9 @@ abstract class BaseSuggest extends AbstractInputSuggest<SuggestItem> {
 	constructor(app: App, inputEl: HTMLInputElement | HTMLDivElement) {
 		super(app, inputEl);
 		this.limit = 50;
-		// Add native Obsidian class for property-value suggest styling
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-		(this as any).suggestEl?.addClass("mod-property-value");
+		// Add native Obsidian class for property-value suggest styling.
+		// `suggestEl` is an internal field of AbstractInputSuggest, not in the typings.
+		(this as { suggestEl?: HTMLElement }).suggestEl?.addClass("mod-property-value");
 	}
 
 	/**
@@ -101,8 +101,7 @@ abstract class BaseSuggest extends AbstractInputSuggest<SuggestItem> {
 	 * Returns true if a suggestion was selected.
 	 */
 	selectHighlighted(): boolean {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-		const suggestEl = (this as any).suggestEl as HTMLElement | undefined;
+		const suggestEl = (this as { suggestEl?: HTMLElement }).suggestEl;
 		const selected = suggestEl?.querySelector('.suggestion-item.is-selected') as HTMLElement;
 		if (selected) {
 			selected.click();
@@ -287,8 +286,7 @@ export class FrontmatterValueSuggest extends BaseSuggest {
 		for (const file of files) {
 			const cache = this.app.metadataCache.getFileCache(file);
 			if (cache?.frontmatter && this.propertyKey in cache.frontmatter) {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-				const val = cache.frontmatter[this.propertyKey];
+				const val: unknown = cache.frontmatter[this.propertyKey];
 				if (val === null || val === undefined) continue;
 
 				if (Array.isArray(val)) {
@@ -296,7 +294,10 @@ export class FrontmatterValueSuggest extends BaseSuggest {
 						const str = String(item).trim();
 						if (str.length > 0) valueSet.add(str);
 					}
-				} else {
+				} else if (typeof val === "string") {
+					const str = val.trim();
+					if (str.length > 0) valueSet.add(str);
+				} else if (typeof val === "number" || typeof val === "boolean" || typeof val === "bigint") {
 					const str = String(val).trim();
 					if (str.length > 0) valueSet.add(str);
 				}

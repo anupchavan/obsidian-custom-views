@@ -19,8 +19,7 @@ import { stripFrontmatter } from "./frontmatter";
 // Types
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface ExprValueArray extends Array<ExprValue> { }
+export type ExprValueArray = ExprValue[];
 export interface ExprValueRecord { [key: string]: ExprValue; }
 
 export type ExprValue =
@@ -767,12 +766,12 @@ const stringMethods: Record<string, MethodFn> = {
 	contains: (_ctx, obj, args) => exprToString(obj).includes(exprToString(args[0])),
 	containsAll: (_ctx, obj, args) => {
 		const s = exprToString(obj);
-		if (Array.isArray(args[0])) return (args[0] as ExprValue[]).every(a => s.includes(exprToString(a)));
+		if (Array.isArray(args[0])) return args[0].every(a => s.includes(exprToString(a)));
 		return args.every(a => s.includes(exprToString(a)));
 	},
 	containsAny: (_ctx, obj, args) => {
 		const s = exprToString(obj);
-		if (Array.isArray(args[0])) return (args[0] as ExprValue[]).some(a => s.includes(exprToString(a)));
+		if (Array.isArray(args[0])) return args[0].some(a => s.includes(exprToString(a)));
 		return args.some(a => s.includes(exprToString(a)));
 	},
 	endsWith: (_ctx, obj, args) => exprToString(obj).endsWith(exprToString(args[0])),
@@ -845,12 +844,12 @@ const listMethods: Record<string, MethodFn> = {
 	},
 	containsAll: (_ctx, obj, args) => {
 		if (!Array.isArray(obj)) return false;
-		const targets = Array.isArray(args[0]) ? args[0] as ExprValue[] : args;
+		const targets = Array.isArray(args[0]) ? args[0] : args;
 		return targets.every(t => obj.some(item => exprToString(item) === exprToString(t)));
 	},
 	containsAny: (_ctx, obj, args) => {
 		if (!Array.isArray(obj)) return false;
-		const targets = Array.isArray(args[0]) ? args[0] as ExprValue[] : args;
+		const targets = Array.isArray(args[0]) ? args[0] : args;
 		return targets.some(t => obj.some(item => exprToString(item) === exprToString(t)));
 	},
 	filter: async (ctx, obj, args) => {
@@ -1060,8 +1059,7 @@ const objectMethods: Record<string, MethodFn> = {
 	},
 	values: (_ctx, obj) => {
 		if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-return
-			return Object.entries(obj).filter(([k]) => k !== '__type').map(([, v]) => v) as ExprValue;
+			return Object.entries(obj as ExprValueRecord).filter(([k]) => k !== '__type').map(([, v]) => v);
 		}
 		return [] as ExprValue;
 	},

@@ -169,6 +169,9 @@ export function templateHasEditableContent(template: string): boolean {
 /** Attribute added to the content placeholder div when in editable mode */
 export const EDITABLE_PLACEHOLDER_ATTR = "data-cv-editable-placeholder";
 
+/** Overlay element augmented with the CSS-scoping observer we attach during render. */
+type ScopedContainer = HTMLElement & { __cvScopeObserver?: MutationObserver | null };
+
 /**
  * Renders a template into a container.
  * @param app - The Obsidian app instance
@@ -259,8 +262,8 @@ export async function renderTemplate(
 	const tempContainer = doc.body;
 
 	// Disconnect any previous CSS-scoping MutationObserver from a prior render
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-	if ((container as any).__cvScopeObserver) { (container as any).__cvScopeObserver.disconnect(); (container as any).__cvScopeObserver = null; }
+	const scoped = container as ScopedContainer;
+	if (scoped.__cvScopeObserver) { scoped.__cvScopeObserver.disconnect(); scoped.__cvScopeObserver = null; }
 
 	// Clear the container and move nodes from temporary container
 	while (container.firstChild) {
@@ -321,7 +324,7 @@ export async function renderTemplate(
 			const resolvedJs = await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent);
 			if (resolvedJs.trim()) {
 				try {
-					// eslint-disable-next-line @typescript-eslint/no-implied-eval
+					// eslint-disable-next-line @typescript-eslint/no-implied-eval -- runs the user's own per-view JS; opt-in via the allowJavaScript setting
 					const fn = new Function(resolvedJs);
 					fn.call(container);
 				} catch (e) {
@@ -358,8 +361,7 @@ export async function renderTemplate(
 		// Store the observer so it can be disconnected on re-render
 		// (the container is cleared at the top of renderTemplate, which
 		// removes all children but the observer still watches the element).
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-		(container as any).__cvScopeObserver = observer;
+		(container as ScopedContainer).__cvScopeObserver = observer;
 	}
 }
 
@@ -549,7 +551,7 @@ function executeScripts(container: HTMLElement): void {
 					// global scope (same as an inline script would) without
 					// injecting a DOM <script> element.  `this` is bound to
 					// the container so template scripts can reference it.
-					// eslint-disable-next-line @typescript-eslint/no-implied-eval
+					// eslint-disable-next-line @typescript-eslint/no-implied-eval -- runs the user's own inline <script> from their template; opt-in via the allowJavaScript setting
 					const fn = new Function(code);
 					fn.call(container);
 				} catch (e) {
