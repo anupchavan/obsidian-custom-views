@@ -52,6 +52,13 @@ export class TAbstractFile {
 export class ButtonComponent { }
 export class TextComponent { }
 export class WorkspaceLeaf { }
+export class Menu {
+	static forEvent(_evt: unknown) { return new Menu(); }
+	addItem() { return this; }
+	addSeparator() { return this; }
+	showAtMouseEvent() { return this; }
+	showAtPosition() { return this; }
+}
 export const Keymap = { isModEvent: () => false };
 export function setIcon() { }
 export function getAllTags() { return []; }

@@ -13,6 +13,7 @@
  */
 
 import { App, TFile, moment } from "obsidian";
+import { stripFrontmatter } from "./frontmatter";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -600,13 +601,7 @@ async function buildExprFile(app: App, tfile: TFile): Promise<ExprFile> {
 async function readFileContent(app: App, tfile: TFile): Promise<string> {
 	const raw = await app.vault.cachedRead(tfile);
 	const cache = app.metadataCache.getFileCache(tfile);
-	const fm = cache?.frontmatter;
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-	const endOffset = (fm as any)?.position?.end?.offset;
-	if (typeof endOffset === "number") {
-		return raw.substring(endOffset).trim();
-	}
-	return raw;
+	return stripFrontmatter(cache, raw);
 }
 
 // ---------------------------------------------------------------------------

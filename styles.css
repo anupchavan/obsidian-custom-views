@@ -841,6 +841,13 @@
     left: 0;
     background-color: var(--background-primary);
     z-index: 10;
+    /* The overlay is detached from the reading view, so it doesn't inherit the
+       text-selectability that themes grant to .markdown-preview-view. Re-enable
+       it here so rendered text (and links) can be selected, matching the native
+       reading view. Elements that opt out (e.g. drag handles) keep their own
+       user-select rule, which targets them directly and still wins. */
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .obsidian-custom-view-hidden {
