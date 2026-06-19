@@ -48,6 +48,27 @@ describe("stripFrontmatter", () => {
 		expect(stripFrontmatter(makeCache({}), raw)).toBe(raw);
 	});
 
+	it("strips frontmatter from the raw text when a cached offset is stale", () => {
+		const changedRaw = "---\ntitle: This changed after the metadata cache offset\n---\nbody";
+		const staleOffset = "---\nt: old\n---".length;
+
+		expect(stripFrontmatter(makeCache({ official: staleOffset }), changedRaw)).toBe("body");
+	});
+
+	it("strips frontmatter from the raw text when metadata has no offset", () => {
+		const cache: CachedMetadata = { frontmatter: { foo: "bar" } };
+
+		expect(stripFrontmatter(cache, raw)).toBe("works fine i guess");
+	});
+
+	it("does not apply a stale offset to content without YAML frontmatter", () => {
+		expect(stripFrontmatter(makeCache({ official: 6 }), "body only")).toBe("body only");
+	});
+
+	it("does not trust an offset of 0 when the raw text has YAML frontmatter", () => {
+		expect(stripFrontmatter(makeCache({ official: 0 }), raw)).toBe("works fine i guess");
+	});
+
 	it("returns the raw content when cache is null or undefined", () => {
 		expect(stripFrontmatter(null, raw)).toBe(raw);
 		expect(stripFrontmatter(undefined, raw)).toBe(raw);

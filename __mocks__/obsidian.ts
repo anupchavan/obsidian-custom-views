@@ -25,6 +25,11 @@ export class TFile {
 	parent: { path: string } | null = null;
 }
 export class Component { }
+export const MarkdownRenderer = {
+	async render(_app: unknown, markdown: string, el: HTMLElement) {
+		el.textContent = markdown;
+	},
+};
 export class MarkdownView { }
 export class PluginSettingTab { }
 export class Setting { }

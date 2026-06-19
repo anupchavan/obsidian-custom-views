@@ -184,6 +184,8 @@ type ScopedContainer = HTMLElement & { __cvScopeObserver?: MutationObserver | nu
  * @param editableMode - When true, the content placeholder is left empty for the editor to be reparented into
  * @param viewConfig - Optional ViewConfig for CSS/JS injection
  * @param scopeId - Optional unique ID for CSS scoping (set on the container's parent via data-cv-id)
+ * @param allowJavaScript - Whether inline template scripts and per-view JavaScript should execute
+ * @param sourceContent - Optional already-loaded note text from Obsidian's active view
  */
 export async function renderTemplate(
 	app: App,
@@ -194,11 +196,12 @@ export async function renderTemplate(
 	editableMode: boolean = false,
 	viewConfig?: ViewConfig,
 	scopeId?: string,
-	allowJavaScript: boolean = true
+	allowJavaScript: boolean = true,
+	sourceContent?: string,
 ) {
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
-	const rawContent = await app.vault.read(file);
+	const rawContent = sourceContent ?? await app.vault.read(file);
 
 	const bodyContent = stripFrontmatter(cache, rawContent);
 
