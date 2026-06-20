@@ -7,6 +7,7 @@ import { renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR }
 import { createEditableContentExtensions } from "./editable-content";
 import { warmCustomViewScriptEngine } from "./script-engine";
 import type { ViewConfig } from "./types";
+import { EmbeddedBasesProvider } from "./bases/provider";
 
 const CUSTOM_VIEW_CLASS = "obsidian-custom-view-render";
 const HIDE_MARKDOWN_CLASS = "obsidian-custom-view-hidden";
@@ -105,9 +106,14 @@ export default class CustomViewsPlugin extends Plugin {
 	/** Counter for generating unique per-container scope IDs */
 	private nextScopeId = 0;
 
+	/** Provides Obsidian Bases query results to templates when Bases are referenced. */
+	private basesProvider: EmbeddedBasesProvider | undefined;
+
 	async onload() {
 		await this.loadSettings();
 		this.prepareScriptEngine();
+		this.basesProvider = new EmbeddedBasesProvider(this);
+		this.basesProvider.register();
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
 
 		this.addCommand({
@@ -470,7 +476,19 @@ export default class CustomViewsPlugin extends Plugin {
 
 		customEl.addClass(PENDING_VIEW_CLASS);
 		try {
-			await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId, this.settings.allowJavaScript, sourceContent);
+			await renderTemplate(
+				this.app,
+				template,
+				file,
+				customEl,
+				this,
+				false,
+				viewConfig,
+				scopeId,
+				this.settings.allowJavaScript,
+				sourceContent,
+				this.basesProvider,
+			);
 		} finally {
 			customEl.removeClass(PENDING_VIEW_CLASS);
 		}
@@ -637,7 +655,19 @@ export default class CustomViewsPlugin extends Plugin {
 		// Render template with editableMode=true (content placeholder left empty)
 		customEl.addClass(PENDING_VIEW_CLASS);
 		try {
-			await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId, this.settings.allowJavaScript, sourceContent);
+			await renderTemplate(
+				this.app,
+				template,
+				file,
+				customEl,
+				this,
+				true,
+				viewConfig,
+				scopeId,
+				this.settings.allowJavaScript,
+				sourceContent,
+				this.basesProvider,
+			);
 		} finally {
 			customEl.removeClass(PENDING_VIEW_CLASS);
 		}
