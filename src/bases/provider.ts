@@ -147,13 +147,7 @@ export class EmbeddedBasesProvider implements BasesDataProvider {
 
 	private async getStableBaseSources(request: EmbeddedBasesRequest): Promise<BaseSource[]> {
 		const templateSources = getTemplateBaseSources(request.templateContent);
-		let noteSources: BaseSource[];
-		try {
-			const sourceContent = await request.app.vault.cachedRead(request.file);
-			noteSources = getOrderedBaseSources(sourceContent);
-		} catch {
-			noteSources = getOrderedBaseSources(request.sourceContent);
-		}
+		const noteSources = getOrderedBaseSources(request.sourceContent);
 		return [...templateSources, ...noteSources];
 	}
 
