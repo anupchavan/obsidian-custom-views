@@ -23,17 +23,109 @@ interface PropertySegment {
  */
 export function parsePropertyPath(path: string): PropertySegment[] {
 	const segments: PropertySegment[] = [];
-	// Split on dots, then extract optional [N] from each part
-	const parts = path.split(".");
-	for (const part of parts) {
-		const bracketMatch = part.match(/^([a-zA-Z0-9_-]+)\[(\d+)\]$/);
-		if (bracketMatch) {
-			segments.push({ key: bracketMatch[1], index: parseInt(bracketMatch[2]) });
-		} else if (part) {
-			segments.push({ key: part });
-		}
+	for (const part of splitPropertyPath(path)) {
+		const segment = parsePropertySegment(part);
+		if (segment) segments.push(segment);
 	}
 	return segments;
+}
+
+function splitPropertyPath(path: string): string[] {
+	const parts: string[] = [];
+	let start = 0;
+	let bracketDepth = 0;
+	let quote: string | null = null;
+
+	for (let i = 0; i < path.length; i++) {
+		const ch = path[i];
+
+		if (quote) {
+			if (ch === "\\") {
+				i++;
+			} else if (ch === quote) {
+				quote = null;
+			}
+			continue;
+		}
+
+		if (ch === '"' || ch === "'") {
+			quote = ch;
+		} else if (ch === "[") {
+			bracketDepth++;
+		} else if (ch === "]") {
+			bracketDepth = Math.max(0, bracketDepth - 1);
+		} else if (ch === "." && bracketDepth === 0) {
+			parts.push(path.slice(start, i));
+			start = i + 1;
+		}
+	}
+
+	parts.push(path.slice(start));
+	return parts;
+}
+
+function parsePropertySegment(part: string): PropertySegment | null {
+	const text = part.trim();
+	if (!text) return null;
+
+	const quoted = readQuotedString(text, 0);
+	if (quoted) return parsePropertySegmentTail(text, quoted.value, quoted.end);
+
+	if (text.startsWith("[")) {
+		let pos = skipWhitespace(text, 1);
+		const bracketQuoted = readQuotedString(text, pos);
+		if (bracketQuoted) {
+			pos = skipWhitespace(text, bracketQuoted.end);
+			if (text[pos] === "]") {
+				return parsePropertySegmentTail(text, bracketQuoted.value, pos + 1);
+			}
+		}
+	}
+
+	const indexedMatch = text.match(/^(.*?)(?:\[(\d+)\])?$/);
+	if (!indexedMatch || !indexedMatch[1]) return null;
+
+	const segment: PropertySegment = { key: indexedMatch[1] };
+	if (indexedMatch[2] !== undefined) {
+		segment.index = parseInt(indexedMatch[2]);
+	}
+	return segment;
+}
+
+function parsePropertySegmentTail(text: string, key: string, offset: number): PropertySegment | null {
+	if (!key) return null;
+	const tail = text.slice(offset).trim();
+	if (!tail) return { key };
+
+	const indexMatch = tail.match(/^\[(\d+)\]$/);
+	if (!indexMatch) return null;
+	return { key, index: parseInt(indexMatch[1]) };
+}
+
+function readQuotedString(input: string, start: number): { value: string; end: number } | null {
+	const quote = input[start];
+	if (quote !== '"' && quote !== "'") return null;
+
+	let value = "";
+	for (let i = start + 1; i < input.length; i++) {
+		const ch = input[i];
+		if (ch === "\\" && i + 1 < input.length) {
+			i++;
+			value += input[i];
+		} else if (ch === quote) {
+			return { value, end: i + 1 };
+		} else {
+			value += ch;
+		}
+	}
+
+	return null;
+}
+
+function skipWhitespace(input: string, start: number): number {
+	let pos = start;
+	while (pos < input.length && /\s/.test(input[pos])) pos++;
+	return pos;
 }
 
 /**
@@ -486,7 +578,28 @@ async function resolveExprValue(
 	frontmatter: Record<string, unknown> | undefined,
 	bodyContent: string
 ): Promise<unknown> {
+	const directLookup = parseDirectPropertyLookup(innerExpr);
+	if (directLookup) {
+		const value = await resolvePropertyChain(app, directLookup.segments, file, frontmatter, bodyContent);
+		if (value !== null && value !== undefined) {
+			if (directLookup.filterChain) {
+				return applyFilterChain(value as Parameters<typeof applyFilterChain>[0], directLookup.filterChain);
+			}
+			return value;
+		}
+	}
+
 	if (isExpressionMode(innerExpr)) {
+		const rewritten = rewriteSlashPropertyReferences(innerExpr, frontmatter);
+		if (rewritten) {
+			return evaluateExpression(rewritten.expression, {
+				...exprCtx,
+				variables: {
+					...exprCtx.variables,
+					...rewritten.variables,
+				},
+			});
+		}
 		return evaluateExpression(innerExpr, exprCtx);
 	}
 
@@ -515,6 +628,91 @@ async function resolveExprValue(
 	}
 
 	return value;
+}
+
+function parseDirectPropertyLookup(expr: string): { segments: PropertySegment[]; filterChain?: string } | null {
+	const pipeIdx = findFirstPipe(expr);
+	const chain = (pipeIdx === -1 ? expr : expr.substring(0, pipeIdx)).trim();
+	const canBeDirectLookup =
+		chain.startsWith('"') ||
+		chain.startsWith("'") ||
+		chain.startsWith("[") ||
+		chain.includes("/");
+	if (!canBeDirectLookup) {
+		return null;
+	}
+
+	const segments = parsePropertyPath(chain);
+	if (segments.length !== 1) return null;
+
+	return {
+		segments,
+		filterChain: pipeIdx === -1 ? undefined : expr.substring(pipeIdx + 1).trim(),
+	};
+}
+
+function rewriteSlashPropertyReferences(
+	expr: string,
+	frontmatter: Record<string, unknown> | undefined,
+): { expression: string; variables: ExprContext["variables"] } | null {
+	const keys = Object.keys(frontmatter ?? {})
+		.filter(key => key.includes("/"))
+		.sort((a, b) => b.length - a.length);
+	if (keys.length === 0 || !frontmatter) return null;
+
+	let expression = "";
+	const variables: ExprContext["variables"] = {};
+	let replacementIndex = 0;
+	let quote: string | null = null;
+	let replaced = false;
+
+	for (let i = 0; i < expr.length; i++) {
+		const ch = expr[i];
+
+		if (quote) {
+			expression += ch;
+			if (ch === "\\" && i + 1 < expr.length) {
+				i++;
+				expression += expr[i];
+			} else if (ch === quote) {
+				quote = null;
+			}
+			continue;
+		}
+
+		if (ch === '"' || ch === "'") {
+			quote = ch;
+			expression += ch;
+			continue;
+		}
+
+		const key = keys.find(candidate =>
+			expr.startsWith(candidate, i) &&
+			isPropertyReferenceBoundary(expr, i, candidate.length)
+		);
+		if (key) {
+			const variableName = `__cv_slash_prop_${replacementIndex++}`;
+			variables[variableName] = frontmatter[key] as ExprContext["variables"][string];
+			expression += variableName;
+			i += key.length - 1;
+			replaced = true;
+			continue;
+		}
+
+		expression += ch;
+	}
+
+	return replaced ? { expression, variables } : null;
+}
+
+function isPropertyReferenceBoundary(expr: string, start: number, length: number): boolean {
+	const before = start > 0 ? expr[start - 1] : "";
+	const after = start + length < expr.length ? expr[start + length] : "";
+	return !isIdentifierCharacter(before) && !isIdentifierCharacter(after);
+}
+
+function isIdentifierCharacter(ch: string): boolean {
+	return /[a-zA-Z0-9_-]/.test(ch);
 }
 
 /**

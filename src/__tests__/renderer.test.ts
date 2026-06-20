@@ -199,6 +199,27 @@ describe("parsePropertyPath", () => {
 		expect(parsePropertyPath("my_prop")).toEqual([{ key: "my_prop" }]);
 	});
 
+	it("handles quoted keys with slashes", () => {
+		expect(parsePropertyPath('"book/title"')).toEqual([{ key: "book/title" }]);
+	});
+
+	it("handles bracket-quoted keys with slashes", () => {
+		expect(parsePropertyPath('["book/title"]')).toEqual([{ key: "book/title" }]);
+	});
+
+	it("handles bracket-quoted keys with array indices", () => {
+		expect(parsePropertyPath('["book/title"][1]')).toEqual([
+			{ key: "book/title", index: 1 },
+		]);
+	});
+
+	it("does not split dots inside bracket-quoted keys", () => {
+		expect(parsePropertyPath('["book.title"].subtitle')).toEqual([
+			{ key: "book.title" },
+			{ key: "subtitle" },
+		]);
+	});
+
 	it("returns empty array for empty string", () => {
 		expect(parsePropertyPath("")).toEqual([]);
 	});
@@ -345,5 +366,246 @@ describe("renderTemplate source content", () => {
 		expect(cachedRead).toHaveBeenCalledWith(file);
 		expect(read).not.toHaveBeenCalled();
 		expect(container.textContent).toBe("CACHED BODY");
+	});
+
+	it("resolves quoted frontmatter keys that contain slashes", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: {
+						"book/title": "The book",
+						"book/series": ["First", "Second"],
+					},
+				})),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Books/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			'<p>{{["book/title"]}}</p><p>{{"book/title" | upper}}</p><p>{{["book/series"][1]}}</p>',
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(container.textContent).toBe("The bookTHE BOOKSecond");
+	});
+
+	it("resolves unquoted frontmatter keys that contain slashes", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: {
+						"book/title": "The book",
+					},
+				})),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Books/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"<p>{{book/title}}</p><p>{{book/title | upper}}</p>",
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(container.textContent).toBe("The bookTHE BOOK");
+	});
+
+	it("keeps division expressions working when no matching slash key exists", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ frontmatter: {} })),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Books/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"{{10 / 2}}",
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(container.textContent).toBe("5");
+	});
+
+	it("uses slash frontmatter keys inside larger arithmetic expressions when the key exists", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: {
+						"book/title": 20,
+					},
+				})),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Books/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"{{book/title + 10/2}}",
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(container.textContent).toBe("25");
+	});
+
+	it("uses normal division in larger slash expressions when no matching slash key exists", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: {
+						book: 20,
+						title: 4,
+					},
+				})),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Books/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"{{book/title + 10/2}}",
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(container.textContent).toBe("10");
+	});
+
+	it("prefers existing slash keys over division when both interpretations are possible", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: {
+						"book/title": 20,
+						book: 100,
+						title: 10,
+					},
+				})),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Books/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"{{book/title + 10/2}}",
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(container.textContent).toBe("25");
+	});
+
+	it("keeps quoted slash strings as literals when no matching frontmatter key exists", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({ frontmatter: {} })),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Books/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			'{{"https://example.com/cover.jpg"}}',
+			file,
+			container,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(container.textContent).toBe("https://example.com/cover.jpg");
 	});
 });
