@@ -1206,6 +1206,22 @@ describe("processLogicBlocks", () => {
 			);
 			expect(result).toBe("a1 a2 b1 b2 ");
 		});
+
+		it("for inside for can iterate over values from the outer loop variable", async () => {
+			const ctx = makeContext({
+				frontmatter: {
+					rows: [
+						{ name: "Belinda Says", categories: ["Songs"] },
+						{ name: "In Undertow", categories: ["Music Videos", "Songs"] },
+					],
+				},
+			});
+			const result = await processLogicBlocks(
+				"{% for row in rows %}{{row.name}}:{% for category in row.categories %}[{{category}}]{% endfor %};{% endfor %}",
+				ctx
+			);
+			expect(result).toBe("Belinda Says:[Songs];In Undertow:[Music Videos][Songs];");
+		});
 	});
 });
 

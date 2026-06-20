@@ -13,6 +13,7 @@
  */
 
 import { App, TFile, moment } from "obsidian";
+import { buildBasesCollection } from "./bases/access";
 import { stripFrontmatter } from "./frontmatter";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,8 @@ export interface ExprFile {
 	tags: string[];
 	links: string[];
 	properties: Record<string, ExprValue>;
+	bases?: ExprValueArray;
+	baseViews?: ExprValueArray;
 	_tfile: TFile;
 }
 
@@ -71,7 +74,17 @@ export interface ExprContext {
 	frontmatter: Record<string, unknown> | undefined;
 	bodyContent: string;
 	variables: Record<string, ExprValue>;
+	bases?: ExprValueArray;
+	deferredMarkdown?: DeferredMarkdownStore;
 }
+
+export interface DeferredMarkdownStore {
+	nextId: number;
+	values: Record<string, ExprValue>;
+}
+
+const DEFERRED_MARKDOWN_PREFIX = "__cv_deferred_markdown_";
+const RENDERABLE_MARKDOWN_RE = /!?\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^)]+\)|!\[[^\]\n]*\]\([^)]+\)|(^|[\s([{])#[\w/-]+|[*_`~]/;
 
 // ---------------------------------------------------------------------------
 // Token types
@@ -554,7 +567,7 @@ async function resolveToFile(app: App, target: string, sourcePath: string): Prom
 }
 
 /** Build an ExprFile wrapper from a TFile */
-async function buildExprFile(app: App, tfile: TFile): Promise<ExprFile> {
+async function buildExprFile(app: App, tfile: TFile, bases?: ExprValueArray): Promise<ExprFile> {
 	const cache = app.metadataCache.getFileCache(tfile);
 	const fm = cache?.frontmatter;
 	const tags = (cache?.tags?.map(t => t.tag) ?? []);
@@ -579,7 +592,7 @@ async function buildExprFile(app: App, tfile: TFile): Promise<ExprFile> {
 
 	const folder = tfile.path.includes('/') ? tfile.path.substring(0, tfile.path.lastIndexOf('/')) : '';
 
-	return {
+	const exprFile: ExprFile = {
 		__type: "file",
 		name: tfile.name,
 		basename: tfile.basename,
@@ -594,6 +607,12 @@ async function buildExprFile(app: App, tfile: TFile): Promise<ExprFile> {
 		properties,
 		_tfile: tfile,
 	};
+	if (bases) {
+		const basesCollection = buildBasesCollection(bases) as ExprValueArray;
+		exprFile.bases = basesCollection;
+		exprFile.baseViews = basesCollection;
+	}
+	return exprFile;
 }
 
 /** Read body content of a file (strips frontmatter) */
@@ -1141,7 +1160,7 @@ function getProperty(obj: ExprValue, property: string): ExprValue {
 	// Array .length
 	if (Array.isArray(obj)) {
 		if (property === "length") return obj.length;
-		return null;
+		return (obj as unknown as Record<string, ExprValue>)[property] ?? null;
 	}
 
 	// String .length
@@ -1191,6 +1210,9 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 			if (name === "size") return ctx.file.stat.size;
 			if (name === "ctime") return ctx.file.stat.ctime;
 			if (name === "mtime") return ctx.file.stat.mtime;
+			if (name === "bases") return buildBasesCollection(ctx.bases ?? []) as ExprValueArray;
+			if (name === "baseViews") return buildBasesCollection(ctx.bases ?? []) as ExprValueArray;
+			if (name === "file") return buildExprFile(ctx.app, ctx.file, ctx.bases);
 			// Special: "value" for lambda contexts
 			return null;
 		}
@@ -1405,14 +1427,12 @@ async function resolveVariablePlaceholders(template: string, ctx: ExprContext): 
 			}
 		}
 
-		const strValue = value === null || value === undefined ? "" : (
-			typeof value === "string" ? value :
-			typeof value === "number" || typeof value === "boolean" ? String(value) :
-			Array.isArray(value) ? value.map(v => v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ") :
-			JSON.stringify(value)
-		);
+		const strValue = exprToString(value);
+		const replacementValue = shouldDeferMarkdown(strValue, ctx)
+			? createDeferredMarkdownPlaceholder(value, ctx)
+			: strValue;
 
-		replacements.push({ start: match.index, end: match.index + match[0].length, value: strValue });
+		replacements.push({ start: match.index, end: match.index + match[0].length, value: replacementValue });
 	}
 
 	// Apply replacements in reverse order to preserve offsets
@@ -1422,6 +1442,37 @@ async function resolveVariablePlaceholders(template: string, ctx: ExprContext): 
 		result = result.substring(0, r.start) + r.value + result.substring(r.end);
 	}
 	return result;
+}
+
+function shouldDeferMarkdown(value: string, ctx: ExprContext): boolean {
+	return !!ctx.deferredMarkdown && RENDERABLE_MARKDOWN_RE.test(value);
+}
+
+function createDeferredMarkdownPlaceholder(value: ExprValue, ctx: ExprContext): string {
+	const store = ctx.deferredMarkdown;
+	if (!store) return exprToString(value);
+
+	const name = `${DEFERRED_MARKDOWN_PREFIX}${store.nextId++}`;
+	store.values[name] = value;
+	return `{{${name}}}`;
+}
+
+export function resolveDeferredMarkdownPlaceholder(
+	expr: string,
+	ctx: ExprContext,
+): { found: boolean; value: ExprValue } {
+	const name = expr.trim();
+	if (!name.startsWith(DEFERRED_MARKDOWN_PREFIX)) {
+		return { found: false, value: null };
+	}
+	if (!ctx.deferredMarkdown || !Object.prototype.hasOwnProperty.call(ctx.deferredMarkdown.values, name)) {
+		return { found: false, value: null };
+	}
+
+	return {
+		found: true,
+		value: ctx.deferredMarkdown.values[name],
+	};
 }
 
 /** Process {% set variable = expression %} */
@@ -1448,53 +1499,95 @@ async function processSetBlocks(template: string, ctx: ExprContext): Promise<str
 
 /** Process {% for item in list %}...{% endfor %} */
 async function processForBlocks(template: string, ctx: ExprContext): Promise<string> {
-	// Match innermost {% for %} blocks (body must not contain another {% for)
-	const forRegex = /\{%\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^%}]*?)\s*%\}((?:(?!\{%\s*for\s)[\s\S])*?)\{%\s*endfor\s*%\}/g;
 	let result = template;
 	let safety = 0;
 
-	while (forRegex.test(result) && safety < 50) {
+	while (safety < 50) {
 		safety++;
-		forRegex.lastIndex = 0;
-		result = await replaceAsync(result, forRegex, async (_fullMatch, varName: string, listExpr: string, body: string) => {
-			let list: ExprValue;
-			try {
-				const ast = parseExpression(listExpr);
-				list = await evaluate(ast, ctx);
-			} catch {
-				// Try as a simple identifier in frontmatter
-				if (ctx.frontmatter && listExpr.trim() in ctx.frontmatter) {
-					list = ctx.frontmatter[listExpr.trim()] as ExprValue;
-				} else {
-					list = null;
-				}
-			}
+		const block = findFirstForBlock(result);
+		if (!block) break;
 
-			if (!Array.isArray(list)) return "";
-
-			const parts: string[] = [];
-			for (let i = 0; i < list.length; i++) {
-				const itemCtx: ExprContext = {
-					...ctx,
-					variables: {
-						...ctx.variables,
-						[varName]: list[i],
-						loop: {
-							index: i + 1,
-							index0: i,
-							first: i === 0,
-							last: i === list.length - 1,
-							length: list.length,
-						},
-					},
-				};
-				parts.push(await processLogicBlocks(body, itemCtx));
-			}
-			return parts.join("");
-		});
+		const replacement = await renderForBlock(block, ctx);
+		result = result.substring(0, block.start) + replacement + result.substring(block.end);
 	}
 
 	return result;
+}
+
+interface ForBlock {
+	start: number;
+	end: number;
+	varName: string;
+	listExpr: string;
+	body: string;
+}
+
+const FOR_TAG_RE = /\{%\s*(for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^%}]*?)|endfor)\s*%\}/g;
+
+function findFirstForBlock(template: string): ForBlock | null {
+	const tagRegex = new RegExp(FOR_TAG_RE.source, "g");
+	const opening = tagRegex.exec(template);
+	if (!opening || opening[1] === "endfor") return null;
+
+	let depth = 1;
+	let closing: RegExpExecArray | null = null;
+
+	while ((closing = tagRegex.exec(template)) !== null) {
+		if (closing[1] === "endfor") {
+			depth--;
+			if (depth === 0) break;
+		} else {
+			depth++;
+		}
+	}
+
+	if (!closing || depth !== 0) return null;
+
+	return {
+		start: opening.index,
+		end: closing.index + closing[0].length,
+		varName: opening[2],
+		listExpr: opening[3].trim(),
+		body: template.substring(opening.index + opening[0].length, closing.index),
+	};
+}
+
+async function renderForBlock(block: ForBlock, ctx: ExprContext): Promise<string> {
+	const list = await evaluateForList(block.listExpr, ctx);
+	if (!Array.isArray(list)) return "";
+
+	const parts: string[] = [];
+	for (let i = 0; i < list.length; i++) {
+		const itemCtx: ExprContext = {
+			...ctx,
+			variables: {
+				...ctx.variables,
+				[block.varName]: list[i],
+				loop: {
+					index: i + 1,
+					index0: i,
+					first: i === 0,
+					last: i === list.length - 1,
+					length: list.length,
+				},
+			},
+		};
+		parts.push(await processLogicBlocks(block.body, itemCtx));
+	}
+
+	return parts.join("");
+}
+
+async function evaluateForList(listExpr: string, ctx: ExprContext): Promise<ExprValue> {
+	try {
+		const ast = parseExpression(listExpr);
+		return evaluate(ast, ctx);
+	} catch {
+		if (ctx.frontmatter && listExpr.trim() in ctx.frontmatter) {
+			return ctx.frontmatter[listExpr.trim()] as ExprValue;
+		}
+		return null;
+	}
 }
 
 /** Process {% if %}...{% elif %}...{% else %}...{% endif %} */

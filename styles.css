@@ -2,6 +2,18 @@
     display: none;
 }
 
+.cv-bases-collector-host {
+    position: fixed;
+    left: -10000px;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+}
+
 .cv-codemirror-container {
     width: 100%;
     margin-bottom: 0.75rem;
