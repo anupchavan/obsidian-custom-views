@@ -7,6 +7,7 @@ import { renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR }
 import { createEditableContentExtensions } from "./editable-content";
 import { warmCustomViewScriptEngine } from "./script-engine";
 import type { ViewConfig } from "./types";
+import { EmbeddedBasesProvider } from "./bases/provider";
 
 const CUSTOM_VIEW_CLASS = "obsidian-custom-view-render";
 const HIDE_MARKDOWN_CLASS = "obsidian-custom-view-hidden";
@@ -105,10 +106,26 @@ export default class CustomViewsPlugin extends Plugin {
 	/** Counter for generating unique per-container scope IDs */
 	private nextScopeId = 0;
 
+	/** Provides Obsidian Bases query results to templates when Bases are referenced. */
+	private basesProvider: EmbeddedBasesProvider | undefined;
+
+	/** Prevents deferred startup work from running after a fast disable/reload. */
+	private unloaded = false;
+
 	async onload() {
+		this.unloaded = false;
 		await this.loadSettings();
 		this.prepareScriptEngine();
+		this.basesProvider = new EmbeddedBasesProvider(this);
+		this.basesProvider.register();
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
+		this.app.workspace.onLayoutReady(() => {
+			window.setTimeout(() => {
+				if (!this.unloaded) {
+					this.refreshAllViews();
+				}
+			}, 0);
+		});
 
 		this.addCommand({
 			id: "enable",
@@ -199,6 +216,7 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.unloaded = true;
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView) {
 				this.restoreEditableView(leaf.view);
@@ -381,12 +399,22 @@ export default class CustomViewsPlugin extends Plugin {
 
 		const stateKey = this.computeStateKey(file, view, matchedConfig);
 		const appliedKey = container.getAttribute("data-cv-state");
+		const state = view.getState();
+		const isTrueSourceMode = state.mode === 'source' && state.source === true;
+		const isReadingMode = state.mode === 'preview';
+		const isLivePreviewMode = state.mode === 'source' && state.source === false;
+		const shouldRenderCustomView = !!matchedConfig &&
+			!isTrueSourceMode &&
+			(this.settings.workInLivePreview || isReadingMode);
 
 		// Skip if nothing changed — prevents DOM churn and event cascades
 		if (stateKey === appliedKey) {
 			const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
-			customEl?.removeClass(PENDING_VIEW_CLASS);
-			return;
+			const appliedDomIsValid = shouldRenderCustomView ? !!customEl : !customEl;
+			if (appliedDomIsValid) {
+				customEl?.removeClass(PENDING_VIEW_CLASS);
+				return;
+			}
 		}
 
 		// Always clean up editable state first — before any mode/template checks.
@@ -401,11 +429,6 @@ export default class CustomViewsPlugin extends Plugin {
 		}
 
 		const matchedTemplate = matchedConfig.template;
-
-		const state = view.getState();
-		const isTrueSourceMode = state.mode === 'source' && state.source === true;
-		const isReadingMode = state.mode === 'preview';
-		const isLivePreviewMode = state.mode === 'source' && state.source === false;
 
 		if (isTrueSourceMode) {
 			this.restoreDefaultView(view);
@@ -470,7 +493,19 @@ export default class CustomViewsPlugin extends Plugin {
 
 		customEl.addClass(PENDING_VIEW_CLASS);
 		try {
-			await renderTemplate(this.app, template, file, customEl, this, false, viewConfig, scopeId, this.settings.allowJavaScript, sourceContent);
+			await renderTemplate(
+				this.app,
+				template,
+				file,
+				customEl,
+				this,
+				false,
+				viewConfig,
+				scopeId,
+				this.settings.allowJavaScript,
+				sourceContent,
+				this.basesProvider,
+			);
 		} finally {
 			customEl.removeClass(PENDING_VIEW_CLASS);
 		}
@@ -637,7 +672,19 @@ export default class CustomViewsPlugin extends Plugin {
 		// Render template with editableMode=true (content placeholder left empty)
 		customEl.addClass(PENDING_VIEW_CLASS);
 		try {
-			await renderTemplate(this.app, template, file, customEl, this, true, viewConfig, scopeId, this.settings.allowJavaScript, sourceContent);
+			await renderTemplate(
+				this.app,
+				template,
+				file,
+				customEl,
+				this,
+				true,
+				viewConfig,
+				scopeId,
+				this.settings.allowJavaScript,
+				sourceContent,
+				this.basesProvider,
+			);
 		} finally {
 			customEl.removeClass(PENDING_VIEW_CLASS);
 		}

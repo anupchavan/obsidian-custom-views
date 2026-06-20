@@ -1,11 +1,20 @@
 import { App, TFile, MarkdownRenderer, Component } from "obsidian";
 import { applyFilterChain } from "./filters";
-import { isExpressionMode, evaluateExpression, processLogicBlocks } from "./expression";
-import type { ExprContext } from "./expression";
+import {
+	isExpressionMode,
+	evaluateExpression,
+	processLogicBlocks,
+	resolveDeferredMarkdownPlaceholder,
+} from "./expression";
+import type { ExprContext, ExprValueArray } from "./expression";
 import { stripFrontmatter } from "./frontmatter";
 import type { ViewConfig } from "./types";
 import { executeCustomViewJavaScript } from "./script-engine";
 import type { CustomViewScriptContext } from "./script-engine";
+import { buildBasesCollection } from "./bases/access";
+import { templateReferencesBases } from "./bases/code-blocks";
+import { stripTemplateBaseBlocks } from "./bases/template-syntax";
+import type { BasesDataProvider, TemplateBases } from "./bases/types";
 
 // ---------------------------------------------------------------------------
 // Cross-file property resolution helpers
@@ -170,70 +179,60 @@ export async function resolvePropertyChain(
 	segments: PropertySegment[],
 	file: TFile,
 	frontmatter: Record<string, unknown> | undefined,
-	bodyContent: string
+	bodyContent: string,
+	bases?: TemplateBases,
 ): Promise<unknown> {
 	if (segments.length === 0) return null;
 
-	let currentFrontmatter = frontmatter;
-	let currentFile = file;
-	let currentBodyContent = bodyContent;
+	let currentContext: ChainContext = {
+		kind: "file",
+		file,
+		frontmatter,
+		bodyContent,
+		bases,
+	};
+	let linkSourceFile = file;
 
 	for (let i = 0; i < segments.length; i++) {
 		const seg = segments[i];
-
-		// Try to resolve the key against file properties or frontmatter
-		let value: unknown = undefined;
-
-		// Check built-in file properties at every level — these work for
-		// the source file and any linked file we've resolved to
-		if (seg.key === "name") value = currentFile.name;
-		else if (seg.key === "basename") value = currentFile.basename;
-		else if (seg.key === "size") value = currentFile.stat.size;
-		else if (seg.key === "ctime") value = currentFile.stat.ctime;
-		else if (seg.key === "mtime") value = currentFile.stat.mtime;
-		else if (seg.key === "content") value = currentBodyContent;
-
-		// Check frontmatter (frontmatter property takes priority over builtins
-		// only when explicitly defined — but builtins like "content" should
-		// not be overridden by frontmatter)
-		if (value === undefined && currentFrontmatter && currentFrontmatter[seg.key] !== undefined) {
-			value = currentFrontmatter[seg.key];
-		}
+		let value = resolveChainSegment(currentContext, seg.key);
 
 		if (value === undefined) return null;
 
-		// Apply array index if present
 		if (seg.index !== undefined) {
-			if (Array.isArray(value)) {
-				value = seg.index < value.length ? value[seg.index] : null;
-			} else {
-				return null; // tried to index a non-array
-			}
+			value = applySegmentIndex(value, seg.index);
 		}
 
 		if (value === null || value === undefined) return null;
 
-		// If there are more segments, the current value must be a wiki-link
-		// that we can resolve to another file
 		if (i < segments.length - 1) {
+			if (canTraversePlainValue(value)) {
+				currentContext = { kind: "value", value };
+				continue;
+			}
+
 			const linkTarget = extractWikiLink(typeof value === "string" ? value : "");
 			if (!linkTarget) {
 				// Not a wiki-link — can't chain further
 				return null;
 			}
 
-			const linkedFile = resolveLinkedFile(app, linkTarget, currentFile.path);
+			const linkedFile = resolveLinkedFile(app, linkTarget, linkSourceFile.path);
 			if (!linkedFile) return null;
 
 			// Get the linked file's frontmatter
 			const linkedCache = app.metadataCache.getFileCache(linkedFile);
-			currentFrontmatter = linkedCache?.frontmatter;
-			currentFile = linkedFile;
+			linkSourceFile = linkedFile;
 
 			// Read body content of the linked file so that `.content`
 			// works at every level of the chain
 			const rawLinked = await app.vault.cachedRead(linkedFile);
-			currentBodyContent = stripFrontmatter(linkedCache, rawLinked);
+			currentContext = {
+				kind: "file",
+				file: linkedFile,
+				frontmatter: linkedCache?.frontmatter,
+				bodyContent: stripFrontmatter(linkedCache, rawLinked),
+			};
 		} else {
 			// Last segment — return the value
 			return value;
@@ -241,6 +240,75 @@ export async function resolvePropertyChain(
 	}
 
 	return null;
+}
+
+type ChainContext =
+	| {
+		kind: "file";
+		file: TFile;
+		frontmatter: Record<string, unknown> | undefined;
+		bodyContent: string;
+		bases?: TemplateBases;
+	}
+	| {
+		kind: "value";
+		value: unknown;
+	};
+
+function resolveChainSegment(context: ChainContext, key: string): unknown {
+	if (context.kind === "value") {
+		return resolvePlainValueSegment(context.value, key);
+	}
+
+	const currentFile = context.file;
+	let value: unknown = undefined;
+
+	// Check built-in file properties at every level — these work for
+	// the source file and any linked file we've resolved to.
+	if (key === "name") value = currentFile.name;
+	else if (key === "basename") value = currentFile.basename;
+	else if (key === "path") value = currentFile.path;
+	else if (key === "folder") value = currentFile.parent?.path ?? "";
+	else if (key === "ext" || key === "extension") value = currentFile.extension;
+	else if (key === "size") value = currentFile.stat.size;
+	else if (key === "ctime") value = currentFile.stat.ctime;
+	else if (key === "mtime") value = currentFile.stat.mtime;
+	else if (key === "content") value = context.bodyContent;
+	else if (key === "bases" || key === "baseViews") value = buildBasesCollection(context.bases ?? []);
+
+	// Check frontmatter only when no built-in value was found. Built-ins like
+	// "content" should not be overridden by frontmatter.
+	if (value === undefined && context.frontmatter && context.frontmatter[key] !== undefined) {
+		value = context.frontmatter[key];
+	}
+
+	return value;
+}
+
+function resolvePlainValueSegment(value: unknown, key: string): unknown {
+	if (Array.isArray(value)) {
+		if (key === "length") return value.length;
+		return (value as unknown as Record<string, unknown>)[key];
+	}
+	if (isRecord(value)) {
+		return value[key];
+	}
+	return undefined;
+}
+
+function applySegmentIndex(value: unknown, index: number): unknown {
+	if (Array.isArray(value)) {
+		return index < value.length ? value[index] : null;
+	}
+	return null;
+}
+
+function canTraversePlainValue(value: unknown): boolean {
+	return Array.isArray(value) || isRecord(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -265,6 +333,17 @@ export const EDITABLE_PLACEHOLDER_ATTR = "data-cv-editable-placeholder";
 
 /** Overlay element augmented with the CSS-scoping observer we attach during render. */
 type ScopedContainer = HTMLElement & { __cvScopeObserver?: MutationObserver | null };
+const MARKDOWN_VALUE_HINT_RE = /[![\]_*`~#>|<&\n\r]/;
+const URL_VALUE_HINT_RE = /\bhttps?:\/\//i;
+const SOURCE_CONTENT_CACHE_LIMIT = 200;
+
+interface SourceContentCacheEntry {
+	mtime: number;
+	size: number;
+	content: string;
+}
+
+const sourceContentCache = new WeakMap<App, Map<string, SourceContentCacheEntry>>();
 
 /**
  * Renders a template into a container.
@@ -278,6 +357,7 @@ type ScopedContainer = HTMLElement & { __cvScopeObserver?: MutationObserver | nu
  * @param scopeId - Optional unique ID for CSS scoping (set on the container's parent via data-cv-id)
  * @param allowJavaScript - Whether inline template scripts and per-view JavaScript should execute
  * @param sourceContent - Optional already-loaded note text from Obsidian's active view
+ * @param basesProvider - Optional provider for embedded Obsidian Bases results
  */
 export async function renderTemplate(
 	app: App,
@@ -290,12 +370,25 @@ export async function renderTemplate(
 	scopeId?: string,
 	allowJavaScript: boolean = true,
 	sourceContent?: string,
+	basesProvider?: BasesDataProvider,
 ) {
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
-	const rawContent = sourceContent ?? await app.vault.cachedRead(file);
+	const rawContent = sourceContent ?? await readCachedSourceContent(app, file);
+	const renderTemplateContent = stripTemplateBaseBlocks(template);
 
 	const bodyContent = stripFrontmatter(cache, rawContent);
+	const bases = await collectEmbeddedBasesIfNeeded(
+		basesProvider,
+		template,
+		renderTemplateContent,
+		viewConfig,
+		app,
+		file,
+		rawContent,
+		container.ownerDocument,
+		component,
+	);
 
 	const markdownQueue: { id: string, content: string }[] = [];
 	const contentPlaceholderId = `custom-view-content-${Date.now()}`;
@@ -307,12 +400,17 @@ export async function renderTemplate(
 		frontmatter,
 		bodyContent,
 		variables: {},
+		bases: bases as unknown as ExprValueArray,
+		deferredMarkdown: {
+			nextId: 0,
+			values: {},
+		},
 	};
 
 	// Process Clipper-style logic blocks first: {% if %}, {% for %}, {% set %}
-	let processedTemplate = template;
-	if (template.includes('{%')) {
-		processedTemplate = await processLogicBlocks(template, exprCtx);
+	let processedTemplate = renderTemplateContent;
+	if (renderTemplateContent.includes('{%')) {
+		processedTemplate = await processLogicBlocks(renderTemplateContent, exprCtx);
 	}
 
 	const matches = collectTemplateMatches(processedTemplate);
@@ -330,7 +428,7 @@ export async function renderTemplate(
 			continue;
 		}
 
-		const finalValue = await resolveExprValue(innerExpr, exprCtx, app, file, frontmatter, bodyContent);
+		const finalValue = await resolveExprValue(innerExpr, exprCtx, app, file, frontmatter, bodyContent, bases);
 
 		if (finalValue === null || finalValue === undefined) {
 			resolvedValues.push("");
@@ -345,9 +443,14 @@ export async function renderTemplate(
 		if (isInsideAttribute) {
 			resolvedValues.push(resultToString(finalValue));
 		} else {
-			const placeholderId = `cv-md-${markdownQueue.length}-${Date.now()}`;
-			markdownQueue.push({ id: placeholderId, content: resultToString(finalValue) });
-			resolvedValues.push(`<span id="${placeholderId}"></span>`);
+			const renderedValue = resultToString(finalValue);
+			if (needsMarkdownRender(renderedValue)) {
+				const placeholderId = `cv-md-${markdownQueue.length}-${Date.now()}`;
+				markdownQueue.push({ id: placeholderId, content: renderedValue });
+				resolvedValues.push(`<span id="${placeholderId}"></span>`);
+			} else {
+				resolvedValues.push(escapeHtml(renderedValue));
+			}
 		}
 	}
 
@@ -376,12 +479,11 @@ export async function renderTemplate(
 			await MarkdownRenderer.render(app, item.content, span, file.path, component);
 			span.removeAttribute("id");
 
-			const p = span.querySelector("p");
-			if (p && p.parentElement === span && span.children.length === 1) {
-				p.replaceWith(...Array.from(p.childNodes));
-			}
+			unwrapSingleParagraph(span);
 		}
 	}
+
+	applyNativeInternalLinkState(app, container, file.path);
 
 	const contentEl = container.querySelector(`#${contentPlaceholderId}`) as HTMLElement;
 	if (contentEl) {
@@ -391,9 +493,8 @@ export async function renderTemplate(
 			contentEl.setAttribute(EDITABLE_PLACEHOLDER_ATTR, "true");
 			contentEl.removeAttribute("id");
 		} else {
-			const sizer = activeDocument.createElement("div");
-			sizer.addClass("markdown-preview-sizer");
-			sizer.addClass("markdown-preview-section");
+			const sizer = container.ownerDocument.createElement("div");
+			sizer.classList.add("markdown-preview-sizer", "markdown-preview-section");
 			contentEl.appendChild(sizer);
 
 			await MarkdownRenderer.render(app, bodyContent, sizer, file.path, component);
@@ -403,30 +504,37 @@ export async function renderTemplate(
 
 	// Inject CSS from the separate CSS field (with template resolution)
 	if (viewConfig?.css) {
-		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent);
+		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases);
 		if (resolvedCss.trim()) {
-			const styleEl = activeDocument.createElement("style");
+			const styleEl = container.ownerDocument.createElement("style");
 			styleEl.textContent = resolvedCss;
 			container.prepend(styleEl);
 		}
 	}
 
-	// Execute scripts only when JavaScript execution is allowed
 	if (allowJavaScript) {
-		const scriptContext = createScriptContext(app, file, container, frontmatter, bodyContent, viewConfig);
+		const scripts = Array.from(container.querySelectorAll("script"));
+		const hasExecutableInlineScripts = scripts.some(hasExecutableInlineScriptCode);
+		const resolvedJs = viewConfig?.js?.trim()
+			? await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent, bases)
+			: "";
+		const viewJs = resolvedJs.trim();
 
-		// Execute inline scripts from the HTML template
-		await executeScripts(container, scriptContext);
+		if (hasExecutableInlineScripts || viewJs) {
+			const scriptContext = createScriptContext(app, file, container, frontmatter, bodyContent, viewConfig);
 
-		// Execute JS from the separate JS field (with template resolution)
-		if (viewConfig?.js) {
-			const resolvedJs = await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent);
-			if (resolvedJs.trim()) {
+			await executeScripts(scripts, scriptContext);
+
+			if (viewJs) {
 				try {
-					await executeCustomViewJavaScript(resolvedJs, scriptContext);
+					await executeCustomViewJavaScript(viewJs, scriptContext);
 				} catch (e) {
 					console.error('[Custom Views] Error executing view JS:', e);
 				}
+			}
+		} else {
+			for (const script of scripts) {
+				script.remove();
 			}
 		}
 	}
@@ -551,6 +659,39 @@ function applyReplacements(template: string, matches: TemplateMatch[], values: s
 	return result;
 }
 
+async function readCachedSourceContent(app: App, file: TFile): Promise<string> {
+	const stat = file.stat;
+	if (!stat) return app.vault.cachedRead(file);
+
+	let cache = sourceContentCache.get(app);
+	if (!cache) {
+		cache = new Map();
+		sourceContentCache.set(app, cache);
+	}
+
+	const cached = cache.get(file.path);
+	if (cached && cached.mtime === stat.mtime && cached.size === stat.size) {
+		cache.delete(file.path);
+		cache.set(file.path, cached);
+		return cached.content;
+	}
+
+	const content = await app.vault.cachedRead(file);
+	cache.set(file.path, {
+		mtime: stat.mtime,
+		size: stat.size,
+		content,
+	});
+
+	while (cache.size > SOURCE_CONTENT_CACHE_LIMIT) {
+		const oldestKey = cache.keys().next().value as string | undefined;
+		if (oldestKey === undefined) break;
+		cache.delete(oldestKey);
+	}
+
+	return content;
+}
+
 /** Convert an expression/property result to a plain string */
 export function resultToString(value: unknown): string {
 	if (value === null || value === undefined) return "";
@@ -566,6 +707,52 @@ export function resultToString(value: unknown): string {
 	return JSON.stringify(value);
 }
 
+function unwrapSingleParagraph(container: HTMLElement) {
+	const p = container.querySelector("p");
+	if (p && p.parentElement === container && container.children.length === 1) {
+		p.replaceWith(...Array.from(p.childNodes));
+	}
+}
+
+function needsMarkdownRender(value: string): boolean {
+	return MARKDOWN_VALUE_HINT_RE.test(value) || URL_VALUE_HINT_RE.test(value);
+}
+
+function escapeHtml(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
+function applyNativeInternalLinkState(app: App, container: HTMLElement, sourcePath: string) {
+	const metadataCache = app.metadataCache as App["metadataCache"] & {
+		getFirstLinkpathDest?: App["metadataCache"]["getFirstLinkpathDest"];
+	};
+	if (typeof metadataCache.getFirstLinkpathDest !== "function") return;
+
+	const links = container.querySelectorAll<HTMLElement>(".internal-link");
+	for (const link of Array.from(links)) {
+		const target = getInternalLinkTarget(link);
+		if (!target) continue;
+
+		const resolved = metadataCache.getFirstLinkpathDest(target, sourcePath);
+		link.classList.toggle("is-unresolved", !resolved);
+	}
+}
+
+function getInternalLinkTarget(link: Element): string | null {
+	const target = link.getAttribute("data-href") ?? link.getAttribute("href");
+	if (!target || isExternalLinkTarget(target)) return null;
+	return target;
+}
+
+function isExternalLinkTarget(target: string): boolean {
+	return /^[a-z][a-z\d+.-]*:/i.test(target);
+}
+
 /**
  * Resolve a single template expression (expression mode or legacy pipe mode)
  * to a raw value. Returns undefined if resolution fails.
@@ -576,11 +763,17 @@ async function resolveExprValue(
 	app: App,
 	file: TFile,
 	frontmatter: Record<string, unknown> | undefined,
-	bodyContent: string
+	bodyContent: string,
+	bases: TemplateBases = [],
 ): Promise<unknown> {
+	const deferredMarkdown = resolveDeferredMarkdownPlaceholder(innerExpr, exprCtx);
+	if (deferredMarkdown.found) {
+		return deferredMarkdown.value;
+	}
+
 	const directLookup = parseDirectPropertyLookup(innerExpr);
 	if (directLookup) {
-		const value = await resolvePropertyChain(app, directLookup.segments, file, frontmatter, bodyContent);
+		const value = await resolvePropertyChain(app, directLookup.segments, file, frontmatter, bodyContent, bases);
 		if (value !== null && value !== undefined) {
 			if (directLookup.filterChain) {
 				return applyFilterChain(value as Parameters<typeof applyFilterChain>[0], directLookup.filterChain);
@@ -620,7 +813,7 @@ async function resolveExprValue(
 	const segments = parsePropertyPath(chain);
 	if (segments.length === 0) return null;
 
-	const value = await resolvePropertyChain(app, segments, file, frontmatter, bodyContent);
+	const value = await resolvePropertyChain(app, segments, file, frontmatter, bodyContent, bases);
 	if (value === null || value === undefined) return null;
 
 	if (filterChain) {
@@ -725,9 +918,21 @@ async function resolveTemplateRaw(
 	template: string,
 	file: TFile,
 	frontmatter: Record<string, unknown> | undefined,
-	bodyContent: string
+	bodyContent: string,
+	bases: TemplateBases = [],
 ): Promise<string> {
-	const exprCtx: ExprContext = { app, file, frontmatter, bodyContent, variables: {} };
+	const exprCtx: ExprContext = {
+		app,
+		file,
+		frontmatter,
+		bodyContent,
+		variables: {},
+		bases: bases as unknown as ExprValueArray,
+		deferredMarkdown: {
+			nextId: 0,
+			values: {},
+		},
+	};
 
 	let processedTemplate = template;
 	if (template.includes('{%')) {
@@ -743,15 +948,49 @@ async function resolveTemplateRaw(
 			resolvedValues.push(bodyContent);
 			continue;
 		}
-		const value = await resolveExprValue(match.innerExpr, exprCtx, app, file, frontmatter, bodyContent);
+		const value = await resolveExprValue(match.innerExpr, exprCtx, app, file, frontmatter, bodyContent, bases);
 		resolvedValues.push(resultToString(value));
 	}
 
 	return applyReplacements(processedTemplate, matches, resolvedValues);
 }
 
+async function collectEmbeddedBasesIfNeeded(
+	basesProvider: BasesDataProvider | undefined,
+	templateContent: string,
+	renderTemplateContent: string,
+	viewConfig: ViewConfig | undefined,
+	app: App,
+	file: TFile,
+	sourceContent: string,
+	ownerDocument: Document,
+	component: Component,
+): Promise<TemplateBases> {
+	if (!basesProvider || !templateReferencesBases(renderTemplateContent, viewConfig?.css, viewConfig?.js)) {
+		return [];
+	}
+	if (!mayContainBaseSources(templateContent, sourceContent)) {
+		return [];
+	}
+
+	return basesProvider.getEmbeddedBases({
+		app,
+		file,
+		templateContent,
+		sourceContent,
+		ownerDocument,
+		component,
+	});
+}
+
+function mayContainBaseSources(templateContent: string, sourceContent: string): boolean {
+	return /\{%\s*base\b/i.test(templateContent) ||
+		/(^|\n)(`{3,}|~{3,})[ \t]*base(?:[ \t]|\n)/i.test(sourceContent) ||
+		/\.base/i.test(sourceContent);
+}
+
 /**
- * Executes inline script tags found in the container.
+ * Executes inline script tags collected from the parsed template.
  *
  * Scripts with a `src` attribute are intentionally ignored — loading external
  * scripts would allow arbitrary remote code execution, which violates
@@ -759,15 +998,11 @@ async function resolveTemplateRaw(
  * user directly in their template) is evaluated through the bundled WASM
  * template engine rather than DOM `<script>` injection, so external URLs
  * are never loaded.
- *
- * @param container - The container whose inline scripts should be executed
  */
 async function executeScripts(
-	container: HTMLElement,
+	scripts: HTMLScriptElement[],
 	scriptContext: CustomViewScriptContext,
 ): Promise<void> {
-	const scripts = Array.from(container.querySelectorAll('script'));
-
 	for (const script of scripts) {
 		// Silently drop src-based scripts — external code must never be loaded.
 		if (!script.src) {
@@ -782,4 +1017,8 @@ async function executeScripts(
 		}
 		script.remove();
 	}
+}
+
+function hasExecutableInlineScriptCode(script: HTMLScriptElement): boolean {
+	return !script.src && !!script.textContent?.trim();
 }

@@ -19,8 +19,36 @@ import {
 	extractWikiLink,
 	renderTemplate,
 } from "../renderer";
-import { Component, TFile } from "obsidian";
+import { Component, MarkdownRenderer, TFile } from "obsidian";
 import type { App } from "obsidian";
+
+function renderTestWikilinks(markdown: string): Node[] {
+	const nodes: Node[] = [];
+	const re = /\[\[([^\]\n]+)\]\]/g;
+	let lastIndex = 0;
+	let match: RegExpExecArray | null;
+
+	while ((match = re.exec(markdown)) !== null) {
+		if (match.index > lastIndex) {
+			nodes.push(window.document.createTextNode(markdown.slice(lastIndex, match.index)));
+		}
+
+		const [target, display] = match[1].split("|", 2);
+		const link = window.document.createElement("a");
+		link.classList.add("internal-link");
+		link.setAttribute("data-href", target);
+		link.setAttribute("href", target);
+		link.textContent = display ?? target;
+		nodes.push(link);
+		lastIndex = match.index + match[0].length;
+	}
+
+	if (lastIndex < markdown.length) {
+		nodes.push(window.document.createTextNode(markdown.slice(lastIndex)));
+	}
+
+	return nodes;
+}
 
 // ---------------------------------------------------------------------------
 // templateHasEditableContent
@@ -367,6 +395,202 @@ describe("renderTemplate source content", () => {
 		expect(read).not.toHaveBeenCalled();
 		expect(container.textContent).toBe("CACHED BODY");
 	});
+
+	it("reuses cached source content while the file stat is unchanged", async () => {
+		const cachedRead = vi.fn(async () => "Cached body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Movies/Cached Source.md";
+		file.stat = { ctime: 0, mtime: 100, size: 11 };
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const firstContainer = doc.createElement("div");
+		const secondContainer = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"<article>{{content | upper}}</article>",
+			file,
+			firstContainer,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+		await renderTemplate(
+			app,
+			"<article>{{content | upper}}</article>",
+			file,
+			secondContainer,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(cachedRead).toHaveBeenCalledTimes(1);
+		expect(firstContainer.textContent).toBe("CACHED BODY");
+		expect(secondContainer.textContent).toBe("CACHED BODY");
+	});
+
+	it("refreshes cached source content when the file stat changes", async () => {
+		const cachedRead = vi.fn()
+			.mockResolvedValueOnce("First body")
+			.mockResolvedValueOnce("Second body");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Movies/Changing Source.md";
+		file.stat = { ctime: 0, mtime: 100, size: 10 };
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const firstContainer = doc.createElement("div");
+		const secondContainer = doc.createElement("div");
+
+		await renderTemplate(
+			app,
+			"<article>{{content | upper}}</article>",
+			file,
+			firstContainer,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		file.stat = { ctime: 0, mtime: 101, size: 11 };
+
+		await renderTemplate(
+			app,
+			"<article>{{content | upper}}</article>",
+			file,
+			secondContainer,
+			component,
+			false,
+			undefined,
+			undefined,
+			false,
+		);
+
+		expect(cachedRead).toHaveBeenCalledTimes(2);
+		expect(firstContainer.textContent).toBe("FIRST BODY");
+		expect(secondContainer.textContent).toBe("SECOND BODY");
+	});
+
+	it("renders plain placeholder values without MarkdownRenderer", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const renderSpy = vi.spyOn(MarkdownRenderer, "render");
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: {
+						title: "Tom \"Jerry\" 'Best'",
+					},
+				})),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Movies/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		try {
+			await renderTemplate(
+				app,
+				"<p>{{title}}</p>",
+				file,
+				container,
+				component,
+				false,
+				undefined,
+				undefined,
+				false,
+			);
+		} finally {
+			renderSpy.mockRestore();
+		}
+
+		expect(container.textContent).toBe("Tom \"Jerry\" 'Best'");
+		expect(renderSpy).not.toHaveBeenCalled();
+	});
+
+	it("marks unresolved state on rendered internal links", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const renderedMarkdown: string[] = [];
+		const existingFile = new TFile();
+		existingFile.path = "Movies.md";
+		const renderSpy = vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (
+			_app: unknown,
+			markdown: string,
+			el: HTMLElement,
+		) => {
+			renderedMarkdown.push(markdown);
+			el.replaceChildren(...renderTestWikilinks(markdown));
+		});
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: {
+						existing: "[[Movies]]",
+						missing: ["[[Songs]]", "[[Music Videos]]"],
+					},
+				})),
+				getFirstLinkpathDest: vi.fn((target: string) => target === "Movies" ? existingFile : null),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Books/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		try {
+			await renderTemplate(
+				app,
+				"<p>{{existing}}</p><span>{{missing}}</span>",
+				file,
+				container,
+				component,
+				false,
+				undefined,
+				undefined,
+				false,
+			);
+		} finally {
+			renderSpy.mockRestore();
+		}
+
+		expect(renderedMarkdown).toEqual([
+			"[[Movies]]",
+			"[[Songs]], [[Music Videos]]",
+		]);
+			expect(container.querySelector('[data-href="Movies"]')?.classList.contains("is-unresolved")).toBe(false);
+			expect(container.querySelector('[data-href="Songs"]')?.classList.contains("is-unresolved")).toBe(true);
+			expect(container.querySelector('[data-href="Music Videos"]')?.classList.contains("is-unresolved")).toBe(true);
+		});
 
 	it("resolves quoted frontmatter keys that contain slashes", async () => {
 		const cachedRead = vi.fn(async () => "Body");
