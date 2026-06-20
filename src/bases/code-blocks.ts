@@ -31,6 +31,7 @@ interface ValidBaseView extends Record<string, unknown> {
 
 const BASE_CODE_BLOCK_RE = /(^|\n)(`{3,}|~{3,})[ \t]*base(?:[ \t][^\n]*)?\n([\s\S]*?)\n\2[ \t]*(?=\n|$)/g;
 const WIKILINK_EMBED_RE = /!\[\[([^\]\n]+)\]\]/g;
+const TEMPLATE_BASE_REFERENCE_RE = /(?:^|[^\w$.])(?:bases|baseViews)(?=$|[^\w$-])|(?:^|[^\w$])file\.(?:bases|baseViews)(?=$|[^\w$-])/;
 
 export function extractEmbeddedBaseBlocks(markdown: string): EmbeddedBaseBlock[] {
 	const blocks: EmbeddedBaseBlock[] = [];
@@ -116,7 +117,7 @@ export function createCollectorBaseDocuments(
 }
 
 export function templateReferencesBases(...templates: (string | undefined)[]): boolean {
-	return templates.some(template => !!template && /\b(?:file\.)?(?:bases|baseViews)\b/.test(template));
+	return templates.some(template => !!template && TEMPLATE_BASE_REFERENCE_RE.test(template));
 }
 
 function lineNumberAt(text: string, offset: number): number {

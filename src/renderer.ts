@@ -333,6 +333,17 @@ export const EDITABLE_PLACEHOLDER_ATTR = "data-cv-editable-placeholder";
 
 /** Overlay element augmented with the CSS-scoping observer we attach during render. */
 type ScopedContainer = HTMLElement & { __cvScopeObserver?: MutationObserver | null };
+const MARKDOWN_VALUE_HINT_RE = /[![\]_*`~#>|<&\n\r]/;
+const URL_VALUE_HINT_RE = /\bhttps?:\/\//i;
+const SOURCE_CONTENT_CACHE_LIMIT = 200;
+
+interface SourceContentCacheEntry {
+	mtime: number;
+	size: number;
+	content: string;
+}
+
+const sourceContentCache = new WeakMap<App, Map<string, SourceContentCacheEntry>>();
 
 /**
  * Renders a template into a container.
@@ -363,7 +374,7 @@ export async function renderTemplate(
 ) {
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
-	const rawContent = sourceContent ?? await app.vault.cachedRead(file);
+	const rawContent = sourceContent ?? await readCachedSourceContent(app, file);
 	const renderTemplateContent = stripTemplateBaseBlocks(template);
 
 	const bodyContent = stripFrontmatter(cache, rawContent);
@@ -432,9 +443,14 @@ export async function renderTemplate(
 		if (isInsideAttribute) {
 			resolvedValues.push(resultToString(finalValue));
 		} else {
-			const placeholderId = `cv-md-${markdownQueue.length}-${Date.now()}`;
-			markdownQueue.push({ id: placeholderId, content: resultToString(finalValue) });
-			resolvedValues.push(`<span id="${placeholderId}"></span>`);
+			const renderedValue = resultToString(finalValue);
+			if (needsMarkdownRender(renderedValue)) {
+				const placeholderId = `cv-md-${markdownQueue.length}-${Date.now()}`;
+				markdownQueue.push({ id: placeholderId, content: renderedValue });
+				resolvedValues.push(`<span id="${placeholderId}"></span>`);
+			} else {
+				resolvedValues.push(escapeHtml(renderedValue));
+			}
 		}
 	}
 
@@ -496,22 +512,29 @@ export async function renderTemplate(
 		}
 	}
 
-	// Execute scripts only when JavaScript execution is allowed
 	if (allowJavaScript) {
-		const scriptContext = createScriptContext(app, file, container, frontmatter, bodyContent, viewConfig);
+		const scripts = Array.from(container.querySelectorAll("script"));
+		const hasExecutableInlineScripts = scripts.some(hasExecutableInlineScriptCode);
+		const resolvedJs = viewConfig?.js?.trim()
+			? await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent, bases)
+			: "";
+		const viewJs = resolvedJs.trim();
 
-		// Execute inline scripts from the HTML template
-		await executeScripts(container, scriptContext);
+		if (hasExecutableInlineScripts || viewJs) {
+			const scriptContext = createScriptContext(app, file, container, frontmatter, bodyContent, viewConfig);
 
-		// Execute JS from the separate JS field (with template resolution)
-		if (viewConfig?.js) {
-			const resolvedJs = await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent, bases);
-			if (resolvedJs.trim()) {
+			await executeScripts(scripts, scriptContext);
+
+			if (viewJs) {
 				try {
-					await executeCustomViewJavaScript(resolvedJs, scriptContext);
+					await executeCustomViewJavaScript(viewJs, scriptContext);
 				} catch (e) {
 					console.error('[Custom Views] Error executing view JS:', e);
 				}
+			}
+		} else {
+			for (const script of scripts) {
+				script.remove();
 			}
 		}
 	}
@@ -636,6 +659,39 @@ function applyReplacements(template: string, matches: TemplateMatch[], values: s
 	return result;
 }
 
+async function readCachedSourceContent(app: App, file: TFile): Promise<string> {
+	const stat = file.stat;
+	if (!stat) return app.vault.cachedRead(file);
+
+	let cache = sourceContentCache.get(app);
+	if (!cache) {
+		cache = new Map();
+		sourceContentCache.set(app, cache);
+	}
+
+	const cached = cache.get(file.path);
+	if (cached && cached.mtime === stat.mtime && cached.size === stat.size) {
+		cache.delete(file.path);
+		cache.set(file.path, cached);
+		return cached.content;
+	}
+
+	const content = await app.vault.cachedRead(file);
+	cache.set(file.path, {
+		mtime: stat.mtime,
+		size: stat.size,
+		content,
+	});
+
+	while (cache.size > SOURCE_CONTENT_CACHE_LIMIT) {
+		const oldestKey = cache.keys().next().value as string | undefined;
+		if (oldestKey === undefined) break;
+		cache.delete(oldestKey);
+	}
+
+	return content;
+}
+
 /** Convert an expression/property result to a plain string */
 export function resultToString(value: unknown): string {
 	if (value === null || value === undefined) return "";
@@ -656,6 +712,19 @@ function unwrapSingleParagraph(container: HTMLElement) {
 	if (p && p.parentElement === container && container.children.length === 1) {
 		p.replaceWith(...Array.from(p.childNodes));
 	}
+}
+
+function needsMarkdownRender(value: string): boolean {
+	return MARKDOWN_VALUE_HINT_RE.test(value) || URL_VALUE_HINT_RE.test(value);
+}
+
+function escapeHtml(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
 }
 
 function applyNativeInternalLinkState(app: App, container: HTMLElement, sourcePath: string) {
@@ -900,6 +969,9 @@ async function collectEmbeddedBasesIfNeeded(
 	if (!basesProvider || !templateReferencesBases(renderTemplateContent, viewConfig?.css, viewConfig?.js)) {
 		return [];
 	}
+	if (!mayContainBaseSources(templateContent, sourceContent)) {
+		return [];
+	}
 
 	return basesProvider.getEmbeddedBases({
 		app,
@@ -911,8 +983,14 @@ async function collectEmbeddedBasesIfNeeded(
 	});
 }
 
+function mayContainBaseSources(templateContent: string, sourceContent: string): boolean {
+	return /\{%\s*base\b/i.test(templateContent) ||
+		/(^|\n)(`{3,}|~{3,})[ \t]*base(?:[ \t]|\n)/i.test(sourceContent) ||
+		/\.base/i.test(sourceContent);
+}
+
 /**
- * Executes inline script tags found in the container.
+ * Executes inline script tags collected from the parsed template.
  *
  * Scripts with a `src` attribute are intentionally ignored — loading external
  * scripts would allow arbitrary remote code execution, which violates
@@ -920,15 +998,11 @@ async function collectEmbeddedBasesIfNeeded(
  * user directly in their template) is evaluated through the bundled WASM
  * template engine rather than DOM `<script>` injection, so external URLs
  * are never loaded.
- *
- * @param container - The container whose inline scripts should be executed
  */
 async function executeScripts(
-	container: HTMLElement,
+	scripts: HTMLScriptElement[],
 	scriptContext: CustomViewScriptContext,
 ): Promise<void> {
-	const scripts = Array.from(container.querySelectorAll('script'));
-
 	for (const script of scripts) {
 		// Silently drop src-based scripts — external code must never be loaded.
 		if (!script.src) {
@@ -943,4 +1017,8 @@ async function executeScripts(
 		}
 		script.remove();
 	}
+}
+
+function hasExecutableInlineScriptCode(script: HTMLScriptElement): boolean {
+	return !script.src && !!script.textContent?.trim();
 }

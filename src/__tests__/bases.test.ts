@@ -377,6 +377,13 @@ describe("embedded Bases code blocks", () => {
 		expect(templateReferencesBases("{{title}}", ".x { color: red; }")).toBe(false);
 	});
 
+	it("does not treat unrelated base-like words as Bases references", () => {
+		expect(templateReferencesBases("{{file.basename}}")).toBe(false);
+		expect(templateReferencesBases(".x { --bases-table-header-background: red; }")).toBe(false);
+		expect(templateReferencesBases("const baseOrder = []; const baseMap = {};")).toBe(false);
+		expect(templateReferencesBases("const TMDB_BASE = 'https://api.themoviedb.org/3';")).toBe(false);
+	});
+
 	it("extracts native YAML template Base blocks and strips them from rendered templates", () => {
 		const template = [
 			"<h1>{{file.basename}}</h1>",
@@ -982,18 +989,56 @@ describe("Bases template access", () => {
 		expect(container.textContent).toContain("Book.md");
 		expect(getEmbeddedBases).not.toHaveBeenCalled();
 	});
+
+	it("does not collect Bases data when no Base sources exist", async () => {
+		const app = makeMockApp();
+		const file = makeMockFile();
+		const container = window.document.createElement("div");
+		const getEmbeddedBases = vi.fn().mockResolvedValue(makeBases());
+		const basesProvider: BasesDataProvider = {
+			getEmbeddedBases,
+		};
+
+		await renderTemplate(
+			app,
+			"<p>{{bases[0].rowCount}}</p>",
+			file,
+			container,
+			new Component(),
+			false,
+			undefined,
+			undefined,
+			false,
+			"# Plain note\nNo embedded base here.",
+			basesProvider,
+		);
+
+		expect(container.textContent).toBe("");
+		expect(getEmbeddedBases).not.toHaveBeenCalled();
+	});
 });
 
 describe("EmbeddedBasesProvider", () => {
 	it("evaluates Bases through a hidden native embed without registering a custom view type", async () => {
 		let fakeFileContent = "";
 		let selectedViewSubpath: string | undefined;
+		const sourceContent = [
+			"```base",
+			JSON.stringify({
+				views: [
+					{ type: "table", name: "Songs" },
+				],
+			}),
+			"```",
+		].join("\n");
 		const app = makeProviderApp({
 			onReadFakeFile: (content, viewSubpath) => {
 				fakeFileContent = content;
 				selectedViewSubpath = viewSubpath;
 			},
 		});
+		const cachedRead = vi.fn(async () => "");
+		(app as unknown as { vault: { cachedRead: typeof cachedRead } }).vault.cachedRead = cachedRead;
 		const plugin = makePlugin(app);
 		const provider = new EmbeddedBasesProvider(plugin);
 		const file = makeTFile({
@@ -1010,11 +1055,12 @@ describe("EmbeddedBasesProvider", () => {
 			app,
 			file,
 			templateContent: "{{bases[0].rowCount}}",
-			sourceContent: "",
+			sourceContent,
 			ownerDocument: window.document,
 			component: new Component(),
 		});
 
+		expect(cachedRead).not.toHaveBeenCalled();
 		expect((app as unknown as { embedRegistry: { embedByExtension: { base: ReturnType<typeof vi.fn> } } })
 			.embedRegistry.embedByExtension.base).toHaveBeenCalledOnce();
 		expect(fakeFileContent).toContain("\"views\"");
@@ -1031,6 +1077,15 @@ describe("EmbeddedBasesProvider", () => {
 
 	it("waits for native Base data after the collector queue first reports idle", async () => {
 		vi.useFakeTimers();
+		const sourceContent = [
+			"```base",
+			JSON.stringify({
+				views: [
+					{ type: "table", name: "Songs" },
+				],
+			}),
+			"```",
+		].join("\n");
 		const app = makeProviderApp({
 			delayViewMs: 50,
 		});
@@ -1048,7 +1103,7 @@ describe("EmbeddedBasesProvider", () => {
 				app,
 				file,
 				templateContent: "{{bases[0].rowCount}}",
-				sourceContent: "",
+				sourceContent,
 				ownerDocument: window.document,
 				component: new Component(),
 			});
