@@ -1,12 +1,11 @@
 import {
-	BasesView,
-	Component,
-	MarkdownRenderer,
-	Plugin,
-	QueryController,
 	TFile,
 	parseYaml,
 	stringifyYaml,
+	type App,
+	type BasesView,
+	type Plugin,
+	type Vault,
 } from "obsidian";
 import {
 	createCollectorBaseDocuments,
@@ -15,8 +14,6 @@ import {
 } from "./code-blocks";
 import { extractTemplateBaseBlocks } from "./template-syntax";
 import {
-	CUSTOM_VIEWS_BASES_REQUEST_ID_KEY,
-	CUSTOM_VIEWS_BASES_VIEW_TYPE,
 	type BasesDataProvider,
 	type EmbeddedBasesRequest,
 	type TemplateBaseView,
@@ -29,12 +26,7 @@ import {
 } from "./normalize";
 
 const BASES_COLLECTION_TIMEOUT_MS = 5000;
-
-interface PendingCollection {
-	metadata: NormalizeBaseMetadata;
-	resolve: (view: TemplateBaseView) => void;
-	timeoutId: number;
-}
+const BASES_COLLECTION_POLL_MS = 25;
 
 type BaseSource =
 	| {
@@ -67,20 +59,64 @@ type RenderJobSource = {
 	viewName?: string;
 };
 
+interface BaseEmbedFactoryContext {
+	app: App;
+	containerEl: HTMLElement;
+	sourcePath: string;
+	linktext: string;
+}
+
+type BaseEmbedFactory = (
+	context: BaseEmbedFactoryContext,
+	file: TFile,
+	viewName?: string,
+) => InternalBaseEmbed;
+
+interface InternalBaseEmbed {
+	containerEl?: HTMLElement;
+	containingFile?: TFile;
+	controller?: InternalBaseController;
+	loadFile?: () => Promise<void> | void;
+	unload?: () => void;
+}
+
+interface InternalBaseController {
+	currentFile?: TFile;
+	view?: BasesView | null;
+	error?: unknown;
+	errorEl?: HTMLElement;
+	queue?: {
+		queue?: {
+			runnable?: {
+				running?: boolean;
+			};
+		};
+	};
+}
+
+interface FakeBaseFileEntry {
+	file: TFile;
+	content: string;
+}
+
+interface FakeVaultPatch {
+	files: Map<string, FakeBaseFileEntry>;
+	read: Vault["read"];
+	cachedRead: Vault["cachedRead"];
+	modify: Vault["modify"];
+	create: Vault["create"];
+}
+
+const fakeVaultPatches = new WeakMap<Vault, FakeVaultPatch>();
+let nextFakeBaseFileId = 0;
+
 export class EmbeddedBasesProvider implements BasesDataProvider {
-	private pending = new Map<string, PendingCollection>();
-	private nextRequestId = 0;
 	private enabled = false;
 
 	constructor(private plugin: Plugin) {}
 
 	register(): boolean {
-		this.enabled = this.plugin.registerBasesView(CUSTOM_VIEWS_BASES_VIEW_TYPE, {
-			name: "Custom Views data",
-			icon: "lucide-braces",
-			factory: (controller: QueryController, containerEl: HTMLElement) =>
-				new CustomViewsBasesCollectorView(controller, containerEl, this),
-		});
+		this.enabled = !!getBaseEmbedFactory(this.plugin.app);
 		return this.enabled;
 	}
 
@@ -119,20 +155,6 @@ export class EmbeddedBasesProvider implements BasesDataProvider {
 			noteSources = getOrderedBaseSources(request.sourceContent);
 		}
 		return [...templateSources, ...noteSources];
-	}
-
-	receiveResult(requestId: string, view: BasesView) {
-		const pending = this.pending.get(requestId);
-		if (!pending) return;
-
-		window.clearTimeout(pending.timeoutId);
-		this.pending.delete(requestId);
-		pending.resolve(normalizeBasesView(view, pending.metadata));
-	}
-
-	private createRequestId(): string {
-		this.nextRequestId++;
-		return `cv-bases-${Date.now()}-${this.nextRequestId}`;
 	}
 
 	private createRenderJobsForTemplateBase(
@@ -179,7 +201,21 @@ export class EmbeddedBasesProvider implements BasesDataProvider {
 			}, `Could not resolve embedded base file: ${source.target}`))];
 		}
 
-		const content = await request.app.vault.cachedRead(baseFile);
+		let content: string;
+		try {
+			content = await request.app.vault.cachedRead(baseFile);
+		} catch (error) {
+			return [Promise.resolve(createBaseErrorView({
+				sourceKind: "file-embed",
+				sourceIndex,
+				sourceLine: source.line,
+				sourcePath: baseFile.path,
+				viewIndex: 0,
+				viewName: source.viewName ?? "",
+				originalType: "",
+			}, error instanceof Error ? error.message : String(error)))];
+		}
+
 		return this.createRenderJobsForConfig(request, content, {
 			sourceKind: "file-embed",
 			sourceIndex,
@@ -213,7 +249,6 @@ export class EmbeddedBasesProvider implements BasesDataProvider {
 		const documents = createCollectorBaseDocuments(
 			config,
 			source.sourceIndex,
-			() => this.createRequestId(),
 			source.viewName,
 		);
 
@@ -243,53 +278,63 @@ export class EmbeddedBasesProvider implements BasesDataProvider {
 				viewName: document.viewName,
 				originalType: document.originalType,
 			};
-			const markdown = toBaseCodeBlock(document.config);
-			return this.renderCollectorBase(request, markdown, document.requestId, metadata);
+			const baseContent = toBaseFileContent(document.config);
+			return this.renderCollectorBase(request, baseContent, metadata);
 		});
 	}
 
 	private async renderCollectorBase(
 		request: EmbeddedBasesRequest,
-		markdown: string,
-		requestId: string,
+		baseContent: string,
 		metadata: NormalizeBaseMetadata,
 	): Promise<TemplateBaseView> {
-		const result = this.waitForResult(requestId, metadata);
+		const baseEmbedFactory = getBaseEmbedFactory(request.app);
+		if (!baseEmbedFactory) {
+			return createBaseErrorView(metadata, "Obsidian Bases embed API is unavailable.");
+		}
+
 		const host = createVisibleHiddenHost(request.ownerDocument);
-		const renderComponent = request.component.addChild(new Component());
+		const fakeFile = createFakeBaseFile(request.app);
+		const uninstallFakeFile = installFakeBaseFile(request.app.vault, fakeFile, baseContent);
+		let embed: InternalBaseEmbed | null = null;
 
 		try {
-			await MarkdownRenderer.render(request.app, markdown, host, request.file.path, renderComponent);
-			return await result;
+			embed = baseEmbedFactory({
+				app: request.app,
+				containerEl: host,
+				sourcePath: request.file.path,
+				linktext: "",
+			}, fakeFile, toBaseViewSubpath(metadata.viewName));
+
+			if (!embed || typeof embed.loadFile !== "function") {
+				throw new Error("Obsidian Bases embed API did not return a loadable embed.");
+			}
+
+			embed.containingFile = request.file;
+			if (embed.controller) {
+				embed.controller.currentFile = request.file;
+			}
+
+			await embed.loadFile();
+			await waitForBaseEmbedData(embed, BASES_COLLECTION_TIMEOUT_MS);
+
+			const view = embed.controller?.view;
+			if (!isBasesViewLike(view)) {
+				throw new Error(getBaseControllerError(embed) ?? "Could not collect Bases view data.");
+			}
+
+			return normalizeBasesView(view, metadata);
 		} catch (error) {
-			this.cancelPending(requestId);
 			return createBaseErrorView(metadata, error instanceof Error ? error.message : String(error));
 		} finally {
-			request.component.removeChild(renderComponent);
+			try {
+				embed?.unload?.();
+			} catch {
+				// Best-effort cleanup for an internal component.
+			}
+			uninstallFakeFile();
 			host.remove();
 		}
-	}
-
-	private waitForResult(requestId: string, metadata: NormalizeBaseMetadata): Promise<TemplateBaseView> {
-		return new Promise(resolve => {
-			const timeoutId = window.setTimeout(() => {
-				this.pending.delete(requestId);
-				resolve(createBaseErrorView(metadata, "Timed out while collecting Bases data."));
-			}, BASES_COLLECTION_TIMEOUT_MS);
-
-			this.pending.set(requestId, {
-				metadata,
-				resolve,
-				timeoutId,
-			});
-		});
-	}
-
-	private cancelPending(requestId: string) {
-		const pending = this.pending.get(requestId);
-		if (!pending) return;
-		window.clearTimeout(pending.timeoutId);
-		this.pending.delete(requestId);
 	}
 }
 
@@ -314,40 +359,15 @@ function isBaseFile(file: unknown): file is TFile {
 	return file instanceof TFile && file.extension === "base";
 }
 
-class CustomViewsBasesCollectorView extends BasesView {
-	type = CUSTOM_VIEWS_BASES_VIEW_TYPE;
-
-	constructor(
-		controller: QueryController,
-		containerEl: HTMLElement,
-		private provider: EmbeddedBasesProvider,
-	) {
-		super(controller);
-		containerEl.empty();
-		containerEl.addClass("cv-bases-collector-view");
-	}
-
-	onDataUpdated(): void {
-		const requestId = getConfigString(this, CUSTOM_VIEWS_BASES_REQUEST_ID_KEY);
-		if (!requestId) return;
-		this.provider.receiveResult(requestId, this);
-	}
-}
-
-function toBaseCodeBlock(config: Record<string, unknown>): string {
-	return `\`\`\`base\n${stringifyYaml(config).trimEnd()}\n\`\`\``;
+function toBaseFileContent(config: Record<string, unknown>): string {
+	return stringifyYaml(config).trimEnd();
 }
 
 function createVisibleHiddenHost(ownerDocument: Document): HTMLElement {
 	const host = ownerDocument.createElement("div");
-	host.addClass("cv-bases-collector-host");
+	host.classList.add("cv-bases-collector-host");
 	ownerDocument.body.appendChild(host);
 	return host;
-}
-
-function getConfigString(view: BasesView, key: string): string | null {
-	const value = view.config.get(key);
-	return typeof value === "string" ? value : null;
 }
 
 function getTemplateBaseSources(template: string): BaseSource[] {
@@ -376,4 +396,154 @@ function getOrderedBaseSources(markdown: string): BaseSource[] {
 	}));
 
 	return [...codeBlocks, ...fileEmbeds].sort((a, b) => a.start - b.start);
+}
+
+function getBaseEmbedFactory(app: App): BaseEmbedFactory | null {
+	const embedRegistry = (app as App & {
+		embedRegistry?: {
+			embedByExtension?: Record<string, unknown>;
+		};
+	}).embedRegistry;
+	const factory = embedRegistry?.embedByExtension?.base;
+	return typeof factory === "function" ? factory as BaseEmbedFactory : null;
+}
+
+function toBaseViewSubpath(viewName: string): string {
+	return viewName ? `#${viewName}` : "";
+}
+
+function createFakeBaseFile(app: App): TFile {
+	nextFakeBaseFileId++;
+	const basename = `.custom-views-bases-query-${Date.now()}-${nextFakeBaseFileId}`;
+	const path = `${basename}.base`;
+
+	return {
+		basename,
+		cache: () => undefined,
+		deleted: false,
+		extension: "base",
+		getNewPathAfterRename: () => path,
+		getShortName: () => basename,
+		name: `${basename}.base`,
+		parent: null,
+		path,
+		saving: false,
+		setPath: () => undefined,
+		stat: {
+			ctime: -1,
+			mtime: -1,
+			size: 0,
+		},
+		updateCacheLimit: () => undefined,
+		vault: app.vault,
+		// eslint-disable-next-line obsidianmd/no-tfile-tfolder-cast
+	} as unknown as TFile;
+}
+
+function installFakeBaseFile(vault: Vault, file: TFile, content: string): () => void {
+	let patch = fakeVaultPatches.get(vault);
+	if (!patch) {
+		const originalRead = vault.read.bind(vault) as Vault["read"];
+		const originalCachedRead = vault.cachedRead.bind(vault) as Vault["cachedRead"];
+		const originalModify = vault.modify.bind(vault) as Vault["modify"];
+		const originalCreate = vault.create.bind(vault) as Vault["create"];
+
+		patch = {
+			files: new Map(),
+			read: originalRead,
+			cachedRead: originalCachedRead,
+			modify: originalModify,
+			create: originalCreate,
+		};
+		fakeVaultPatches.set(vault, patch);
+		const installedPatch = patch;
+
+		vault.read = function patchedRead(target: TFile) {
+			const fake = installedPatch.files.get(target.path);
+			return fake ? Promise.resolve(fake.content) : installedPatch.read(target);
+		};
+		vault.cachedRead = function patchedCachedRead(target: TFile) {
+			const fake = installedPatch.files.get(target.path);
+			return fake ? Promise.resolve(fake.content) : installedPatch.cachedRead(target);
+		};
+		vault.modify = function patchedModify(target: TFile, data: string, options?: Parameters<Vault["modify"]>[2]) {
+			const fake = installedPatch.files.get(target.path);
+			return fake ? Promise.resolve() : installedPatch.modify(target, data, options);
+		};
+		vault.create = function patchedCreate(path: string, data: string, options?: Parameters<Vault["create"]>[2]) {
+			const fake = Array.from(installedPatch.files.values()).find(entry => entry.file.path === path);
+			return fake ? Promise.resolve(fake.file) : installedPatch.create(path, data, options);
+		};
+	}
+
+	patch.files.set(file.path, { file, content });
+
+	return () => {
+		const currentPatch = fakeVaultPatches.get(vault);
+		if (!currentPatch) return;
+		currentPatch.files.delete(file.path);
+		if (currentPatch.files.size > 0) return;
+
+		vault.read = currentPatch.read;
+		vault.cachedRead = currentPatch.cachedRead;
+		vault.modify = currentPatch.modify;
+		vault.create = currentPatch.create;
+		fakeVaultPatches.delete(vault);
+	};
+}
+
+function waitForBaseEmbedData(embed: InternalBaseEmbed, timeoutMs: number): Promise<void> {
+	return new Promise((resolve, reject) => {
+		let pollId: number | undefined;
+		const timeoutId = window.setTimeout(() => {
+			if (pollId !== undefined) window.clearTimeout(pollId);
+			reject(new Error("Timed out while collecting Bases data."));
+		}, timeoutMs);
+
+		const poll = () => {
+			const controllerError = getBaseControllerError(embed);
+			if (controllerError) {
+				window.clearTimeout(timeoutId);
+				reject(new Error(controllerError));
+				return;
+			}
+			if (isBaseEmbedDataReady(embed)) {
+				window.clearTimeout(timeoutId);
+				resolve();
+				return;
+			}
+			pollId = window.setTimeout(poll, BASES_COLLECTION_POLL_MS);
+		};
+
+		poll();
+	});
+}
+
+function isBaseEmbedDataReady(embed: InternalBaseEmbed): boolean {
+	const view = embed.controller?.view;
+	return isBasesViewLike(view);
+}
+
+function getBaseControllerError(embed: InternalBaseEmbed): string | null {
+	const controller = embed.controller;
+	if (!controller?.error) return null;
+
+	const message = controller.errorEl?.textContent?.trim();
+	if (message) return message;
+	if (controller.error instanceof Error) return controller.error.message;
+	if (typeof controller.error === "string") return controller.error;
+	return "Obsidian reported a Bases collection error.";
+}
+
+function isBasesViewLike(value: unknown): value is BasesView {
+	return isRecord(value) &&
+		isRecord(value.config) &&
+		typeof value.config.getDisplayName === "function" &&
+		isRecord(value.data) &&
+		Array.isArray(value.data.properties) &&
+		Array.isArray(value.data.data);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

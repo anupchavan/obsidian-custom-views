@@ -477,9 +477,8 @@ export async function renderTemplate(
 			contentEl.setAttribute(EDITABLE_PLACEHOLDER_ATTR, "true");
 			contentEl.removeAttribute("id");
 		} else {
-			const sizer = activeDocument.createElement("div");
-			sizer.addClass("markdown-preview-sizer");
-			sizer.addClass("markdown-preview-section");
+			const sizer = container.ownerDocument.createElement("div");
+			sizer.classList.add("markdown-preview-sizer", "markdown-preview-section");
 			contentEl.appendChild(sizer);
 
 			await MarkdownRenderer.render(app, bodyContent, sizer, file.path, component);
@@ -491,7 +490,7 @@ export async function renderTemplate(
 	if (viewConfig?.css) {
 		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases);
 		if (resolvedCss.trim()) {
-			const styleEl = activeDocument.createElement("style");
+			const styleEl = container.ownerDocument.createElement("style");
 			styleEl.textContent = resolvedCss;
 			container.prepend(styleEl);
 		}

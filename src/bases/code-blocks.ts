@@ -1,11 +1,3 @@
-import {
-	CUSTOM_VIEWS_BASES_ORIGINAL_TYPE_KEY,
-	CUSTOM_VIEWS_BASES_REQUEST_ID_KEY,
-	CUSTOM_VIEWS_BASES_SOURCE_INDEX_KEY,
-	CUSTOM_VIEWS_BASES_VIEW_INDEX_KEY,
-	CUSTOM_VIEWS_BASES_VIEW_TYPE,
-} from "./types";
-
 export interface EmbeddedBaseBlock {
 	index: number;
 	content: string;
@@ -25,7 +17,6 @@ export interface EmbeddedBaseFileLink {
 }
 
 export interface CollectorBaseDocument {
-	requestId: string;
 	sourceIndex: number;
 	viewIndex: number;
 	viewName: string;
@@ -88,7 +79,6 @@ export function extractEmbeddedBaseFileLinks(markdown: string): EmbeddedBaseFile
 export function createCollectorBaseDocuments(
 	baseConfig: unknown,
 	sourceIndex: number,
-	makeRequestId: () => string,
 	viewName?: string,
 ): CollectorBaseDocument[] {
 	if (!isRecord(baseConfig) || !Array.isArray(baseConfig.views)) return [];
@@ -107,20 +97,13 @@ export function createCollectorBaseDocuments(
 	if (selected) {
 		const view = selected.view;
 		const viewIndex = selected.index;
-		const requestId = makeRequestId();
 		const clonedConfig = cloneRecord(baseConfig);
 		const clonedView = cloneRecord(view);
 		const originalType = view.type;
 
-		clonedView.type = CUSTOM_VIEWS_BASES_VIEW_TYPE;
-		clonedView[CUSTOM_VIEWS_BASES_REQUEST_ID_KEY] = requestId;
-		clonedView[CUSTOM_VIEWS_BASES_SOURCE_INDEX_KEY] = sourceIndex;
-		clonedView[CUSTOM_VIEWS_BASES_VIEW_INDEX_KEY] = viewIndex;
-		clonedView[CUSTOM_VIEWS_BASES_ORIGINAL_TYPE_KEY] = originalType;
 		clonedConfig.views = [clonedView];
 
 		documents.push({
-			requestId,
 			sourceIndex,
 			viewIndex,
 			viewName: view.name,
