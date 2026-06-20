@@ -140,7 +140,13 @@ function primitiveToString(value: unknown): string {
 	return "";
 }
 
-export function parseYaml(yaml: string) {
-	if (yaml.trim() === "views: []") return { views: [] };
+export function parseYaml(yaml: string): unknown {
+	const trimmed = yaml.trim();
+	try {
+		return JSON.parse(trimmed) as unknown;
+	} catch {
+		// Fall through to the hand-written cases used by focused tests.
+	}
+	if (trimmed === "views: []") return { views: [] };
 	return {};
 }

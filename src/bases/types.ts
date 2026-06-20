@@ -1,11 +1,5 @@
 import type { App, Component, TFile } from "obsidian";
 
-export const CUSTOM_VIEWS_BASES_VIEW_TYPE = "custom-views-data";
-export const CUSTOM_VIEWS_BASES_REQUEST_ID_KEY = "customViewsRequestId";
-export const CUSTOM_VIEWS_BASES_SOURCE_INDEX_KEY = "customViewsSourceIndex";
-export const CUSTOM_VIEWS_BASES_VIEW_INDEX_KEY = "customViewsViewIndex";
-export const CUSTOM_VIEWS_BASES_ORIGINAL_TYPE_KEY = "customViewsOriginalType";
-
 export type TemplateBaseScalar = string | number | boolean | null;
 export type TemplateBaseValue =
 	| TemplateBaseScalar

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Component, MarkdownRenderer, StringValue, TFile } from "obsidian";
-import type { BasesView } from "obsidian";
-import type { App } from "obsidian";
+import type { App, BasesView, Plugin } from "obsidian";
 import {
 	createCollectorBaseDocuments,
 	extractEmbeddedBaseBlocks,
@@ -13,16 +12,14 @@ import {
 	stripTemplateBaseBlocks,
 } from "../bases/template-syntax";
 import {
-	CUSTOM_VIEWS_BASES_ORIGINAL_TYPE_KEY,
-	CUSTOM_VIEWS_BASES_REQUEST_ID_KEY,
-	CUSTOM_VIEWS_BASES_SOURCE_INDEX_KEY,
-	CUSTOM_VIEWS_BASES_VIEW_INDEX_KEY,
-	CUSTOM_VIEWS_BASES_VIEW_TYPE,
 	type BasesDataProvider,
 	type TemplateBases,
 } from "../bases/types";
+import { buildBasesCollection } from "../bases/access";
 import { normalizeBasesView } from "../bases/normalize";
+import { EmbeddedBasesProvider } from "../bases/provider";
 import { renderTemplate } from "../renderer";
+import type { ViewConfig } from "../types";
 
 function makeMockFile(overrides: Partial<TFile> = {}): TFile {
 	return {
@@ -37,6 +34,30 @@ function makeMockFile(overrides: Partial<TFile> = {}): TFile {
 	} as unknown as TFile;
 }
 
+type MockTFileOverrides = Partial<Omit<TFile, "parent">> & {
+	parent?: { path: string } | null;
+};
+
+function makeTFile(overrides: MockTFileOverrides = {}): TFile {
+	const file = new TFile();
+	Object.assign(file, {
+		name: "Book.md",
+		basename: "Book",
+		path: "Books/Book.md",
+		extension: "md",
+		stat: { size: 123, ctime: 1000, mtime: 2000 },
+		parent: { path: "Books" },
+	}, overrides);
+	return file;
+}
+
+function makePlugin(app: App = makeProviderApp()): Plugin & { registerBasesView: ReturnType<typeof vi.fn> } {
+	return {
+		app,
+		registerBasesView: vi.fn(() => true),
+	} as unknown as Plugin & { registerBasesView: ReturnType<typeof vi.fn> };
+}
+
 function makeMockApp(): App {
 	return {
 		metadataCache: {
@@ -47,6 +68,113 @@ function makeMockApp(): App {
 			cachedRead: vi.fn().mockResolvedValue(""),
 		},
 	} as unknown as App;
+}
+
+function makeProviderApp(options: {
+	sourceContent?: string;
+	neverFinish?: boolean;
+	delayViewMs?: number;
+	onReadFakeFile?: (content: string, viewSubpath: string | undefined) => void;
+} = {}): App {
+	const sourceContent = options.sourceContent ?? [
+		"```base",
+		JSON.stringify({
+			views: [
+				{ type: "table", name: "Songs" },
+			],
+		}),
+		"```",
+	].join("\n");
+	const app = {
+		metadataCache: {
+			getFileCache: vi.fn(() => ({ frontmatter: {} })),
+			getFirstLinkpathDest: vi.fn(() => null),
+		},
+		vault: {
+			read: vi.fn(async () => {
+				throw new Error("vault.read was not patched for the fake Base file");
+			}),
+			cachedRead: vi.fn(async () => sourceContent),
+			modify: vi.fn(async () => undefined),
+			create: vi.fn(async (path: string) => makeTFile({
+				name: path,
+				basename: path.replace(/\.base$/i, ""),
+				path,
+				extension: "base",
+			})),
+			getFileByPath: vi.fn(() => null),
+		},
+		embedRegistry: {
+			embedByExtension: {
+				base: vi.fn((_: unknown, file: TFile, viewSubpath?: string) => {
+					const selectedViewName = viewSubpath?.startsWith("#")
+						? viewSubpath.substring(1)
+						: "";
+					const controller = {
+						currentFile: undefined as TFile | undefined,
+						view: null as BasesView | null,
+						queue: {
+							queue: {
+								runnable: {
+									running: true,
+								},
+							},
+						},
+					};
+					return {
+						controller,
+						containingFile: undefined as TFile | undefined,
+						loadFile: vi.fn(async () => {
+							const content = await (app as unknown as App).vault.read(file);
+							options.onReadFakeFile?.(content, viewSubpath);
+							if (!options.neverFinish) {
+								controller.queue.queue.runnable.running = false;
+								const setView = () => {
+									controller.view = makeProviderBasesView(
+										app as unknown as App,
+										selectedViewName || "Songs",
+									);
+								};
+								if (options.delayViewMs) {
+									window.setTimeout(setView, options.delayViewMs);
+								} else {
+									setView();
+								}
+							}
+						}),
+						unload: vi.fn(),
+					};
+				}),
+			},
+		},
+	};
+	return app as unknown as App;
+}
+
+function makeProviderBasesView(app: App, viewName: string): BasesView {
+	const rowFile = makeTFile({
+		name: "Belinda Says.md",
+		basename: "Belinda Says",
+		path: "Music/Belinda Says.md",
+	});
+	return {
+		app,
+		config: {
+			getDisplayName: (propertyId: string) => propertyId,
+			get: () => null,
+		},
+		data: {
+			properties: ["file.name", "note.categories"],
+			data: [{
+				file: rowFile,
+				getValue: (propertyId: string) => propertyId === "note.categories"
+					? new StringValue("Songs")
+					: new StringValue(rowFile.basename),
+			}],
+		},
+		type: "table",
+		name: viewName,
+	} as unknown as BasesView;
 }
 
 function makeBases(overrides: {
@@ -147,27 +275,25 @@ describe("embedded Bases code blocks", () => {
 	});
 
 	it("creates one collector document for the default rendered view", () => {
-		let nextId = 0;
 		const documents = createCollectorBaseDocuments({
 			filters: 'file.hasTag("music")',
 			views: [
 				{ type: "table", name: "Songs", order: ["file.name", "note.categories"] },
 				{ type: "cards", name: "Covers", limit: 5 },
 			],
-		}, 2, () => `request-${++nextId}`);
+		}, 2);
 
 		expect(documents).toHaveLength(1);
-		expect(documents[0].requestId).toBe("request-1");
 		expect(documents[0].viewName).toBe("Songs");
 		expect(documents[0].originalType).toBe("table");
 
 		const views = documents[0].config.views as Record<string, unknown>[];
 		const firstView = views[0];
-		expect(firstView.type).toBe(CUSTOM_VIEWS_BASES_VIEW_TYPE);
-		expect(firstView[CUSTOM_VIEWS_BASES_REQUEST_ID_KEY]).toBe("request-1");
-		expect(firstView[CUSTOM_VIEWS_BASES_SOURCE_INDEX_KEY]).toBe(2);
-		expect(firstView[CUSTOM_VIEWS_BASES_VIEW_INDEX_KEY]).toBe(0);
-		expect(firstView[CUSTOM_VIEWS_BASES_ORIGINAL_TYPE_KEY]).toBe("table");
+		expect(firstView.type).toBe("table");
+		expect(firstView.customViewsRequestId).toBeUndefined();
+		expect(firstView.customViewsSourceIndex).toBeUndefined();
+		expect(firstView.customViewsViewIndex).toBeUndefined();
+		expect(firstView.customViewsOriginalType).toBeUndefined();
 		expect(firstView.order).toEqual(["file.name", "note.categories"]);
 
 		const originalViews = documents[0].config.views as unknown[];
@@ -180,12 +306,66 @@ describe("embedded Bases code blocks", () => {
 				{ type: "table", name: "Songs" },
 				{ type: "cards", name: "Covers", limit: 5 },
 			],
-		}, 0, () => "request-1", "Covers");
+		}, 0, "Covers");
 
 		expect(documents).toHaveLength(1);
 		expect(documents[0].viewName).toBe("Covers");
 		expect(documents[0].viewIndex).toBe(1);
 		expect(documents[0].originalType).toBe("cards");
+	});
+
+	it("preserves native Base YAML fields while wrapping the selected view", () => {
+		const documents = createCollectorBaseDocuments({
+			formulas: {
+				Score: "(rating * 10).round()",
+			},
+			properties: {
+				"formula.Score": { displayName: "Score" },
+			},
+			filters: {
+				and: [
+					{ property: "note.status", op: "is", value: "active" },
+				],
+			},
+			views: [
+				{
+					type: "table",
+					name: "Table",
+					order: ["file.name", "formula.Score"],
+					sort: [{ property: "formula.Score", direction: "DESC" }],
+					limit: 25,
+					groupBy: "note.category",
+					map: { property: "note.location" },
+				},
+				{ type: "cards", name: "Cards", limit: 5 },
+			],
+		}, 0);
+
+		expect(documents).toHaveLength(1);
+		expect(documents[0].config).toMatchObject({
+			formulas: {
+				Score: "(rating * 10).round()",
+			},
+			properties: {
+				"formula.Score": { displayName: "Score" },
+			},
+			filters: {
+				and: [
+					{ property: "note.status", op: "is", value: "active" },
+				],
+			},
+		});
+		expect(documents[0].config.views).toEqual([
+			expect.objectContaining({
+				type: "table",
+				name: "Table",
+				order: ["file.name", "formula.Score"],
+				sort: [{ property: "formula.Score", direction: "DESC" }],
+				limit: 25,
+				groupBy: "note.category",
+				map: { property: "note.location" },
+			}),
+		]);
 	});
 
 	it("detects templates that need Bases data", () => {
@@ -274,6 +454,41 @@ describe("embedded Bases code blocks", () => {
 		expect(row.file.properties.cast).toEqual([{ cover: "[[Covers/Actor.jpg]]" }]);
 		expect(row.file.rating).toBe(5);
 		expect(row.values.cast).toBeUndefined();
+	});
+});
+
+describe("Bases collection access", () => {
+	it("keeps numeric access and uses the first safe named match for collisions", () => {
+		const first = {
+			source: { name: "Shared" },
+			key: "FirstKey",
+			name: "FirstView",
+		};
+		const second = {
+			source: { name: "SecondSource" },
+			key: "Shared",
+			name: "SecondView",
+		};
+
+		const collection = buildBasesCollection([first, second]) as unknown[] & Record<string, unknown>;
+
+		expect(collection[0]).toBe(first);
+		expect(collection[1]).toBe(second);
+		expect(collection.Shared).toBe(first);
+		expect(collection.FirstKey).toBe(first);
+		expect(collection.FirstView).toBe(first);
+		expect(collection.SecondSource).toBe(second);
+		expect(collection.SecondView).toBe(second);
+	});
+
+	it("does not attach unsafe prototype lookup keys", () => {
+		const collection = buildBasesCollection([
+			{ source: { name: "__proto__" }, key: "constructor", name: "prototype" },
+		]) as unknown as Record<string, unknown>;
+
+		expect(Object.prototype.hasOwnProperty.call(collection, "__proto__")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(collection, "constructor")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(collection, "prototype")).toBe(false);
 	});
 });
 
@@ -386,6 +601,106 @@ describe("Bases template access", () => {
 			templateContent: template,
 			sourceContent: "fallback note content",
 		});
+	});
+
+	it("renders multiple template-defined Bases through named lookups", async () => {
+		const app = makeMockApp();
+		const file = makeMockFile();
+		const container = window.document.createElement("div");
+		const [songs] = makeBases({
+			key: "Songs",
+			name: "Table",
+			sourceName: "Songs",
+			rows: [{ basename: "Belinda Says", category: "Songs" }],
+		});
+		const [movies] = makeBases({
+			key: "Movies",
+			name: "Table",
+			sourceName: "Movies",
+			rows: [{ basename: "A Silent Voice", category: "Movies" }],
+		});
+		movies.source.index = 1;
+		const getEmbeddedBases = vi.fn().mockResolvedValue([songs, movies]);
+		const basesProvider: BasesDataProvider = {
+			getEmbeddedBases,
+		};
+		const template = [
+			"{% base \"Songs\" %}",
+			"views:",
+			"  - type: table",
+			"    name: Table",
+			"{% endbase %}",
+			"{% base \"Movies\" %}",
+			"views:",
+			"  - type: table",
+			"    name: Table",
+			"{% endbase %}",
+			"{% for row in bases.Songs.rows %}<span>{{row.file.basename}}</span>{% endfor %}",
+			"{% for row in baseViews.Movies.rows %}<strong>{{row.file.basename}}</strong>{% endfor %}",
+			"<em>{{bases[1].rowCount}}</em>",
+			"<i>{{file.baseViews[0].source.name}}</i>",
+		].join("\n");
+
+		await renderTemplate(
+			app,
+			template,
+			file,
+			container,
+			new Component(),
+			false,
+			undefined,
+			undefined,
+			false,
+			"fallback note content",
+			basesProvider,
+		);
+
+		expect(container.textContent).toContain("Belinda Says");
+		expect(container.textContent).toContain("A Silent Voice");
+		expect(container.textContent).toContain("1");
+		expect(container.textContent).toContain("Songs");
+		expect(container.textContent).not.toContain("views:");
+		expect(getEmbeddedBases).toHaveBeenCalledOnce();
+	});
+
+	it("resolves Bases references in view CSS and JavaScript fields", async () => {
+		const app = makeMockApp();
+		const file = makeMockFile();
+		const container = window.document.createElement("div");
+		const getEmbeddedBases = vi.fn().mockResolvedValue(makeBases({
+			key: "Songs",
+			name: "Table",
+			sourceName: "Songs",
+		}));
+		const basesProvider: BasesDataProvider = {
+			getEmbeddedBases,
+		};
+		const viewConfig: ViewConfig = {
+			id: "bases-css-js",
+			name: "Bases CSS JS",
+			rules: { type: "group", operator: "AND", conditions: [] },
+			template: "",
+			css: ".base-count::after { content: \"{{baseViews.Songs.rowCount}}\"; }",
+			js: "this.dataset.baseCount = \"{{bases.Songs.rowCount}}\";",
+		};
+
+		await renderTemplate(
+			app,
+			"<div class=\"base-count\">{{file.basename}}</div>",
+			file,
+			container,
+			new Component(),
+			false,
+			viewConfig,
+			undefined,
+			true,
+			"```base\nviews: []\n```",
+			basesProvider,
+		);
+
+		expect(container.querySelector("style")?.textContent).toContain('content: "1"');
+		expect(container.dataset.baseCount).toBe("1");
+		expect(getEmbeddedBases).toHaveBeenCalledOnce();
 	});
 
 	it("renders Markdown-like values from file.bases loops through MarkdownRenderer", async () => {
@@ -666,5 +981,191 @@ describe("Bases template access", () => {
 
 		expect(container.textContent).toContain("Book.md");
 		expect(getEmbeddedBases).not.toHaveBeenCalled();
+	});
+});
+
+describe("EmbeddedBasesProvider", () => {
+	it("evaluates Bases through a hidden native embed without registering a custom view type", async () => {
+		let fakeFileContent = "";
+		let selectedViewSubpath: string | undefined;
+		const app = makeProviderApp({
+			onReadFakeFile: (content, viewSubpath) => {
+				fakeFileContent = content;
+				selectedViewSubpath = viewSubpath;
+			},
+		});
+		const plugin = makePlugin(app);
+		const provider = new EmbeddedBasesProvider(plugin);
+		const file = makeTFile({
+			name: "Dashboard.md",
+			basename: "Dashboard",
+			path: "Dashboards/Dashboard.md",
+			parent: { path: "Dashboards" },
+		});
+
+		expect(provider.register()).toBe(true);
+		expect(plugin.registerBasesView).not.toHaveBeenCalled();
+
+		const bases = await provider.getEmbeddedBases({
+			app,
+			file,
+			templateContent: "{{bases[0].rowCount}}",
+			sourceContent: "",
+			ownerDocument: window.document,
+			component: new Component(),
+		});
+
+		expect((app as unknown as { embedRegistry: { embedByExtension: { base: ReturnType<typeof vi.fn> } } })
+			.embedRegistry.embedByExtension.base).toHaveBeenCalledOnce();
+		expect(fakeFileContent).toContain("\"views\"");
+		expect(selectedViewSubpath).toBe("#Songs");
+		expect(bases).toHaveLength(1);
+		expect(bases[0]).toMatchObject({
+			name: "Songs",
+			type: "table",
+			rowCount: 1,
+		});
+		expect(bases[0].rows[0].values.categories).toBe("Songs");
+		expect(window.document.body.querySelector(".cv-bases-collector-host")).toBeNull();
+	});
+
+	it("waits for native Base data after the collector queue first reports idle", async () => {
+		vi.useFakeTimers();
+		const app = makeProviderApp({
+			delayViewMs: 50,
+		});
+		const provider = new EmbeddedBasesProvider(makePlugin(app));
+		const file = makeTFile({
+			name: "Dashboard.md",
+			basename: "Dashboard",
+			path: "Dashboards/Dashboard.md",
+			parent: { path: "Dashboards" },
+		});
+
+		try {
+			provider.register();
+			const basesPromise = provider.getEmbeddedBases({
+				app,
+				file,
+				templateContent: "{{bases[0].rowCount}}",
+				sourceContent: "",
+				ownerDocument: window.document,
+				component: new Component(),
+			});
+
+			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(100);
+			const bases = await basesPromise;
+
+			expect(bases).toHaveLength(1);
+			expect(bases[0].error).toBeUndefined();
+			expect(bases[0].rowCount).toBe(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("returns an error view when Bases collection times out", async () => {
+		vi.useFakeTimers();
+		const baseConfig = JSON.stringify({
+			views: [
+				{ type: "table", name: "Songs" },
+			],
+		});
+		const sourceContent = [
+			"```base",
+			baseConfig,
+			"```",
+		].join("\n");
+		const app = makeProviderApp({
+			sourceContent,
+			neverFinish: true,
+		});
+		const provider = new EmbeddedBasesProvider(makePlugin(app));
+		provider.register();
+		const file = makeTFile({
+			name: "Dashboard.md",
+			basename: "Dashboard",
+			path: "Dashboards/Dashboard.md",
+			parent: { path: "Dashboards" },
+		});
+
+		try {
+			const basesPromise = provider.getEmbeddedBases({
+				app,
+				file,
+				templateContent: "{{bases[0].error}}",
+				sourceContent,
+				ownerDocument: window.document,
+				component: new Component(),
+			});
+			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(5000);
+			const bases = await basesPromise;
+
+			expect(bases).toHaveLength(1);
+			expect(bases[0]).toMatchObject({
+				name: "Songs",
+				type: "table",
+				source: {
+					kind: "code-block",
+					line: 1,
+				},
+				error: "Timed out while collecting Bases data.",
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("returns an error view when an embedded .base file cannot be read", async () => {
+		const app = makeProviderApp({
+			sourceContent: "![[Songs.base]]",
+		});
+		const provider = new EmbeddedBasesProvider(makePlugin(app));
+		provider.register();
+		const file = makeTFile({
+			name: "Dashboard.md",
+			basename: "Dashboard",
+			path: "Dashboards/Dashboard.md",
+			parent: { path: "Dashboards" },
+		});
+		const baseFile = makeTFile({
+			name: "Songs.base",
+			basename: "Songs",
+			path: "Dashboards/Songs.base",
+			extension: "base",
+			parent: { path: "Dashboards" },
+		});
+		const vault = (app as unknown as {
+			vault: {
+				getFileByPath: ReturnType<typeof vi.fn>;
+				cachedRead: ReturnType<typeof vi.fn>;
+			};
+		}).vault;
+		vault.getFileByPath.mockImplementation((path: string) => path === baseFile.path ? baseFile : null);
+		vault.cachedRead.mockImplementation((target: TFile) => {
+			if (target === file) return "![[Songs.base]]";
+			throw new Error("Base file read failed");
+		});
+
+		const bases = await provider.getEmbeddedBases({
+			app,
+			file,
+			templateContent: "{{bases[0].error}}",
+			sourceContent: "![[Songs.base]]",
+			ownerDocument: window.document,
+			component: new Component(),
+		});
+
+		expect(bases).toHaveLength(1);
+		expect(bases[0]).toMatchObject({
+			name: "",
+			source: {
+				kind: "file-embed",
+				path: baseFile.path,
+			},
+			error: "Base file read failed",
+		});
 	});
 });
