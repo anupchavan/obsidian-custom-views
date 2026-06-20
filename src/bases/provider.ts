@@ -411,7 +411,8 @@ function createFakeBaseFile(app: App): TFile {
 	const basename = `.custom-views-bases-query-${Date.now()}-${nextFakeBaseFileId}`;
 	const path = `${basename}.base`;
 
-	return {
+	const file = new TFile();
+	Object.assign(file, {
 		basename,
 		cache: () => undefined,
 		deleted: false,
@@ -430,8 +431,9 @@ function createFakeBaseFile(app: App): TFile {
 		},
 		updateCacheLimit: () => undefined,
 		vault: app.vault,
-		// eslint-disable-next-line obsidianmd/no-tfile-tfolder-cast
-	} as unknown as TFile;
+	});
+
+	return file;
 }
 
 function installFakeBaseFile(vault: Vault, file: TFile, content: string): () => void {
