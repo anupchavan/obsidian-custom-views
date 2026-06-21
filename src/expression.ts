@@ -33,7 +33,8 @@ export type ExprValue =
 	| ExprValueRecord
 	| ExprFile
 	| ExprLink
-	| ExprDate;
+	| ExprDate
+	| ExprRegex;
 
 /** Wrapper for a resolved Obsidian file */
 export interface ExprFile {
@@ -65,6 +66,13 @@ export interface ExprLink {
 export interface ExprDate {
 	__type: "date";
 	_moment: moment.Moment;
+}
+
+/** Wrapper for a regex literal */
+export interface ExprRegex {
+	__type: "regex";
+	pattern: string;
+	flags: string;
 }
 
 /** Evaluation context passed through the expression engine */
@@ -116,6 +124,7 @@ enum TokenType {
 	Or,
 	Not,
 	Pipe,
+	Regex,
 	EOF,
 }
 
@@ -123,6 +132,7 @@ interface Token {
 	type: TokenType;
 	value: string;
 	pos: number;
+	flags?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +183,22 @@ export function tokenize(input: string): Token[] {
 			continue;
 		}
 
+		// Regex literals: /pattern/flags. These are only recognized in positions
+		// where an expression value can start, so arithmetic division keeps working.
+		if (ch === '/' && canStartRegexLiteral(tokens[tokens.length - 1])) {
+			const regex = readRegexLiteral(input, i);
+			if (regex) {
+				tokens.push({
+					type: TokenType.Regex,
+					value: regex.pattern,
+					flags: regex.flags,
+					pos: i,
+				});
+				i = regex.end;
+				continue;
+			}
+		}
+
 		// Two-char operators
 		if (i + 1 < input.length) {
 			const two = input.slice(i, i + 2);
@@ -218,12 +244,94 @@ export function tokenize(input: string): Token[] {
 	return tokens;
 }
 
+function canStartRegexLiteral(previous: Token | undefined): boolean {
+	if (!previous) return true;
+	return [
+		TokenType.LParen,
+		TokenType.LBracket,
+		TokenType.Comma,
+		TokenType.Plus,
+		TokenType.Minus,
+		TokenType.Star,
+		TokenType.Slash,
+		TokenType.Percent,
+		TokenType.Power,
+		TokenType.Eq,
+		TokenType.Neq,
+		TokenType.Lt,
+		TokenType.Gt,
+		TokenType.Lte,
+		TokenType.Gte,
+		TokenType.And,
+		TokenType.Or,
+		TokenType.Not,
+		TokenType.Pipe,
+	].includes(previous.type);
+}
+
+function readRegexLiteral(input: string, start: number): { pattern: string; flags: string; end: number } | null {
+	let i = start + 1;
+	let pattern = "";
+	let escaped = false;
+	let inCharacterClass = false;
+
+	while (i < input.length) {
+		const ch = input[i];
+		if (ch === "\n" || ch === "\r") return null;
+
+		if (escaped) {
+			pattern += ch;
+			escaped = false;
+			i++;
+			continue;
+		}
+
+		if (ch === "\\") {
+			pattern += ch;
+			escaped = true;
+			i++;
+			continue;
+		}
+
+		if (ch === "[") {
+			inCharacterClass = true;
+			pattern += ch;
+			i++;
+			continue;
+		}
+
+		if (ch === "]" && inCharacterClass) {
+			inCharacterClass = false;
+			pattern += ch;
+			i++;
+			continue;
+		}
+
+		if (ch === "/" && !inCharacterClass) {
+			i++;
+			const flagsStart = i;
+			while (i < input.length && /[a-z]/i.test(input[i])) i++;
+			return {
+				pattern,
+				flags: input.slice(flagsStart, i),
+				end: i,
+			};
+		}
+
+		pattern += ch;
+		i++;
+	}
+
+	return null;
+}
+
 // ---------------------------------------------------------------------------
 // AST nodes
 // ---------------------------------------------------------------------------
 
 interface NumberLiteral { type: "number"; value: number; }
 interface StringLiteral { type: "string"; value: string; }
+interface RegexLiteral { type: "regex"; pattern: string; flags: string; }
 interface BooleanLiteral { type: "boolean"; value: boolean; }
 interface NullLiteral { type: "null"; }
 interface Identifier { type: "identifier"; name: string; }
@@ -240,6 +348,7 @@ interface LambdaExpr { type: "lambda"; body: ASTNode; param: string; }
 type ASTNode =
 	| NumberLiteral
 	| StringLiteral
+	| RegexLiteral
 	| BooleanLiteral
 	| NullLiteral
 	| Identifier
@@ -439,6 +548,11 @@ class Parser {
 			return { type: "string", value: tok.value };
 		}
 
+		if (tok.type === TokenType.Regex) {
+			this.advance();
+			return { type: "regex", pattern: tok.value, flags: tok.flags ?? "" };
+		}
+
 		if (tok.type === TokenType.Identifier) {
 			if (tok.value === "true") {
 				this.advance();
@@ -539,6 +653,7 @@ function exprToString(val: ExprValue): string {
 	if (isExprFile(val)) return val.path;
 	if (isExprLink(val)) return val.display ? `[[${val.target}|${val.display}]]` : `[[${val.target}]]`;
 	if (isExprDate(val)) return val._moment.format("YYYY-MM-DD");
+	if (isExprRegex(val)) return `/${val.pattern}/${val.flags}`;
 	if (typeof val === "object") return JSON.stringify(val);
 	return String(val);
 }
@@ -553,6 +668,10 @@ function isExprLink(val: ExprValue): val is ExprLink {
 
 function isExprDate(val: ExprValue): val is ExprDate {
 	return val !== null && typeof val === "object" && !Array.isArray(val) && (val as Record<string, unknown>).__type === "date";
+}
+
+function isExprRegex(val: ExprValue): val is ExprRegex {
+	return val !== null && typeof val === "object" && !Array.isArray(val) && (val as Record<string, unknown>).__type === "regex";
 }
 
 /** Extract wikilink target from a string */
@@ -764,6 +883,7 @@ const globalFunctions: Record<string, GlobalFn> = {
 		if (isExprFile(val)) return "file";
 		if (isExprLink(val)) return "link";
 		if (isExprDate(val)) return "date";
+		if (isExprRegex(val)) return "regex";
 		if (typeof val === "object") return "object";
 		return typeof val;
 	},
@@ -805,9 +925,19 @@ const stringMethods: Record<string, MethodFn> = {
 	},
 	trim: (_ctx, obj) => exprToString(obj).trim(),
 	replace: (_ctx, obj, args) => {
-		const search = exprToString(args[0]);
+		const search = args[0];
 		const replaceWith = args.length > 1 ? exprToString(args[1]) : "";
-		return exprToString(obj).replace(new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), replaceWith);
+		const source = exprToString(obj);
+		if (isExprRegex(search)) {
+			try {
+				return source.replace(new RegExp(search.pattern, search.flags), replaceWith);
+			} catch {
+				return source;
+			}
+		}
+
+		const literalSearch = exprToString(search);
+		return source.replace(new RegExp(literalSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), replaceWith);
 	},
 	repeat: (_ctx, obj, args) => exprToString(obj).repeat(toNumber(args[0])),
 	reverse: (_ctx, obj) => exprToString(obj).split('').reverse().join(''),
@@ -1188,6 +1318,13 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 
 		case "string":
 			return node.value;
+
+		case "regex":
+			return {
+				__type: "regex",
+				pattern: node.pattern,
+				flags: node.flags,
+			};
 
 		case "boolean":
 			return node.value;

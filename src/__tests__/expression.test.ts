@@ -85,6 +85,13 @@ describe("tokenize", () => {
 		expect(tokens[0].value).toBe("hello");
 	});
 
+	it("tokenizes regex literals", () => {
+		const tokens = tokenize("title.replace(/.*\\s*–\\s*/i, \"\")");
+		const regexToken = tokens.find(token => token.value === ".*\\s*–\\s*");
+		expect(regexToken).toBeDefined();
+		expect((regexToken as { flags?: string }).flags).toBe("i");
+	});
+
 	it("tokenizes escape sequences in strings", () => {
 		const tokens = tokenize('"hello\\nworld"');
 		expect(tokens[0].value).toBe("hello\nworld");
@@ -318,6 +325,10 @@ describe("evaluate — arithmetic", () => {
 
 	it("division", async () => {
 		expect(await evaluate(parseExpression("10 / 4"), ctx)).toBe(2.5);
+	});
+
+	it("division still works after regex literal support", async () => {
+		expect(await evaluate(parseExpression("10/2"), ctx)).toBe(5);
 	});
 
 	it("division by zero returns null", async () => {
@@ -579,6 +590,16 @@ describe("string methods", () => {
 
 	it(".replace()", async () => {
 		expect(await evaluate(parseExpression('title.replace("World", "There")'), ctx)).toBe("Hello There");
+	});
+
+	it(".replace() with regex literal", async () => {
+		const ctx2 = makeContext({ frontmatter: { title: "Ritviz – Mimmi" } });
+		expect(await evaluate(parseExpression('title.replace(/.*\\s*–\\s*/, "")'), ctx2)).toBe("Mimmi");
+	});
+
+	it(".replace() with regex flags", async () => {
+		const ctx2 = makeContext({ frontmatter: { title: "Mimmi MIMMI" } });
+		expect(await evaluate(parseExpression('title.replace(/mimmi/gi, "Album")'), ctx2)).toBe("Album Album");
 	});
 
 	it(".repeat()", async () => {

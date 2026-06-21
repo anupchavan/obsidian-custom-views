@@ -411,7 +411,11 @@ function createFakeBaseFile(app: App): TFile {
 	const basename = `.custom-views-bases-query-${Date.now()}-${nextFakeBaseFileId}`;
 	const path = `${basename}.base`;
 
-	const file = new TFile();
+	const file = Object.create(TFile.prototype) as unknown;
+	if (!(file instanceof TFile)) {
+		throw new Error("Could not create a temporary Bases file.");
+	}
+
 	Object.assign(file, {
 		basename,
 		cache: () => undefined,
