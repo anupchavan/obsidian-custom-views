@@ -183,6 +183,11 @@ describe("markdown filter", () => {
 	it("converts emphasis", () => {
 		expect(applyFilterChain("<em>italic</em>", "markdown")).toBe("*italic*");
 	});
+
+	it("removes malformed nested HTML tags without exposing a new tag", () => {
+		const result = applyFilterChain("<p>Hello</p><scr<script>ipt>alert</script>", "markdown") as string;
+		expect(result).not.toContain("<script");
+	});
 });
 
 describe("strip_md filter", () => {
@@ -225,6 +230,10 @@ describe("remove_html filter", () => {
 	it("strips all HTML tags", () => {
 		expect(applyFilterChain("<p>Hello <b>world</b></p>", "remove_html")).toBe("Hello world");
 	});
+
+	it("removes malformed nested tag fragments without exposing a new tag", () => {
+		expect(applyFilterChain("<<script>alert(1)</script>", "remove_html")).toBe("alert(1)");
+	});
 });
 
 describe("remove_tags filter", () => {
@@ -258,6 +267,10 @@ describe("unescape filter", () => {
 
 	it("unescapes quote entities", () => {
 		expect(applyFilterChain("&quot;hello&quot;", "unescape")).toBe('"hello"');
+	});
+
+	it("does not double-unescape nested entities", () => {
+		expect(applyFilterChain("&amp;lt;script&amp;gt;", "unescape")).toBe("&lt;script&gt;");
 	});
 });
 
