@@ -6,6 +6,64 @@ function splitWords(str: string): string[] | null {
 	return str.match(WORD_SPLIT_RE)?.map(w => w.toLowerCase()) ?? null;
 }
 
+function escapeRegExp(str: string): string {
+	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripHtmlTags(str: string): string {
+	let result = '';
+	let inTag = false;
+	let quote: string | null = null;
+
+	for (let i = 0; i < str.length; i++) {
+		const char = str[i];
+
+		if (inTag) {
+			if (quote) {
+				if (char === quote) quote = null;
+				continue;
+			}
+			if (char === '"' || char === "'") {
+				quote = char;
+				continue;
+			}
+			if (char === '>') {
+				inTag = false;
+			}
+			continue;
+		}
+
+		if (char === '<' && str.indexOf('>', i + 1) !== -1) {
+			inTag = true;
+			quote = null;
+			continue;
+		}
+
+		result += char;
+	}
+
+	return result;
+}
+
+const HTML_ENTITY_MAP: Record<string, string> = {
+	'&amp;': '&',
+	'&lt;': '<',
+	'&gt;': '>',
+	'&quot;': '"',
+	'&#039;': "'",
+	'&#x27;': "'",
+	'&#x2F;': '/',
+};
+
+function unescapeHtmlEntitiesOnce(str: string): string {
+	return str.replace(/&(amp|lt|gt|quot|#039|#x27|#x2F);/g, entity => HTML_ENTITY_MAP[entity] ?? entity);
+}
+
+function normalizeHtmlName(name: string): string | null {
+	const trimmed = name.trim();
+	return /^[A-Za-z][A-Za-z0-9:-]*$/.test(trimmed) ? trimmed : null;
+}
+
 /**
  * Parse arguments like: "YYYY-MM-DD" or ("a", "b")
  * @param argString - The string to parse
@@ -90,7 +148,7 @@ const filters: Record<string, FilterFunction> = {
 			const flags = searchStr.substring(lastSlash + 1);
 			return String(val).replace(new RegExp(pattern, flags), replaceStr);
 		}
-		return String(val).replace(new RegExp(searchStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), replaceStr);
+		return String(val).replace(new RegExp(escapeRegExp(searchStr), 'g'), replaceStr);
 	},
 
 	wikilink: (val: FilterValue, alias?: unknown) => {
@@ -111,7 +169,7 @@ const filters: Record<string, FilterFunction> = {
 	blockquote: (val: string) => val.split('\n').map(line => `> ${line}`).join('\n'),
 
 	strip_tags: (val: FilterValue) => {
-		return String(val).replace(/<[^>]+>/g, '');
+		return stripHtmlTags(String(val));
 	},
 
 	split: (val: FilterValue, separator?: unknown) => String(val).split(typeof separator === 'string' ? separator : ","),
@@ -280,7 +338,7 @@ const filters: Record<string, FilterFunction> = {
 		str = str.replace(/<p>(.*?)<\/p>/gi, '$1\n\n');
 		str = str.replace(/<h([1-6])>(.*?)<\/h\1>/gi, (_m: string, level: string, text: string) => '#'.repeat(parseInt(level)) + ' ' + text + '\n');
 		str = str.replace(/<li>(.*?)<\/li>/gi, '- $1\n');
-		str = str.replace(/<[^>]+>/g, '');
+		str = stripHtmlTags(str);
 		return str.trim();
 	},
 	strip_md: (val: FilterValue) => {
@@ -315,14 +373,19 @@ const filters: Record<string, FilterFunction> = {
 
 	// HTML processing
 	remove_html: (val: FilterValue) => {
-		return String(val).replace(/<[^>]+>/g, '');
+		return stripHtmlTags(String(val));
 	},
 	remove_tags: (val: FilterValue, ...tagsToRemove: unknown[]) => {
 		let str = String(val);
 		for (const tag of tagsToRemove) {
 			if (typeof tag === 'string') {
-				const regex = new RegExp(`<${tag}[^>]*>.*?<\\/${tag}>`, 'gis');
-				str = str.replace(regex, '');
+				const tagName = normalizeHtmlName(tag);
+				if (!tagName) continue;
+				const escapedTag = escapeRegExp(tagName);
+				const pairRegex = new RegExp(`<${escapedTag}\\b[^>]*>[\\s\\S]*?<\\/${escapedTag}>`, 'gi');
+				const openRegex = new RegExp(`<${escapedTag}\\b[^>]*\\/?>`, 'gi');
+				const closeRegex = new RegExp(`<\\/${escapedTag}>`, 'gi');
+				str = str.replace(pairRegex, '').replace(openRegex, '').replace(closeRegex, '');
 			}
 		}
 		return str;
@@ -335,10 +398,10 @@ const filters: Record<string, FilterFunction> = {
 		} else {
 			for (const attr of attrsToStrip) {
 				if (typeof attr === 'string') {
-					const regex = new RegExp(`\\s${attr}="[^"]*"`, 'gi');
+					const attrName = normalizeHtmlName(attr);
+					if (!attrName) continue;
+					const regex = new RegExp(`\\s${escapeRegExp(attrName)}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?`, 'gi');
 					str = str.replace(regex, '');
-					const regex2 = new RegExp(`\\s${attr}='[^']*'`, 'gi');
-					str = str.replace(regex2, '');
 				}
 			}
 		}
@@ -350,21 +413,17 @@ const filters: Record<string, FilterFunction> = {
 	},
 	replace_tags: (val: FilterValue, oldTag?: unknown, newTag?: unknown) => {
 		if (typeof oldTag !== 'string' || typeof newTag !== 'string') return val;
+		const oldTagName = normalizeHtmlName(oldTag);
+		const newTagName = normalizeHtmlName(newTag);
+		if (!oldTagName || !newTagName) return val;
 		let str = String(val);
-		str = str.replace(new RegExp(`<${oldTag}(\\s[^>]*)?>`, 'gi'), `<${newTag}$1>`);
-		str = str.replace(new RegExp(`</${oldTag}>`, 'gi'), `</${newTag}>`);
+		const oldTagPattern = escapeRegExp(oldTagName);
+		str = str.replace(new RegExp(`<${oldTagPattern}(\\s[^>]*)?>`, 'gi'), `<${newTagName}$1>`);
+		str = str.replace(new RegExp(`</${oldTagPattern}>`, 'gi'), `</${newTagName}>`);
 		return str;
 	},
 	unescape: (val: FilterValue) => {
-		let str = String(val);
-		str = str.replace(/&amp;/g, '&');
-		str = str.replace(/&lt;/g, '<');
-		str = str.replace(/&gt;/g, '>');
-		str = str.replace(/&quot;/g, '"');
-		str = str.replace(/&#039;/g, "'");
-		str = str.replace(/&#x27;/g, "'");
-		str = str.replace(/&#x2F;/g, '/');
-		return str;
+		return unescapeHtmlEntitiesOnce(String(val));
 	},
 
 	// Object / Utility

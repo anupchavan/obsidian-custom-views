@@ -285,6 +285,9 @@ describe("strip_tags", () => {
 	it("returns plain text unchanged", () => {
 		expect(apply("hello world", "strip_tags")).toBe("hello world");
 	});
+	it("removes malformed nested tag fragments without exposing a new tag", () => {
+		expect(apply("<<script>alert(1)</script>", "strip_tags")).toBe("alert(1)");
+	});
 });
 
 // ---------------------------------------------------------------------------
