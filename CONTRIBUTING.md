@@ -114,8 +114,6 @@ To add tests for a new feature, create or extend the relevant test file (e.g., `
 
 The following are known bugs being tracked. If you're looking for a good first contribution, fixing one of these would be very welcome.
 
-- **File navigation focus lost after keyboard shortcut**: Clicking a file in the file explorer and then pressing Cmd/Ctrl + Up/Down works once, but subsequent presses lose focus from the file navigator. This is caused by the plugin's view injection triggering Obsidian's layout-change events, which interfere with the file explorer's focus state.
-
 - **Properties not visible in reading view**: The per-view "Show properties" toggle only works in editing view (live preview). In reading view, `MarkdownRenderer.render()` does not produce the native `.metadata-container` or `.inline-title` elements, so there is nothing to show or hide. A proper reading-view solution is planned for a future release.
 
 ## Questions
