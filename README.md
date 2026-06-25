@@ -1,4 +1,3 @@
-# Transform how your notes are displayed
 
 Create custom HTML, CSS, and JavaScript views for Obsidian notes based on matching rules.
 
