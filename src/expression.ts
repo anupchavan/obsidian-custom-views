@@ -658,6 +658,14 @@ function exprToString(val: ExprValue): string {
 	return String(val);
 }
 
+function formatMarkdownImage(src: string, alt: string): string {
+	const needsAngleBrackets = /[\s()<>]/.test(src);
+	const destination = needsAngleBrackets
+		? `<${src.replace(/</g, "%3C").replace(/>/g, "%3E").replace(/\n/g, "%0A")}>`
+		: src;
+	return `![${alt}](${destination})`;
+}
+
 function isExprFile(val: ExprValue): val is ExprFile {
 	return val !== null && typeof val === "object" && !Array.isArray(val) && (val as Record<string, unknown>).__type === "file";
 }
@@ -846,7 +854,7 @@ const globalFunctions: Record<string, GlobalFn> = {
 	image: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {
 		const src = exprToString(args[0]);
 		const alt = args.length > 1 ? exprToString(args[1]) : "";
-		return `![${alt}](${src})`;
+		return formatMarkdownImage(src, alt);
 	},
 
 	icon: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {
@@ -1522,11 +1530,11 @@ async function resolveVariablePlaceholders(template: string, ctx: ExprContext): 
 		const inner = match[1].trim();
 		if (!inner) continue;
 
-		// Check if the expression references a known variable (simple identifier
-		// or dotted access like loop.index).  We only resolve here if a variable
-		// is involved; other placeholders are left for renderTemplate.
-		const rootIdentifier = inner.split(/[.|[\s]/)[0].trim();
-		if (!(rootIdentifier in ctx.variables)) continue;
+		// Resolve when any identifier in the expression references a scoped
+		// variable. This covers simple placeholders (`{{photo}}`) and function
+		// calls using loop variables (`{{image(photo)}}`) while leaving ordinary
+		// frontmatter placeholders for renderTemplate.
+		if (!expressionReferencesVariable(inner, ctx.variables)) continue;
 
 		// Evaluate the full expression (handles pipes, methods, etc.)
 		let value: ExprValue;
@@ -1579,6 +1587,16 @@ async function resolveVariablePlaceholders(template: string, ctx: ExprContext): 
 		result = result.substring(0, r.start) + r.value + result.substring(r.end);
 	}
 	return result;
+}
+
+function expressionReferencesVariable(expr: string, variables: Record<string, ExprValue>): boolean {
+	const variableNames = new Set(Object.keys(variables));
+	if (variableNames.size === 0) return false;
+	try {
+		return tokenize(expr).some(token => token.type === TokenType.Identifier && variableNames.has(token.value));
+	} catch {
+		return false;
+	}
 }
 
 function shouldDeferMarkdown(value: string, ctx: ExprContext): boolean {
