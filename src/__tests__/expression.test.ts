@@ -510,6 +510,11 @@ describe("global functions", () => {
 		expect(await evaluate(parseExpression('image("pic.png", "My pic")'), ctx)).toBe("![My pic](pic.png)");
 	});
 
+	it("image() wraps destinations with spaces", async () => {
+		const ctx = makeContext();
+		expect(await evaluate(parseExpression('image("test 1.png")'), ctx)).toBe("![](<test 1.png>)");
+	});
+
 	it("random() — no args returns 0-1", async () => {
 		const ctx = makeContext();
 		const result = await evaluate(parseExpression("random()"), ctx) as number;
@@ -1185,6 +1190,17 @@ describe("processLogicBlocks", () => {
 				ctx
 			);
 			expect(result).toBe('<img src="cat.jpg" alt=""><img src="dog.jpg" alt="">');
+		});
+
+		it("resolves loop variable used as a function argument", async () => {
+			const ctx = makeContext({
+				frontmatter: { images: ["cat 1.jpg", "dog.jpg"] }
+			});
+			const result = await processLogicBlocks(
+				"{% for src in images %}{{image(src)}}{% endfor %}",
+				ctx
+			);
+			expect(result).toBe("![](<cat 1.jpg>)![](dog.jpg)");
 		});
 	});
 

@@ -102,6 +102,12 @@ describe("replace", () => {
 	it("replaces with empty string when replacement arg is omitted", () => {
 		expect(apply("hello world", 'replace:"world"')).toBe("hello ");
 	});
+	it("treats a slash without a closing slash as literal text", () => {
+		expect(apply("Movies/Album", 'replace:"/"," - "')).toBe("Movies - Album");
+	});
+	it("parses apostrophes inside double-quoted arguments", () => {
+		expect(apply("don't stop", 'replace:"don\'t","do"')).toBe("do stop");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -126,6 +132,9 @@ describe("link", () => {
 	it("uses custom label when provided", () => {
 		expect(apply("https://example.com", 'link:"Click here"')).toBe("[Click here](https://example.com)");
 	});
+	it("wraps link destinations that contain spaces", () => {
+		expect(apply("Music/Love and Machines.md", "link")).toBe("[link](<Music/Love and Machines.md>)");
+	});
 	it("maps over an array", () => {
 		expect(apply(["https://a.com", "https://b.com"], "link")).toBe(
 			"[link](https://a.com), [link](https://b.com)"
@@ -139,6 +148,9 @@ describe("image", () => {
 	});
 	it("uses custom alt text", () => {
 		expect(apply("photo.png", 'image:"My Photo"')).toBe("![My Photo](photo.png)");
+	});
+	it("wraps image destinations that contain spaces", () => {
+		expect(apply("test 1.png", "image")).toBe("![](<test 1.png>)");
 	});
 	it("maps over an array (newline-separated)", () => {
 		expect(apply(["a.png", "b.png"], "image")).toBe("![](a.png)\n![](b.png)");

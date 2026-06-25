@@ -64,6 +64,21 @@ function normalizeHtmlName(name: string): string | null {
 	return /^[A-Za-z][A-Za-z0-9:-]*$/.test(trimmed) ? trimmed : null;
 }
 
+function formatMarkdownDestination(src: string): string {
+	const needsAngleBrackets = /[\s()<>]/.test(src);
+	return needsAngleBrackets
+		? `<${src.replace(/</g, "%3C").replace(/>/g, "%3E").replace(/\n/g, "%0A")}>`
+		: src;
+}
+
+function formatMarkdownImage(src: string, alt: string): string {
+	return `![${alt}](${formatMarkdownDestination(src)})`;
+}
+
+function formatMarkdownLink(destination: string, label: string): string {
+	return `[${label}](${formatMarkdownDestination(destination)})`;
+}
+
 /**
  * Parse arguments like: "YYYY-MM-DD" or ("a", "b")
  * @param argString - The string to parse
@@ -74,12 +89,13 @@ function parseArgs(argString: string): (string | number)[] {
 	const content = argString.trim().replace(/^\((.*)\)$/, '$1');
 	const args: (string | number)[] = [];
 	let current = '';
-	let inQuote = false;
+	let quoteChar: string | null = null;
 	for (let i = 0; i < content.length; i++) {
 		const char = content[i];
 		if (char === '"' || char === "'") {
-			inQuote = !inQuote;
-		} else if (char === ',' && !inQuote) {
+			if (quoteChar === char) quoteChar = null;
+			else if (!quoteChar) quoteChar = char;
+		} else if (char === ',' && !quoteChar) {
 			args.push(cleanQuote(current));
 			current = '';
 			continue;
@@ -142,11 +158,15 @@ const filters: Record<string, FilterFunction> = {
 	replace: (val: FilterValue, search: unknown, replaceWith?: unknown) => {
 		const searchStr = (typeof search === 'string' || typeof search === 'number') ? String(search) : "";
 		const replaceStr = (typeof replaceWith === 'string' || typeof replaceWith === 'number') ? String(replaceWith) : "";
-		if (searchStr.startsWith("/")) {
+		if (searchStr.startsWith("/") && searchStr.lastIndexOf("/") > 0) {
 			const lastSlash = searchStr.lastIndexOf("/");
 			const pattern = searchStr.substring(1, lastSlash);
 			const flags = searchStr.substring(lastSlash + 1);
-			return String(val).replace(new RegExp(pattern, flags), replaceStr);
+			try {
+				return String(val).replace(new RegExp(pattern, flags), replaceStr);
+			} catch {
+				return String(val).replace(new RegExp(escapeRegExp(searchStr), 'g'), replaceStr);
+			}
 		}
 		return String(val).replace(new RegExp(escapeRegExp(searchStr), 'g'), replaceStr);
 	},
@@ -158,13 +178,13 @@ const filters: Record<string, FilterFunction> = {
 	},
 	link: (val: FilterValue, text?: unknown) => {
 		const label = typeof text === 'string' ? text : "link";
-		if (Array.isArray(val)) return val.map(v => `[${label}](${v})`).join(", ");
-		return `[${label}](${val})`;
+		if (Array.isArray(val)) return val.map(v => formatMarkdownLink(String(v), label)).join(", ");
+		return formatMarkdownLink(String(val), label);
 	},
 	image: (val: FilterValue, alt?: unknown) => {
 		const txt = typeof alt === 'string' ? alt : "";
-		if (Array.isArray(val)) return val.map(v => `![${txt}](${v})`).join("\n");
-		return `![${txt}](${val})`;
+		if (Array.isArray(val)) return val.map(v => formatMarkdownImage(String(v), txt)).join("\n");
+		return formatMarkdownImage(String(val), txt);
 	},
 	blockquote: (val: string) => val.split('\n').map(line => `> ${line}`).join('\n'),
 
@@ -323,22 +343,28 @@ const filters: Record<string, FilterFunction> = {
 		return `[^${noteId}]: ${String(val)}`;
 	},
 	fragment_link: (val: FilterValue, fragment?: unknown) => {
-		const frag = typeof fragment === 'string' ? fragment : '';
-		return `[[${String(val)}#${frag}]]`;
+		const frag = typeof fragment === 'string' ? fragment.trim() : '';
+		return frag ? `[[${String(val)}#${frag}]]` : `[[${String(val)}]]`;
 	},
 	markdown: (val: FilterValue) => {
 		// Basic HTML to Markdown conversion
 		let str = String(val);
+		const linkPlaceholders: string[] = [];
 		str = str.replace(/<strong>(.*?)<\/strong>/gi, '**$1**');
 		str = str.replace(/<b>(.*?)<\/b>/gi, '**$1**');
 		str = str.replace(/<em>(.*?)<\/em>/gi, '*$1*');
 		str = str.replace(/<i>(.*?)<\/i>/gi, '*$1*');
-		str = str.replace(/<a href="(.*?)">(.*?)<\/a>/gi, '[$2]($1)');
+		str = str.replace(/<a href="(.*?)">(.*?)<\/a>/gi, (_m: string, href: string, text: string) => {
+			const token = `@@CUSTOM_VIEWS_MARKDOWN_LINK_${linkPlaceholders.length}@@`;
+			linkPlaceholders.push(formatMarkdownLink(href, text));
+			return token;
+		});
 		str = str.replace(/<br\s*\/?>/gi, '\n');
 		str = str.replace(/<p>(.*?)<\/p>/gi, '$1\n\n');
 		str = str.replace(/<h([1-6])>(.*?)<\/h\1>/gi, (_m: string, level: string, text: string) => '#'.repeat(parseInt(level)) + ' ' + text + '\n');
 		str = str.replace(/<li>(.*?)<\/li>/gi, '- $1\n');
 		str = stripHtmlTags(str);
+		str = str.replace(/@@CUSTOM_VIEWS_MARKDOWN_LINK_(\d+)@@/g, (_m: string, index: string) => linkPlaceholders[Number(index)] ?? '');
 		return str.trim();
 	},
 	strip_md: (val: FilterValue) => {
@@ -509,13 +535,16 @@ export function applyFilterChain(value: FilterValue, filterChain: string): Filte
 
 	const steps: string[] = [];
 	let current = '';
-	let inQuote = false;
+	let quoteChar: string | null = null;
 
 	for (let i = 0; i < filterChain.length; i++) {
 		const char = filterChain[i];
-		if (char === '"' || char === "'") inQuote = !inQuote;
+		if (char === '"' || char === "'") {
+			if (quoteChar === char) quoteChar = null;
+			else if (!quoteChar) quoteChar = char;
+		}
 
-		if (char === '|' && !inQuote) {
+		if (char === '|' && !quoteChar) {
 			steps.push(current.trim());
 			current = '';
 		} else {

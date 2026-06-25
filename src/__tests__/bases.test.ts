@@ -862,6 +862,71 @@ describe("Bases template access", () => {
 		expect(getEmbeddedBases).toHaveBeenCalledOnce();
 	});
 
+	it("renders image() for items from Bases row arrays", async () => {
+		const app = makeMockApp();
+		const file = makeMockFile();
+		const container = window.document.createElement("div");
+		const renderedMarkdown: string[] = [];
+		const renderSpy = vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (
+			_app: unknown,
+			markdown: string,
+			el: HTMLElement,
+		) => {
+			renderedMarkdown.push(markdown);
+			const match = markdown.match(/^!\[[^\]]*]\((?:<([^>]+)>|([^)]+))\)$/);
+			if (match) {
+				const img = el.ownerDocument.createElement("img");
+				img.setAttribute("src", match[1] ?? match[2] ?? "");
+				el.appendChild(img);
+			} else {
+				el.textContent = markdown;
+			}
+		});
+		const bases = makeBases();
+		bases[0].rows[0].values.photos = ["test 1.png", "Misc/Attachments/2.jpg"];
+		const getEmbeddedBases = vi.fn().mockResolvedValue(bases);
+		const basesProvider: BasesDataProvider = {
+			getEmbeddedBases,
+		};
+
+		try {
+			await renderTemplate(
+				app,
+				[
+					"{% for row in file.bases[0].rows %}",
+					"<pre>{{row.values.photos[0]}}</pre>",
+					"{% for photo in row.values.photos %}",
+					"{{image(photo)}}",
+					"{% endfor %}",
+					"{% endfor %}",
+				].join("\n"),
+				file,
+				container,
+				new Component(),
+				false,
+				undefined,
+				undefined,
+				false,
+				"```base\nviews: []\n```",
+				basesProvider,
+			);
+		} finally {
+			renderSpy.mockRestore();
+		}
+
+		expect(container.textContent).toContain("test 1.png");
+		expect(renderedMarkdown).toEqual(expect.arrayContaining([
+			"![](<test 1.png>)",
+			"![](Misc/Attachments/2.jpg)",
+		]));
+		expect(renderedMarkdown).not.toContain("![]()");
+		expect(Array.from(container.querySelectorAll("img")).map(img => img.getAttribute("src"))).toEqual([
+			"test 1.png",
+			"Misc/Attachments/2.jpg",
+		]);
+		expect(getEmbeddedBases).toHaveBeenCalledOnce();
+	});
+
 	it("supports nested row.file frontmatter chains from Bases rows", async () => {
 		const app = makeMockApp();
 		const file = makeMockFile();

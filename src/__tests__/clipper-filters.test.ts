@@ -169,6 +169,11 @@ describe("fragment_link filter", () => {
 		const result = applyFilterChain("My Note", 'fragment_link:"Section 1"');
 		expect(result).toBe("[[My Note#Section 1]]");
 	});
+
+	it("omits the hash when no fragment is provided", () => {
+		const result = applyFilterChain("My Note", "fragment_link");
+		expect(result).toBe("[[My Note]]");
+	});
 });
 
 describe("markdown filter", () => {
@@ -178,6 +183,10 @@ describe("markdown filter", () => {
 
 	it("converts links", () => {
 		expect(applyFilterChain('<a href="https://example.com">Example</a>', "markdown")).toBe("[Example](https://example.com)");
+	});
+
+	it("wraps markdown link destinations that contain spaces", () => {
+		expect(applyFilterChain('<a href="https://example.com/a b">Example</a>', "markdown")).toBe("[Example](<https://example.com/a b>)");
 	});
 
 	it("converts emphasis", () => {
