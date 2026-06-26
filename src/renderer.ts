@@ -435,10 +435,7 @@ export async function renderTemplate(
 			continue;
 		}
 
-		const prefix = processedTemplate.substring(0, offset);
-		const doubleQuotes = prefix.split('"').length - 1;
-		const singleQuotes = prefix.split("'").length - 1;
-		const isInsideAttribute = (doubleQuotes % 2 !== 0) || (singleQuotes % 2 !== 0);
+		const isInsideAttribute = isInsideHtmlAttribute(processedTemplate, offset);
 
 		if (isInsideAttribute) {
 			resolvedValues.push(resultToString(finalValue));
@@ -716,6 +713,29 @@ function unwrapSingleParagraph(container: HTMLElement) {
 
 function needsMarkdownRender(value: string): boolean {
 	return MARKDOWN_VALUE_HINT_RE.test(value) || URL_VALUE_HINT_RE.test(value);
+}
+
+function isInsideHtmlAttribute(template: string, offset: number): boolean {
+	const tagStart = template.lastIndexOf("<", offset);
+	const tagEnd = template.lastIndexOf(">", offset);
+	if (tagStart === -1 || tagStart < tagEnd) return false;
+
+	const tagPrefix = template.substring(tagStart, offset);
+	if (tagPrefix.startsWith("<!--")) return false;
+
+	let quote: string | null = null;
+	for (let i = 0; i < tagPrefix.length; i++) {
+		const ch = tagPrefix[i];
+		if (quote) {
+			if (ch === quote) quote = null;
+		} else if (ch === '"' || ch === "'") {
+			quote = ch;
+		}
+	}
+	if (quote) return true;
+
+	const unquotedValue = tagPrefix.match(/(?:^|\s)[^\s=]+=[^\s"'=<>]*$/);
+	return !!unquotedValue;
 }
 
 function escapeHtml(value: string): string {

@@ -199,6 +199,13 @@ export function tokenize(input: string): Token[] {
 			}
 		}
 
+		// Equality aliases
+		if (i + 2 < input.length) {
+			const three = input.slice(i, i + 3);
+			if (three === '===') { tokens.push({ type: TokenType.Eq, value: '==', pos: i }); i += 3; continue; }
+			if (three === '!==') { tokens.push({ type: TokenType.Neq, value: '!=', pos: i }); i += 3; continue; }
+		}
+
 		// Two-char operators
 		if (i + 1 < input.length) {
 			const two = input.slice(i, i + 2);
