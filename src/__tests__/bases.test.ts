@@ -927,6 +927,104 @@ describe("Bases template access", () => {
 		expect(getEmbeddedBases).toHaveBeenCalledOnce();
 	});
 
+	it("renders image() after apostrophes and multiple Bases blocks", async () => {
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn().mockReturnValue({
+					frontmatter: {
+						business_image: "Issue 12/Business Cover.jpg",
+					},
+				}),
+				getFirstLinkpathDest: vi.fn().mockReturnValue(null),
+			},
+			vault: {
+				cachedRead: vi.fn().mockResolvedValue(""),
+			},
+		} as unknown as App;
+		const file = makeMockFile();
+		const container = window.document.createElement("div");
+		const renderedMarkdown: string[] = [];
+		const renderSpy = vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (
+			_app: unknown,
+			markdown: string,
+			el: HTMLElement,
+		) => {
+			renderedMarkdown.push(markdown);
+			const match = markdown.match(/^!\[[^\]]*]\((?:<([^>]+)>|([^)]+))\)$/);
+			if (match) {
+				const img = el.ownerDocument.createElement("img");
+				img.setAttribute("src", match[1] ?? match[2] ?? "");
+				el.appendChild(img);
+			} else {
+				el.textContent = markdown;
+			}
+		});
+		const events = makeBases({ name: "Table", sourceName: "Events" });
+		const products = makeBases({ name: "Table", sourceName: "Products" });
+		products[0].rows[0].values.photos = ["Issue 12/Product One.jpg", "Issue 12/Product Two.jpg"];
+		const getEmbeddedBases = vi.fn().mockResolvedValue([...events, ...products]);
+		const basesProvider: BasesDataProvider = {
+			getEmbeddedBases,
+		};
+
+		try {
+			await renderTemplate(
+				app,
+				[
+					'{% base "Events" %}',
+					"views:",
+					"  - type: table",
+					"    name: Table",
+					"{% endbase %}",
+					'{% base "Products" %}',
+					"views:",
+					"  - type: table",
+					"    name: Table",
+					"{% endbase %}",
+					"<div class=\"hero\">{{image(business_image)}}</div>",
+					"{% if bases.Events.rowCount > 0 %}",
+					"<div>What's New</div>",
+					"{% for row in bases.Events.rows %}<div>{{row.file.link}}</div>{% endfor %}",
+					"{% endif %}",
+					"<div class=\"after-news\">{{image(business_image)}}</div>",
+					"{% for row in bases.Products.rows %}",
+					"<div class=\"large-image\">{{image(row.values.photos[0])}}</div>",
+					"{% for photo in row.values.photos %}",
+					"{% if photo !== row.values.photos[0] %}<div class=\"thumb\">{{image(photo)}}</div>{% endif %}",
+					"{% endfor %}",
+					"{% endfor %}",
+				].join("\n"),
+				file,
+				container,
+				new Component(),
+				false,
+				undefined,
+				undefined,
+				false,
+				"",
+				basesProvider,
+			);
+		} finally {
+			renderSpy.mockRestore();
+		}
+
+		const imageMarkdown = renderedMarkdown.filter(markdown => markdown.startsWith("!"));
+		expect(imageMarkdown).toEqual([
+			"![](<Issue 12/Business Cover.jpg>)",
+			"![](<Issue 12/Business Cover.jpg>)",
+			"![](<Issue 12/Product One.jpg>)",
+			"![](<Issue 12/Product Two.jpg>)",
+		]);
+		expect(Array.from(container.querySelectorAll("img")).map(img => img.getAttribute("src"))).toEqual([
+			"Issue 12/Business Cover.jpg",
+			"Issue 12/Business Cover.jpg",
+			"Issue 12/Product One.jpg",
+			"Issue 12/Product Two.jpg",
+		]);
+		expect(container.textContent).not.toContain("![](");
+		expect(getEmbeddedBases).toHaveBeenCalledOnce();
+	});
+
 	it("supports nested row.file frontmatter chains from Bases rows", async () => {
 		const app = makeMockApp();
 		const file = makeMockFile();

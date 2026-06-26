@@ -105,9 +105,9 @@ describe("tokenize", () => {
 	});
 
 	it("tokenizes operators", () => {
-		const tokens = tokenize("+ - * / == != < > <= >= && || **");
+		const tokens = tokenize("+ - * / == === != !== < > <= >= && || **");
 		const values = tokens.filter(t => t.value !== '').map(t => t.value);
-		expect(values).toEqual(["+", "-", "*", "/", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "**"]);
+		expect(values).toEqual(["+", "-", "*", "/", "==", "==", "!=", "!=", "<", ">", "<=", ">=", "&&", "||", "**"]);
 	});
 
 	it("tokenizes parens, brackets, dots, commas", () => {
@@ -366,6 +366,11 @@ describe("evaluate — comparison & logic", () => {
 
 	it("!=", async () => {
 		expect(await evaluate(parseExpression("1 != 2"), ctx)).toBe(true);
+	});
+
+	it("supports strict equality aliases", async () => {
+		expect(await evaluate(parseExpression("1 === 1"), ctx)).toBe(true);
+		expect(await evaluate(parseExpression("1 !== 2"), ctx)).toBe(true);
 	});
 
 	it("< > <= >=", async () => {

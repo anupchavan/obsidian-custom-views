@@ -534,6 +534,59 @@ describe("renderTemplate source content", () => {
 		expect(renderSpy).not.toHaveBeenCalled();
 	});
 
+	it("renders markdown placeholders after text apostrophes", async () => {
+		const cachedRead = vi.fn(async () => "Body");
+		const renderedMarkdown: string[] = [];
+		const renderSpy = vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (
+			_app: unknown,
+			markdown: string,
+			el: HTMLElement,
+		) => {
+			renderedMarkdown.push(markdown);
+			const img = el.ownerDocument.createElement("img");
+			img.className = "rendered-image";
+			img.setAttribute("src", markdown.match(/\((?:<([^>]+)>|([^)]+))\)/)?.[1] ?? "");
+			el.appendChild(img);
+		});
+		const app = {
+			metadataCache: {
+				getFileCache: vi.fn(() => ({
+					frontmatter: {
+						photo: "test 1.png",
+					},
+				})),
+			},
+			vault: {
+				cachedRead,
+			},
+		} as unknown as App;
+		const file = new TFile();
+		file.path = "Issue 12/Test.md";
+		const component = new Component();
+		const doc = new DOMParser().parseFromString("<main></main>", "text/html");
+		const container = doc.createElement("div");
+
+		try {
+			await renderTemplate(
+				app,
+				'<div>What\'s New</div>{{image(photo)}}<img class="raw-image" src="{{photo}}">',
+				file,
+				container,
+				component,
+				false,
+				undefined,
+				undefined,
+				false,
+			);
+		} finally {
+			renderSpy.mockRestore();
+		}
+
+		expect(renderedMarkdown).toEqual(["![](<test 1.png>)"]);
+		expect(container.querySelector(".rendered-image")?.getAttribute("src")).toBe("test 1.png");
+		expect(container.querySelector(".raw-image")?.getAttribute("src")).toBe("test 1.png");
+	});
+
 	it("marks unresolved state on rendered internal links", async () => {
 		const cachedRead = vi.fn(async () => "Body");
 		const renderedMarkdown: string[] = [];
