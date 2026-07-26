@@ -118,7 +118,7 @@ export class ComboboxSuggestModal extends FuzzySuggestModal<SuggestItem> {
             if (this.anchorEl.getAttribute('tabindex') === '-1') {
                 this.anchorEl.setAttribute('tabindex', '0');
             }
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 this.anchorEl?.focus();
             });
         }

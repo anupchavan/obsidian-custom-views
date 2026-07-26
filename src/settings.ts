@@ -7,6 +7,7 @@ export class ObsidianRuleEngineSettingTab extends PluginSettingTab {
 	plugin: ObsidianRuleEnginePlugin;
 	private draggedElement: HTMLElement | null = null;
 	private draggedIndex: number | null = null;
+	private activeTab: "rules" | "settings" | "commands" = "rules";
 
 	constructor(app: App, plugin: ObsidianRuleEnginePlugin) {
 		super(app, plugin);
@@ -21,13 +22,52 @@ export class ObsidianRuleEngineSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName("Enabled")
-			.setDesc("Enable rule automations")
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.enabled).onChange(async (value) => {
-				this.plugin.settings.enabled = value;
-				await this.plugin.saveSettings();
-			}));
+		this.renderTabBar(containerEl);
 
+		switch (this.activeTab) {
+			case "rules":
+				this.renderRulesTab(containerEl);
+				break;
+			case "settings":
+				this.renderSettingsTab(containerEl);
+				break;
+			case "commands":
+				this.renderCommandConfigTab(containerEl);
+				break;
+		}
+	}
+
+	private renderTabBar(containerEl: HTMLElement): void {
+		const tabs: { id: "rules" | "settings" | "commands"; label: string }[] = [
+			{ id: "rules", label: "Rules" },
+			{ id: "settings", label: "Settings" },
+			{ id: "commands", label: "Command configuration" },
+		];
+
+		const tabHeaderContainer = containerEl.createDiv({ cls: "workspace-tab-header-container ore-settings-tab-bar" });
+		const tabHeaderContainerInner = tabHeaderContainer.createDiv({ cls: "workspace-tab-header-container-inner" });
+
+		tabs.forEach(tab => {
+			const isActive = this.activeTab === tab.id;
+			const header = tabHeaderContainerInner.createDiv({
+				cls: "workspace-tab-header" + (isActive ? " is-active" : ""),
+			});
+			header.setAttribute("role", "tab");
+			header.setAttribute("aria-selected", String(isActive));
+			header.setAttribute("aria-label", tab.label);
+			header.setAttribute("tabindex", "0");
+
+			const inner = header.createDiv({ cls: "workspace-tab-header-inner" });
+			inner.createDiv({ cls: "workspace-tab-header-inner-title", text: tab.label });
+
+			header.onclick = () => {
+				this.activeTab = tab.id;
+				this.display();
+			};
+		});
+	}
+
+	private renderRulesTab(containerEl: HTMLElement): void {
 		new Setting(containerEl)
 			.setHeading()
 			.setName("Rule configuration")
@@ -60,6 +100,15 @@ export class ObsidianRuleEngineSettingTab extends PluginSettingTab {
 		this.plugin.settings.rules.forEach((rule, index) => {
 			this.renderRuleListItem(ruleListContainer, rule, index);
 		});
+	}
+
+	private renderSettingsTab(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Enabled")
+			.setDesc("Enable rule automations")
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.enabled).onChange(async (value) => {
+				this.plugin.settings.enabled = value;
+				await this.plugin.saveSettings();
+			}));
 
 		const addReadingModeSetting = (setting: Setting) => {
 			setting
@@ -158,7 +207,9 @@ export class ObsidianRuleEngineSettingTab extends PluginSettingTab {
 			settingsGroup.addSetting(addUseDnd);
 		}
 		settingsGroup.addSetting(addDebug);
+	}
 
+	private renderCommandConfigTab(containerEl: HTMLElement): void {
 		new Setting(containerEl)
 			.setHeading()
 			.setName("Command configuration")

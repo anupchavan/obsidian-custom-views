@@ -36,3 +36,10 @@ export class TextComponent {}
 export class WorkspaceLeaf {}
 export const Keymap = { isModEvent: () => false };
 export function setIcon() {}
+export class TFolder { path = ""; name = ""; }
+export type FrontMatterCache = Record<string, unknown>;
+export class MarkdownRenderer {
+    static async render(_app: unknown, markdown: string, el: HTMLElement, _path: string, _component: unknown) {
+        el.textContent = markdown;
+    }
+}

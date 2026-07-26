@@ -109,7 +109,7 @@ export class RuleEngineBasesView extends BasesView implements HoverParent {
                         for (const entry of group.entries) {
                             const { commandIds } = this.plugin.extractMatchingRuleParameters(entry.file, { baseFileHandling: "results" });
                             // always use file mode on each entry since 'results' wouldn't make sense
-                            this.plugin.executeCommands("file", commandIds, entry.file, groupLeaf);
+                            this.plugin.executeCommands("file", commandIds, entry.file, groupLeaf, this.plugin.getFileCommandOverrides(entry.file));
                         }
                     }
                 } catch (e) {
@@ -154,7 +154,7 @@ export class RuleEngineBasesView extends BasesView implements HoverParent {
                 border-radius: var(--radius-m);
             `);
 
-            const { matchedTemplate } = this.plugin.extractMatchingRuleParameters(entry.file, { baseFileHandling: "results" });
+            const { matchedTemplate } = this.plugin.extractMatchingRuleParameters(entry.file, { baseFileHandling: "results", renderContext: 'base' });
 
             if (matchedTemplate?.length && Boolean(this.config.get('enableTemplates'))) {
                 this.plugin.injectCustomView(card, entry.file, matchedTemplate).catch(e => console.error(e));

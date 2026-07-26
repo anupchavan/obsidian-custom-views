@@ -1,5 +1,20 @@
-import { App, TFile, FrontMatterCache } from "obsidian";
+import { App, TFile, FrontMatterCache, moment } from "obsidian";
 import { FilterGroup, Filter } from "./types";
+import { RELATIVE_DATE_UNITS } from "./consts";
+
+// Obsidian types moment as a namespace rather than a callable — cast for runtime use
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const momentFn = moment as any as (value?: string | number | Date) => { subtract: (n: number, u: string) => { valueOf: () => number }; add: (n: number, u: string) => { valueOf: () => number }; valueOf: () => number; isValid: () => boolean };
+
+const RELATIVE_DATE_UNITS_SET = new Set<string>(RELATIVE_DATE_UNITS);
+
+function parseRelativeValue(value: string): [number, moment.unitOfTime.DurationConstructor] {
+	const parts = value.trim().split(/\s+/);
+	const amount = parseInt(parts[0] || "0");
+	const unit = parts[1] || "days";
+	if (isNaN(amount) || amount <= 0 || !RELATIVE_DATE_UNITS_SET.has(unit)) return [0, "days"];
+	return [amount, unit as moment.unitOfTime.DurationConstructor];
+}
 
 /**
  * Evaluates the rules for a given filter group, file, and frontmatter
@@ -9,28 +24,33 @@ import { FilterGroup, Filter } from "./types";
  * @param frontmatter - The frontmatter of the file
  * @returns True if all conditions in the group are met, false otherwise
  */
-export function checkRules(app: App, group: FilterGroup, file: TFile, frontmatter?: FrontMatterCache): boolean {
+export function checkRules(app: App, group: FilterGroup, file: TFile, frontmatter?: FrontMatterCache, log?: (...args: unknown[]) => void): boolean {
 	if (!group || !group.conditions || group.conditions.length === 0) return true;
 
 	// Evaluate all conditions in this group
 	const results = group.conditions.map(condition => {
 		if (condition.type === "group") {
-			return checkRules(app, condition, file, frontmatter);
+			return checkRules(app, condition, file, frontmatter, log);
 		} else {
-			return evaluateFilter(app, condition, file, frontmatter);
+			const result = evaluateFilter(app, condition, file, frontmatter);
+			log?.(`  [${result ? "✓" : "✗"}] ${condition.field} ${condition.operator} "${condition.value ?? ""}"`);
+			return result;
 		}
 	});
 
 	// Combine results based on AND (every) / OR (some) / NOR (none)
+	let finalResult: boolean;
 	if (group.operator === "AND") {
-		return results.every(r => r === true);
+		finalResult = results.every(r => r === true);
 	} else if (group.operator === "OR") {
-		return results.some(r => r === true);
+		finalResult = results.some(r => r === true);
 	} else if (group.operator === "NOR") {
-		// NOR: None of the following are true (all must be false)
-		return results.every(r => r === false);
+		finalResult = results.every(r => r === false);
+	} else {
+		finalResult = true;
 	}
-	return true;
+	log?.(`  group (${group.operator ?? "AND"}): ${finalResult ? "MATCH" : "no match"}`);
+	return finalResult;
 }
 
 /**
@@ -210,6 +230,8 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 		else if (filter.field === "file.path") targetValue = file.path;
 		else if (filter.field === "file.folder") targetValue = file.parent?.path || "";
 		else if (filter.field === "file.size") targetValue = file.stat.size;
+		else if (filter.field === "file.outlinks") targetValue = Object.keys(app.metadataCache.resolvedLinks[file.path] ?? {}).length;
+		else if (filter.field === "file.inlinks") targetValue = Object.values(app.metadataCache.resolvedLinks).filter(dests => file.path in dests).length;
 		else if (filter.field === "file.ctime") targetValue = file.stat.ctime;
 		else if (filter.field === "file.mtime") targetValue = file.stat.mtime;
 		else if (filter.field === "file.extension") targetValue = file.extension;
@@ -273,56 +295,61 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 	if (targetValue === undefined || targetValue === null) targetValue = "";
 
 	// Special handling for date operators on file.ctime and file.mtime
-	const dateOperators = ["on", "not on", "before", "on or before", "after", "on or after", "is empty", "is not empty"];
+	const dateOperators = ["on", "not on", "before", "on or before", "after", "on or after", "within past", "within future", "is empty", "is not empty"];
 	if ((filter.field === "file.ctime" || filter.field === "file.mtime") &&
 		dateOperators.includes(filter.operator) &&
 		typeof targetValue === "number") {
 
-		// Handle empty checks
-		if (filter.operator === "is empty") {
-			return !targetValue || targetValue === 0;
-		}
-		if (filter.operator === "is not empty") {
-			return !!targetValue && targetValue !== 0;
+		if (filter.operator === "is empty") return !targetValue || targetValue === 0;
+		if (filter.operator === "is not empty") return !!targetValue && targetValue !== 0;
+
+		if (filter.operator === "within past" || filter.operator === "within future") {
+			const [amt, unit] = parseRelativeValue(filter.value || "");
+			if (!amt) return false;
+			const nowMs = Date.now();
+			if (filter.operator === "within past") {
+				return targetValue >= momentFn().subtract(amt, unit).valueOf() && targetValue <= nowMs;
+			}
+			return targetValue >= nowMs && targetValue <= momentFn().add(amt, unit).valueOf();
 		}
 
-		// Filter value is a date string (YYYY-MM-DD), but may have time component
-		// Truncate to just the date part if it's a datetime string
 		const filterDateStr = (filter.value || "").toString().split('T')[0];
+		if (!filterDateStr || filterDateStr.length === 0) return false;
 
-		if (!filterDateStr || filterDateStr.length === 0) {
-			// Empty filter value - can't compare
-			return false;
-		}
-
-		// Convert timestamp to date string (YYYY-MM-DD)
 		const targetDate = new Date(targetValue);
 		const targetDateStr = targetDate.toISOString().split('T')[0];
-
-		// Compare dates
 		const targetDateObj = new Date(targetDateStr!);
 		const filterDateObj = new Date(filterDateStr);
-
-		// Normalize to midnight for accurate date comparison
 		targetDateObj.setHours(0, 0, 0, 0);
 		filterDateObj.setHours(0, 0, 0, 0);
 
 		switch (filter.operator) {
-			case "on":
-				return targetDateObj.getTime() === filterDateObj.getTime();
-			case "not on":
-				return targetDateObj.getTime() !== filterDateObj.getTime();
-			case "before":
-				return targetDateObj.getTime() < filterDateObj.getTime();
-			case "on or before":
-				return targetDateObj.getTime() <= filterDateObj.getTime();
-			case "after":
-				return targetDateObj.getTime() > filterDateObj.getTime();
-			case "on or after":
-				return targetDateObj.getTime() >= filterDateObj.getTime();
-			default:
-				return false;
+			case "on": return targetDateObj.getTime() === filterDateObj.getTime();
+			case "not on": return targetDateObj.getTime() !== filterDateObj.getTime();
+			case "before": return targetDateObj.getTime() < filterDateObj.getTime();
+			case "on or before": return targetDateObj.getTime() <= filterDateObj.getTime();
+			case "after": return targetDateObj.getTime() > filterDateObj.getTime();
+			case "on or after": return targetDateObj.getTime() >= filterDateObj.getTime();
+			default: return false;
 		}
+	}
+
+	// Relative date operators for date-valued frontmatter fields.
+	// Obsidian's YAML parser turns unquoted dates (e.g. `due: 2024-06-15`) into
+	// native Date objects rather than strings, so both must be accepted here.
+	const rawTargetValue = targetValue as unknown;
+	const isDateValue = typeof targetValue === "string" || rawTargetValue instanceof Date;
+	if ((filter.operator === "within past" || filter.operator === "within future") && isDateValue && targetValue) {
+		const [amt, unit] = parseRelativeValue(filter.value || "");
+		if (!amt) return false;
+		const parsed = momentFn(rawTargetValue instanceof Date ? rawTargetValue : String(targetValue));
+		if (!parsed.isValid()) return false;
+		const targetMs = parsed.valueOf();
+		const nowMs = Date.now();
+		if (filter.operator === "within past") {
+			return targetMs >= momentFn().subtract(amt, unit).valueOf() && targetMs <= nowMs;
+		}
+		return targetMs >= nowMs && targetMs <= momentFn().add(amt, unit).valueOf();
 	}
 
 	// Convert to string preserving case (case-sensitive matching)
@@ -413,6 +440,22 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 				return toString(targetScalar).startsWith(filterValue);
 			case "ends with":
 				return toString(targetScalar).endsWith(filterValue);
+			case "=":
+			case "≠":
+			case "<":
+			case "≤":
+			case ">":
+			case "≥": {
+				const targetNum = Number(targetScalar);
+				const filterNum = Number(filterValue);
+				if (isNaN(targetNum) || isNaN(filterNum)) return false;
+				if (filter.operator === "=") return targetNum === filterNum;
+				if (filter.operator === "≠") return targetNum !== filterNum;
+				if (filter.operator === "<") return targetNum < filterNum;
+				if (filter.operator === "≤") return targetNum <= filterNum;
+				if (filter.operator === ">") return targetNum > filterNum;
+				return targetNum >= filterNum; // "≥"
+			}
 			default:
 				return false;
 		}

@@ -13,7 +13,8 @@
 		"publish": "npm run lint:fix & npm run build & npm run version & npm run release",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage"
+		"test:coverage": "vitest run --coverage",
+		"test:e2e": "playwright test"
 	},
 	"keywords": [],
 	"author": "Jack Carey",
@@ -21,9 +22,10 @@
 	"devDependencies": {
 		"@eslint/compat": "^2.0.0",
 		"@eslint/json": "^0.14.0",
+		"@playwright/test": "^1.60.0",
+		"@types/node": "^20.19.41",
 		"@typescript-eslint/eslint-plugin": "^8.58.2",
 		"@typescript-eslint/parser": "^8.58.2",
-		"@types/node": "^20.19.41",
 		"@typescript-eslint/utils": "^8.51.0",
 		"@vitest/coverage-v8": "^4.1.6",
 		"esbuild": "^0.28.0",
@@ -34,7 +36,8 @@
 		"obsidian": "latest",
 		"tslib": "2.4.0",
 		"typescript": "^6.0.2",
-		"typescript-eslint": "^8.58.2"
+		"typescript-eslint": "^8.58.2",
+		"vitest": "^4.1.8"
 	},
 	"dependencies": {
 		"nanoid": "^5.1.6"

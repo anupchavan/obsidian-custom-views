@@ -1,0 +1,56 @@
+# E2E test runner for obsidian-rule-engine
+#
+# Runs the Playwright test suite against the real Obsidian Electron app inside a
+# headless Linux container using Xvfb for the virtual display.
+#
+# Build & run:
+#   docker build -f Dockerfile.e2e -t ore-e2e .
+#   docker run --rm ore-e2e
+#
+# Override the Obsidian version:
+#   docker build --build-arg OBSIDIAN_VERSION=1.8.10 -f Dockerfile.e2e -t ore-e2e .
+
+FROM node:22-bookworm-slim
+
+ARG OBSIDIAN_VERSION=1.12.7
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:99 \
+    OBSIDIAN_BIN=/opt/obsidian/obsidian \
+    CDP_PORT=9223
+
+# System deps: Xvfb + Electron/Chromium runtime libs + FUSE for AppImage extraction
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libgbm1 \
+    libasound2 \
+    libnss3 \
+    libxss1 \
+    libxtst6 \
+    libx11-xcb1 \
+    libxcb-dri3-0 \
+    libdrm2 \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and extract the Obsidian AppImage (extraction avoids FUSE requirement)
+RUN wget -q "https://github.com/obsidianmd/obsidian-releases/releases/download/v${OBSIDIAN_VERSION}/Obsidian-${OBSIDIAN_VERSION}.AppImage" \
+      -O /tmp/obsidian.AppImage \
+    && chmod +x /tmp/obsidian.AppImage \
+    && cd /opt && /tmp/obsidian.AppImage --appimage-extract \
+    && mv /opt/squashfs-root /opt/obsidian \
+    && ln -s /opt/obsidian/obsidian /usr/local/bin/obsidian \
+    && rm /tmp/obsidian.AppImage
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --legacy-peer-deps
+
+COPY . .
+
+# Start Xvfb then run tests
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x800x24 -ac &\
+  sleep 1 &&\
+  npm run test:e2e"]

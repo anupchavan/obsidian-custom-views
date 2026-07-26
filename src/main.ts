@@ -4,7 +4,7 @@ import { checkRules } from "./matcher";
 import { renderTemplate } from "./templateRenderer";
 import { CUSTOM_RULE_CLASS, DEFAULT_SETTINGS, HIDE_MARKDOWN_CLASS, TYPE_ICONS } from "./consts";
 import { BaseFileHandling, CanvasNode, CanvasView, CommandConfig, CommandWithSetup, CustomRulesSettings, ProcessMarkdownViewOptions, PropertyDef, PropertyType } from "./types";
-import { list as commandList } from 'commands';
+import { list as commandList } from './commands';
 import { RULE_ENGINE_BASE_VIEW_ID, RuleEngineBasesView } from "ruleEngineBasesView";
 import { getRuleEngineViewOptions } from "ruleEngineBasesViewOptions";
 /**
@@ -13,8 +13,19 @@ import { getRuleEngineViewOptions } from "ruleEngineBasesViewOptions";
 function isCanvasView(view: unknown): view is CanvasView {
 	return typeof view === "object" && view !== null && "canvas" in view;
 }
+
+/**
+ * Strips the "plugin-id:" prefix Obsidian adds to command ids, so overrides
+ * keyed by either the full id or the short id can both be looked up.
+ */
+function stripCommandIdPrefix(id: string): string {
+	return id.includes(':') ? id.slice(id.indexOf(':') + 1) : id;
+}
 export default class ObsidianRuleEnginePlugin extends Plugin {
 	settings: CustomRulesSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) as CustomRulesSettings;
+	// Per-call command overrides set inside doCmds() and restored after — safe because
+	// JS is single-threaded: each doCmds() runs to completion before the next starts.
+	private _callOverrides: Record<string, Partial<CommandConfig>> = {};
 
 	debug(...args: unknown[]) {
 		if (this.settings.debug) {
@@ -38,11 +49,37 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 	 */
 	getCommandConfig = <T extends Record<string, unknown>>(id: string): CommandConfig<T> => {
 		const existing = this.settings.commands?.[id] as CommandConfig<T> | undefined;
+		const base: CommandConfig<T> = { enabled: false, params: {} as T, ...existing };
+		const shortId = stripCommandIdPrefix(id);
+		const override = this._callOverrides[id] ?? this._callOverrides[shortId];
+		if (!override) return base;
 		return {
-			enabled: false,
-			params: {} as T,
-			...existing,
+			...base,
+			...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
+			params: { ...base.params, ...(override.params ?? {}) } as T,
 		};
+	};
+
+	getFileCommandOverrides(file: TFile): Record<string, Partial<CommandConfig>> {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		if (!frontmatter) return {};
+		const overrides: Record<string, Partial<CommandConfig>> = {};
+		for (const key of Object.keys(frontmatter)) {
+			// ore:[cmd-id]:[setting]
+			const match = /^ore:(.+):([^:]+)$/.exec(key);
+			if (!match) continue;
+			const [, cmdId, setting] = match;
+			if (!cmdId || !setting) continue;
+			if (!overrides[cmdId]) overrides[cmdId] = {};
+			const value = frontmatter[key] as unknown;
+			if (setting === 'enabled') {
+				overrides[cmdId].enabled = value === true || value === 'true' || value === 1;
+			} else {
+				if (!overrides[cmdId].params) overrides[cmdId].params = {};
+				(overrides[cmdId].params)[setting] = value;
+			}
+		}
+		return overrides;
 	};
 
 	/**
@@ -237,20 +274,22 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 		let matchedTemplate = "";
 		let commandIds: string[] = [];
 
-		for (const ruleConfig of this.settings.rules) {
+		const ruleLog = this.settings.debug ? (...args: unknown[]) => this.debug(...args) : undefined;
+		for (const [ruleIndex, ruleConfig] of this.settings.rules.entries()) {
 			//default to file baseFileHandling
 			const matchingBaseHandling = ruleConfig.baseFileHandling === "both" || ruleConfig.baseFileHandling === useBaseFileHandling;
-			const isMatch = ruleConfig.enabled && matchingBaseHandling && checkRules(this.app, ruleConfig.filterGroup, file, cache?.frontmatter);
-			this.debug(`extractMatchingRuleParameters`, {
-				ruleConfig,
-				useBaseFileHandling,
-				matchingBaseHandling,
-				isMatch
-			});
+			const isMatch = ruleConfig.enabled && matchingBaseHandling && checkRules(this.app, ruleConfig.filterGroup, file, cache?.frontmatter, ruleLog);
+			this.debug(`Rule [${ruleIndex}] "${ruleConfig.name ?? ""}" on "${file.path}": ${isMatch ? "MATCH" : "no match"}${!ruleConfig.enabled ? " (disabled)" : !matchingBaseHandling ? " (wrong base handling)" : ""}`);
 			if (isMatch) {
-				//only match the first template
 				if (!matchedTemplate.length) {
-					matchedTemplate = ruleConfig.template;
+					const ctx = options?.renderContext;
+					if (ctx === 'canvas' && ruleConfig.templateCanvas?.trim()) {
+						matchedTemplate = ruleConfig.templateCanvas;
+					} else if (ctx === 'base' && ruleConfig.templateBase?.trim()) {
+						matchedTemplate = ruleConfig.templateBase;
+					} else {
+						matchedTemplate = ruleConfig.template;
+					}
 				}
 				if (!options?.skipCommandExecution) {
 					commandIds = [...commandIds, ...ruleConfig.commandIds];
@@ -289,7 +328,7 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 		const { matchedTemplate, commandIds, baseFileHandling } = this.extractMatchingRuleParameters(file, options);
 
 		if (!options?.skipCommandExecution) {
-			this.executeCommands(baseFileHandling, commandIds);
+			this.executeCommands(baseFileHandling, commandIds, null, undefined, this.getFileCommandOverrides(file));
 		}
 
 		if (!matchedTemplate) {
@@ -420,7 +459,7 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 		const {
 			matchedTemplate,
 			// commandIds, baseFileHandling
-		} = this.extractMatchingRuleParameters(file);
+		} = this.extractMatchingRuleParameters(file, { renderContext: 'canvas' });
 
 		// this.executeCommands(baseFileHandling, commandIds);
 
@@ -486,18 +525,28 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 		return allCommands;
 	}
 
-	public executeCommands(mode: BaseFileHandling, commandIds: string[], file?: TFile | null, groupLeaf?: WorkspaceLeaf): void {
+	public executeCommands(mode: BaseFileHandling, commandIds: string[], file?: TFile | null, groupLeaf?: WorkspaceLeaf, fileOverrides?: Record<string, Partial<CommandConfig>>): void {
 		if (!commandIds?.length) return;
 		this.debug(`executeCommands`, mode, commandIds.length, 'commands', { file, groupLeaf });
 		const doCmds = () => {
-			const commandObjects = Object.entries(this.obsidianCommands).filter(([k]) => commandIds.includes(k)).map(([_, cmd]) => cmd);
-			if (mode === "file" || mode === "both") {
-				for (const cmd of commandObjects) {
-					const commandFn = cmd?.checkCallback ?? cmd?.callback ?? undefined;
-					commandFn?.(false);
+			const prev = this._callOverrides;
+			this._callOverrides = fileOverrides ?? {};
+			try {
+				const commandObjects = Object.entries(this.obsidianCommands).filter(([k]) => commandIds.includes(k)).map(([_, cmd]) => cmd);
+				if (mode === "file" || mode === "both") {
+					for (const cmd of commandObjects) {
+						// Check per-file enabled override
+						const shortId = stripCommandIdPrefix(cmd.id);
+						const override = fileOverrides?.[cmd.id] ?? fileOverrides?.[shortId];
+						if (override?.enabled === false) continue;
+						const commandFn = cmd?.checkCallback ?? cmd?.callback ?? undefined;
+						commandFn?.(false);
+					}
+				} else {
+					this.debug(`commands not executed for mode:`, mode);
 				}
-			} else {
-				this.debug(`commands not executed for mode:`, mode);
+			} finally {
+				this._callOverrides = prev;
 			}
 		};
 		if (file) {
@@ -549,6 +598,8 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 			["file.ctime", "date"],
 			["file.mtime", "date"],
 			["file.size", "number"],
+			["file.outlinks", "number"],
+			["file.inlinks", "number"],
 			["file tags", "list"],
 			["aliases", "list"]
 		];
@@ -580,6 +631,8 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 		if (key === "file tags") return "tags";
 		if (key === "aliases") return "forward";
 		if (key === "file.ctime" || key === "file.mtime") return "clock";
+		if (key === "file.outlinks") return "arrow-right";
+		if (key === "file.inlinks") return "arrow-left";
 		return TYPE_ICONS[type] || "pilcrow";
 	}
 
@@ -602,6 +655,8 @@ export default class ObsidianRuleEnginePlugin extends Plugin {
 			"file.path": "file path",
 			"file.folder": "folder",
 			"file.size": "file size",
+			"file.outlinks": "outgoing link count",
+			"file.inlinks": "backlink count",
 			"file.ctime": "created time",
 			"file.mtime": "modified time"
 		};

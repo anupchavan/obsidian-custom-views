@@ -121,7 +121,9 @@ Match files using powerful filter rules based on file properties or frontmatter.
 
 - **Text**: `contains`, `does not contain`, `is`, `is not`, `starts with`, `ends with`, `is empty`, `is not empty`
 - **Numbers**: `=`, `≠`, `<`, `≤`, `>`, `≥`, `is empty`, `is not empty`
-- **Dates**: `on`, `not on`, `before`, `on or before`, `after`, `on or after`, `is empty`, `is not empty`
+- **Dates**: `on`, `not on`, `before`, `on or before`, `after`, `on or after`, `within past N <unit>`, `within future N <unit>`, `is empty`, `is not empty`
+  - Relative date units: `minutes`, `hours`, `days`, `weeks`, `months` (e.g. `within past 7 days`, `within future 2 weeks`)
+  - Works on `file.ctime`, `file.mtime`, and frontmatter date string fields
 - **Lists/Tags**: `contains`, `does not contain`, `is empty`, `is not empty`
 - **Checkboxes**: `is` (true/false)
 
@@ -341,7 +343,26 @@ Each rule has:
 - **Filter Conditions** - Conditions that determine which files match this view
 - **Base file handling** - Whether the rule runs against individual files, base file results, or both.
 - **Commands** - An ordered list of commands to run when a file matches the filter conditions
-- **HTML Template** - The custom HTML template to render for matching files
+- **Default template** - The HTML template to render for matching files
+- **Base file template** - Override template used when the file is rendered inside a `.base` query card. Falls back to the default template if blank.
+- **Canvas template** - Override template used when the file is rendered as a Canvas node. Falls back to the default template if blank.
+
+#### Per-file Command Overrides
+
+You can override command settings for individual files using frontmatter keys in the format `ore:[command-id]:[setting]`.
+
+- `ore:[command-id]:enabled: false` — disable a specific command for this file
+- `ore:[command-id]:params: {key: value}` — pass custom parameters to a command for this file
+
+**Example:**
+
+```yaml
+---
+ore:apply-task-due-date:enabled: false
+---
+```
+
+This disables the `apply-task-due-date` command for this specific file, regardless of the rule's command list.
 
 ### Template Reference
 

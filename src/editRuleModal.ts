@@ -1,7 +1,7 @@
 import { ComboboxSuggestModal } from "comboSuggestModal";
-import { OPERATORS } from "consts";
+import { OPERATORS, RELATIVE_DATE_UNITS, RELATIVE_DATE_UNITS_PLURAL } from "consts";
 import ObsidianRuleEnginePlugin from "main";
-import { App, ButtonComponent, Modal, setIcon, Setting, TextAreaComponent } from "obsidian";
+import { App, ButtonComponent, Modal, setIcon, Setting } from "obsidian";
 import { RuleConfig, BaseFileHandling, SuggestItem, Filter, FilterConjunction, FilterGroup, FilterOperator, PropertyDef, PropertyType } from "types";
 import { addFocusClasses } from "utils";
 
@@ -266,6 +266,29 @@ function createFilterValueInput(
         updatePlaceholder();
 
         return multiSelectContainer;
+    } else if (operator === "within past" || operator === "within future") {
+        const validUnits: readonly string[] = RELATIVE_DATE_UNITS_PLURAL;
+        // Accept singular units too — matcher.ts's RELATIVE_DATE_UNITS allows them,
+        // so a stored "1 minute" must not be treated as invalid and overwritten below.
+        const isValidStored = new RegExp(`^\\d+\\s+(${RELATIVE_DATE_UNITS.join("|")})$`).test(safeValue);
+        const parts = isValidStored ? safeValue.split(/\s+/) : [];
+        const amount = parts[0] || "1";
+        const storedUnit = parts[1] || "days";
+        const unit = validUnits.includes(storedUnit) ? storedUnit : `${storedUnit}s`;
+        const wrapper = container.createDiv({ cls: "ore-relative-date-container" });
+        const numInput = wrapper.createEl("input", { type: "number", value: amount, attr: { min: "1" } });
+        numInput.addClass("ore-relative-date-amount");
+        const unitSelect = wrapper.createEl("select", { cls: "dropdown" });
+        for (const u of validUnits) {
+            const opt = unitSelect.createEl("option", { value: u, text: u });
+            if (u === unit) opt.selected = true;
+        }
+        const fireChange = () => onChange(`${numInput.value} ${unitSelect.value}`);
+        numInput.oninput = fireChange;
+        unitSelect.onchange = fireChange;
+        // Sync stored value to defaults if the stored value was not a valid relative format
+        if (!isValidStored) window.setTimeout(fireChange, 0);
+        return wrapper;
     } else if (type === "date" || type === "datetime") {
         const input = container.createEl("input", {
             type: type === "datetime" ? "datetime-local" : "date",
@@ -719,14 +742,38 @@ export class EditRuleModal extends Modal {
 
         new Setting(contentEl)
             .setHeading()
-            .setName("HTML template")
-            .setDesc("Leave blank for no template. Use {{mustache}} syntax for variables.");
-        const taEl = new TextAreaComponent(contentEl)
-            .setPlaceholder(`<h1>{{file.title}}</h1><main>{{file.content}}</main>`)
-            .setValue(this.rule.template)
-            .onChange(val => this.rule.template = val);
-        taEl.inputEl.classList.add(`ore-textarea`);
-        taEl.inputEl.rows = 12;
+            .setName("HTML templates")
+            .setDesc("Leave blank for no template. Use {{mustache}} syntax for variables. Context-specific templates override the default.");
+
+        new Setting(contentEl)
+            .setName("Default template")
+            .addTextArea(ta => {
+                ta.setValue(this.rule.template)
+                    .setPlaceholder("<h1>{{file.basename}}</h1><main>{{file.content}}</main>")
+                    .onChange(val => { this.rule.template = val; });
+                ta.inputEl.rows = 6;
+                ta.inputEl.addClass("ore-textarea");
+            });
+
+        new Setting(contentEl)
+            .setName("Base file template")
+            .setDesc("Used when the file is rendered in a bases query. Falls back to default.")
+            .addTextArea(ta => {
+                ta.setValue(this.rule.templateBase ?? "")
+                    .onChange(val => { this.rule.templateBase = val || undefined; });
+                ta.inputEl.rows = 4;
+                ta.inputEl.addClass("ore-textarea");
+            });
+
+        new Setting(contentEl)
+            .setName("Canvas template")
+            .setDesc("Used when the file is rendered in a canvas node. Falls back to default.")
+            .addTextArea(ta => {
+                ta.setValue(this.rule.templateCanvas ?? "")
+                    .onChange(val => { this.rule.templateCanvas = val || undefined; });
+                ta.inputEl.rows = 4;
+                ta.inputEl.addClass("ore-textarea");
+            });
 
         const buttonContainer = contentEl.createDiv('modal-button-container');
         new ButtonComponent(buttonContainer)
@@ -747,7 +794,6 @@ export class EditRuleModal extends Modal {
     }
 
     onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
+        this.contentEl.empty();
     }
 }

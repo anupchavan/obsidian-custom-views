@@ -124,12 +124,13 @@ export const taskDate: GetCommandFn<TaskDateParams> = (plugin) => ({
 
             if (match) {
                 const updatedLine = `${line.trimEnd()} 📅 ${dtStr}`;
-
-                editor.replaceRange(
-                    updatedLine,
-                    { line: i, ch: 0 },
-                    { line: i, ch: line.length }
-                );
+                if (updatedLine !== line) {
+                    editor.replaceRange(
+                        updatedLine,
+                        { line: i, ch: 0 },
+                        { line: i, ch: line.length }
+                    );
+                }
             }
         }
         return;

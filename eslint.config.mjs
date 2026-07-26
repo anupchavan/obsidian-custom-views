@@ -29,7 +29,7 @@ const recommendedConfigs = Array.from(obsidianmd.configs.recommended).flatMap(co
 export default [
 	// Global ignores (replaces .eslintignore)
 	{
-		ignores: ["node_modules/**", "main.js", "eslint.config.mjs", "*.config.mjs", "vitest.config.ts", "package.json"],
+		ignores: ["node_modules/**", "main.js", "eslint.config.mjs", "*.config.mjs", "vitest.config.ts", "package.json", "coverage/**", "e2e/vault/**", "e2e/obsidian-user-data/**"],
 	},
 	// Use the converted configs, ensuring all have proper file filters
 	...recommendedConfigs.map(config => {
@@ -98,6 +98,39 @@ export default [
 			"@typescript-eslint/no-unsafe-call": "warn",
 			"@typescript-eslint/no-unsafe-return": "warn",
 			"@typescript-eslint/no-unsafe-argument": "warn",
+		},
+	},
+	// Node-side tooling (e2e scripts, test mocks, playwright config) — runs under
+	// Node, not inside Obsidian, so Obsidian-plugin-only rules don't apply here.
+	{
+		files: ["e2e/**/*.ts", "playwright.config.ts", "__mocks__/**/*.ts"],
+		languageOptions: {
+			globals: {
+				require: "readonly",
+				module: "readonly",
+				__dirname: "readonly",
+				__filename: "readonly",
+				process: "readonly",
+				Buffer: "readonly",
+			},
+		},
+		rules: {
+			"import/no-nodejs-modules": "off",
+			"@typescript-eslint/no-require-imports": "off",
+			"obsidianmd/hardcoded-config-path": "off",
+			"obsidianmd/rule-custom-message": "off",
+			"obsidianmd/prefer-active-doc": "off",
+			"obsidianmd/prefer-window-timers": "off",
+			"obsidianmd/no-unsupported-api": "off",
+		},
+	},
+	// Test files run under vitest/jsdom, not inside Obsidian
+	{
+		files: ["src/__tests__/**/*.ts"],
+		rules: {
+			"obsidianmd/no-global-this": "off",
+			"obsidianmd/no-tfile-tfolder-cast": "off",
+			"obsidianmd/prefer-active-doc": "off",
 		},
 	},
 ];
