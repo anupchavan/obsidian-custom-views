@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ["*.*.*"]
 
 jobs:
   test:
@@ -25,3 +26,77 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build -f Dockerfile.e2e -t ore-e2e .
       - run: docker run --rm ore-e2e
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test, e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Release ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            main.js manifest.json styles.css
+
+  auto-version:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Determine version bump from conventional commits
+        id: bump
+        run: |
+          last_tag=$(git tag --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+          range="${last_tag:+$last_tag..}HEAD"
+          subjects=$(git log "$range" --pretty=format:'%s')
+          full=$(git log "$range" --pretty=format:'%B')
+          bump=""
+          if echo "$full" | grep -q 'BREAKING CHANGE' || echo "$subjects" | grep -qE '^[a-zA-Z]+(\(.+\))?!:'; then
+            bump="major"
+          elif echo "$subjects" | grep -qE '^feat(\(.+\))?:'; then
+            bump="minor"
+          elif echo "$subjects" | grep -qE '^fix(\(.+\))?:'; then
+            bump="patch"
+          fi
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+      - name: Bump version, commit, and tag
+        if: steps.bump.outputs.bump != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm version "${{ steps.bump.outputs.bump }}" -m "chore(release): %s"
+          git push origin HEAD:main --follow-tags
+      - name: Build
+        if: steps.bump.outputs.bump != ''
+        run: npm run build
+      - name: Create release
+        if: steps.bump.outputs.bump != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag=$(node -p "require('./package.json').version")
+          gh release create "$tag" \
+            --title "Release $tag" \
+            --generate-notes \
+            main.js manifest.json styles.css
