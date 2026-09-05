@@ -53,16 +53,18 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 	async setControlValue(key: string, value: unknown): Promise<void> {
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
-		await this.plugin.saveSettings();
 
 		if (key === 'workInLivePreview') {
 			this.plugin.refreshAllViews();
 			if (requireApiVersion("1.13.0")) {
 				this.refreshDomState();
+			} else {
+				this.renderLegacySettings();
 			}
 		} else if (key === 'workInCanvas' || key === 'editableContent' || key === 'allowJavaScript') {
 			this.plugin.refreshAllViews();
 		}
+		await this.plugin.saveSettings();
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
@@ -201,12 +203,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				.setDesc("Enable to allow custom views in both live preview and reading view. Disable to limit them to reading view only.")
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.workInLivePreview)
-					.onChange(async (value) => {
-						this.plugin.settings.workInLivePreview = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllViews();
-						this.renderLegacySettings();
-					}));
+					.onChange(value => this.setControlValue("workInLivePreview", value).catch(() => {})));
 		});
 
 		if (this.plugin.settings.workInLivePreview) {
@@ -216,11 +213,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					.setDesc("When enabled, the {{file.content}} area becomes an editable live editor instead of a read-only render.")
 					.addToggle(toggle => toggle
 						.setValue(this.plugin.settings.editableContent)
-						.onChange(async (value) => {
-							this.plugin.settings.editableContent = value;
-							await this.plugin.saveSettings();
-							this.plugin.refreshAllViews();
-						}));
+						.onChange(value => this.setControlValue("editableContent", value).catch(() => {})));
 			});
 		}
 
@@ -228,11 +221,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			setting.setName("Work in canvas (experimental)")
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.workInCanvas)
-					.onChange(async (value) => {
-						this.plugin.settings.workInCanvas = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllViews();
-					}));
+					.onChange(value => this.setControlValue("workInCanvas", value).catch(() => {})));
 		});
 
 		generalSettings.addSetting((setting: Setting) => {
@@ -241,11 +230,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				.setDesc("When enabled, inline <script> tags and per-view JS fields are executed. Disable if you only use HTML/CSS templates and want to prevent dynamic code execution.")
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.allowJavaScript)
-					.onChange(async (value) => {
-						this.plugin.settings.allowJavaScript = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllViews();
-					}));
+					.onChange(value => this.setControlValue("allowJavaScript", value).catch(() => {})));
 		});
 
 		const viewsList = new SettingGroup(containerEl);
