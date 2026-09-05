@@ -932,9 +932,7 @@ export default class CustomViewsPlugin extends Plugin {
 				if (canvas.nodes) {
 					// Process each node in the canvas
 					canvas.nodes.forEach((node) => {
-						if (node.file && node.file instanceof TFile && node.file.extension === "md") {
-							void this.processCanvasNode(node);
-						}
+						void this.processCanvasNode(node);
 					});
 				}
 			}
@@ -950,7 +948,10 @@ export default class CustomViewsPlugin extends Plugin {
 			return;
 		}
 		const file = node.file;
-		if (!(file instanceof TFile)) return;
+		if (!(file instanceof TFile) || file.extension !== "md") {
+			this.restoreCanvasNode(node);
+			return;
+		}
 
 		const cache = this.app.metadataCache.getFileCache(file);
 		let matchedConfig: ViewConfig | null = null;
