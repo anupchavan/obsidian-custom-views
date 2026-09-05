@@ -1,4 +1,5 @@
 import { RenderCoordinator } from "./render-coordinator";
+import { AtomicNavigation } from "./atomic-navigation";
 import { Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
 import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -83,6 +84,7 @@ interface CompartmentEntry {
 export default class CustomViewsPlugin extends Plugin {
 	settings: CustomViewsSettings;
 	nativeRules: NativeRuleEngine;
+	experimentalNavigation?: AtomicNavigation;
 
 	/**
 	 * Tracks editable state per MarkdownView content element.
@@ -243,6 +245,19 @@ export default class CustomViewsPlugin extends Plugin {
 				void this.processAllCanvasNodes();
 			}
 		}, 1000));
+		this.experimentalNavigation = new AtomicNavigation(this.app, (view, state) => {
+			if (this.unloaded || !this.settings.enabled) return false;
+			if (view.contentEl.querySelector(`.${CUSTOM_VIEW_CLASS}`)) return true;
+			const file = typeof state.file === "string" ? this.app.vault.getAbstractFileByPath(state.file) : view.file;
+			if (!(file instanceof TFile)) return false;
+			const mode = { ...view.getState(), ...state };
+			if (mode.mode === "source" && (mode.source === true || !this.settings.workInLivePreview)) return false;
+			const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			return this.settings.views.some(config => this.nativeRules.matches(config, file, metadata));
+		}, async view => {
+			if (view.file) await this._processLeaf(view, view.file);
+		});
+		this.register(() => this.experimentalNavigation?.dispose());
 	}
 
 	async setPluginState(enabled: boolean) {
@@ -254,6 +269,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 	onunload() {
 		this.unloaded = true;
+		this.experimentalNavigation?.dispose();
 		for (const timer of this.noteRefreshTimers.values()) window.clearTimeout(timer);
 		this.noteRefreshTimers.clear();
 		this.renders.cancelAll();
@@ -399,7 +415,10 @@ export default class CustomViewsPlugin extends Plugin {
 		const metadata = JSON.stringify(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {});
 		return this.renders.run(view, key, async signal => {
 			await this.renderLeaf(view, file, signal);
-			if (!signal.aborted && view.file === file) this.renderedMetadata.set(view, { path: file.path, value: metadata });
+			if (!signal.aborted && view.file === file) {
+				this.renderedMetadata.set(view, { path: file.path, value: metadata });
+				this.experimentalNavigation?.observe(view.contentEl);
+			}
 		}).catch(error => {
 			this.restoreEditableView(view);
 			this.restoreDefaultView(view);

@@ -1,0 +1,292 @@
+{
+  "done": true,
+  "error": null,
+  "rows": [
+    {
+      "round": 0,
+      "path": "Movies/Interstellar.md",
+      "rendered": 48.80000001192093,
+      "palette": 48.80000001192093,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 20.099999964237213,
+          "stage": "held"
+        },
+        {
+          "at": 24.19999998807907,
+          "stage": "held"
+        },
+        {
+          "at": 25.19999998807907,
+          "stage": "held"
+        },
+        {
+          "at": 48.80000001192093,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "path": "Movies/Monster.md",
+      "rendered": 62.89999997615814,
+      "palette": 62.89999997615814,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 27.80000001192093,
+          "stage": "held"
+        },
+        {
+          "at": 32.80000001192093,
+          "stage": "held"
+        },
+        {
+          "at": 33.80000001192093,
+          "stage": "held"
+        },
+        {
+          "at": 62.80000001192093,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "path": "Movies/Oppenheimer.md",
+      "rendered": 43.59999996423721,
+      "palette": 43.59999996423721,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 20,
+          "stage": "held"
+        },
+        {
+          "at": 22.599999964237213,
+          "stage": "held"
+        },
+        {
+          "at": 43.59999996423721,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "rendered": 43.40000003576279,
+      "palette": 43.40000003576279,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 21.700000047683716,
+          "stage": "held"
+        },
+        {
+          "at": 25,
+          "stage": "held"
+        },
+        {
+          "at": 43.30000001192093,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "path": "Movies/Interstellar.md",
+      "rendered": 63.40000003576279,
+      "palette": 63.40000003576279,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 25.80000001192093,
+          "stage": "held"
+        },
+        {
+          "at": 29.30000001192093,
+          "stage": "held"
+        },
+        {
+          "at": 29.80000001192093,
+          "stage": "held"
+        },
+        {
+          "at": 63.40000003576279,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "path": "Movies/Monster.md",
+      "rendered": 57.30000001192093,
+      "palette": 57.30000001192093,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 29.19999998807907,
+          "stage": "held"
+        },
+        {
+          "at": 34.60000002384186,
+          "stage": "held"
+        },
+        {
+          "at": 57.30000001192093,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 42.10000002384186,
+      "rendered": 42.60000002384186,
+      "palette": 42.60000002384186,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 18,
+          "stage": "held"
+        },
+        {
+          "at": 20.600000023841858,
+          "stage": "held"
+        },
+        {
+          "at": 21.100000023841858,
+          "stage": "held"
+        },
+        {
+          "at": 42.5,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "rendered": 42.19999998807907,
+      "palette": 42.19999998807907,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 19.899999976158142,
+          "stage": "held"
+        },
+        {
+          "at": 23.100000023841858,
+          "stage": "held"
+        },
+        {
+          "at": 42.19999998807907,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "path": "Movies/Interstellar.md",
+      "rendered": 53.10000002384186,
+      "palette": 53.10000002384186,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 20.700000047683716,
+          "stage": "held"
+        },
+        {
+          "at": 24.5,
+          "stage": "held"
+        },
+        {
+          "at": 25,
+          "stage": "held"
+        },
+        {
+          "at": 53.10000002384186,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "path": "Movies/Monster.md",
+      "rendered": 51.5,
+      "palette": 51.5,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 25.69999998807907,
+          "stage": "held"
+        },
+        {
+          "at": 30.899999976158142,
+          "stage": "held"
+        },
+        {
+          "at": 31.69999998807907,
+          "stage": "held"
+        },
+        {
+          "at": 51.5,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 44.89999997615814,
+      "rendered": 45.39999997615814,
+      "palette": 45.39999997615814,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 26,
+          "stage": "held"
+        },
+        {
+          "at": 28.799999952316284,
+          "stage": "held"
+        },
+        {
+          "at": 29.399999976158142,
+          "stage": "held"
+        },
+        {
+          "at": 45.299999952316284,
+          "stage": "custom"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "rendered": 44.5,
+      "palette": 44.5,
+      "paletteAtFirstPaint": true,
+      "frames": [
+        {
+          "at": 21.30000001192093,
+          "stage": "held"
+        },
+        {
+          "at": 24.69999998807907,
+          "stage": "held"
+        },
+        {
+          "at": 25.30000001192093,
+          "stage": "held"
+        },
+        {
+          "at": 44.5,
+          "stage": "custom"
+        }
+      ]
+    }
+  ]
+}

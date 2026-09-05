@@ -1,0 +1,133 @@
+{
+  "done": true,
+  "rows": [
+    {
+      "path": "Untitled.md",
+      "mode": "source",
+      "source": false,
+      "slow": false,
+      "badFrames": 0,
+      "heldFrames": 2,
+      "overlays": 0,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    },
+    {
+      "path": "Movies/Interstellar.md",
+      "mode": "source",
+      "source": false,
+      "slow": true,
+      "badFrames": 0,
+      "heldFrames": 30,
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    },
+    {
+      "path": "Movies/Monster.md",
+      "mode": "source",
+      "source": false,
+      "slow": true,
+      "badFrames": 0,
+      "heldFrames": 33,
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    },
+    {
+      "path": "Music/Love and Machines/Midival Punditz – Love and Machines.md",
+      "mode": "source",
+      "source": false,
+      "slow": true,
+      "badFrames": 0,
+      "heldFrames": 43,
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    },
+    {
+      "path": "Movies/Interstellar.md",
+      "mode": "source",
+      "source": true,
+      "slow": false,
+      "badFrames": 0,
+      "heldFrames": 2,
+      "overlays": 0,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    },
+    {
+      "path": "Movies/Interstellar.md",
+      "mode": "preview",
+      "slow": true,
+      "badFrames": 0,
+      "heldFrames": 28,
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    },
+    {
+      "path": "Movies/Interstellar.md",
+      "mode": "source",
+      "source": false,
+      "slow": true,
+      "badFrames": 0,
+      "heldFrames": 27,
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    },
+    {
+      "rapid": true,
+      "round": 0,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "applied": "Movies/The Amazing Spider-Man 2.md",
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false
+    },
+    {
+      "rapid": true,
+      "round": 1,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "applied": "Movies/The Amazing Spider-Man 2.md",
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false
+    },
+    {
+      "rapid": true,
+      "round": 2,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "applied": "Movies/The Amazing Spider-Man 2.md",
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false
+    },
+    {
+      "rapid": true,
+      "round": 3,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "applied": "Movies/The Amazing Spider-Man 2.md",
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false
+    },
+    {
+      "rapid": true,
+      "round": 4,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "applied": "Movies/The Amazing Spider-Man 2.md",
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false
+    }
+  ]
+}

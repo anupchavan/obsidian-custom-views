@@ -1,0 +1,15 @@
+{
+  "imageSize": [
+    3392,
+    2106
+  ],
+  "comparedViewport": [
+    570,
+    80,
+    3392,
+    2106
+  ],
+  "changedPixelBounds": null,
+  "identical": true,
+  "method": "Obsidian dev:screenshot before navigation and while the custom render was deliberately paused; compared after screenshot writes completed"
+}

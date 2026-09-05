@@ -391,3 +391,15 @@ body .cv-clear-button-hidden {
 .cv-hide-inline-title .markdown-source-view .inline-title {
     display: none;
 }
+
+/* Experimental branch: hold the last painted note, with no crossfade. */
+:root[data-cv-navigation-held] {
+    view-transition-name: none !important;
+}
+:root[data-cv-navigation-held]::view-transition-group(cv-note),
+:root[data-cv-navigation-held]::view-transition-image-pair(cv-note),
+:root[data-cv-navigation-held]::view-transition-old(cv-note),
+:root[data-cv-navigation-held]::view-transition-new(cv-note) {
+    animation: none !important;
+    mix-blend-mode: normal;
+}

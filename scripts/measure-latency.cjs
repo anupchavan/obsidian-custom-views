@@ -22,6 +22,7 @@ for (let round=0; round<3; round++) for (const path of paths) {
   if (!el) throw new Error('Sidebar item missing: '+path);
   const start = performance.now();
   let opened, rendered, palette, paletteAtFirstPaint;
+  const frames = [];
   const ref = app.workspace.on('file-open', f => {if(f?.path===path) opened=performance.now()-start;});
   el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
   await new Promise(resolve => {
@@ -29,7 +30,19 @@ for (let round=0; round<3; round++) for (const path of paths) {
       const v=app.workspace.activeLeaf.view;
       const c=v.contentEl;
       const overlay=c.querySelector('.obsidian-custom-view-render');
-      if(v.file?.path===path && overlay && !overlay.classList.contains('obsidian-custom-view-pending') && c.getAttribute('data-cv-file-path')===path){
+      if (${process.argv.includes('--frames')}) {
+        const visible = el => {
+          if (!el || !el.getClientRects().length) return false;
+          for(let node=el; node && node.nodeType===1; node=node.parentElement) {
+            const s=getComputedStyle(node);
+            if(s.display==='none' || s.visibility==='hidden' || Number(s.opacity)===0) return false;
+          }
+          return true;
+        };
+        const ready = visible(overlay) && !overlay.classList.contains('obsidian-custom-view-pending');
+        frames.push({at:performance.now()-start,stage:document.querySelector('.cv-navigation-snapshot')||document.documentElement.hasAttribute('data-cv-navigation-held')?'held':ready?(c.getAttribute('data-cv-file-path')===path?'custom':'previous-custom'):visible(c.querySelector('.markdown-source-view'))||visible(c.querySelector('.markdown-preview-view'))?'native':'blank'});
+      }
+      if(v.file?.path===path && overlay && !overlay.classList.contains('obsidian-custom-view-pending') && c.getAttribute('data-cv-file-path')===path && !document.documentElement.hasAttribute('data-cv-navigation-held') && !document.querySelector('.cv-navigation-snapshot')){
         if (rendered === undefined) paletteAtFirstPaint = !!overlay.querySelector('#flexoki-palette');
         rendered ??= performance.now()-start;
         if(overlay.querySelector('#flexoki-palette')) palette ??= performance.now()-start;
@@ -38,7 +51,7 @@ for (let round=0; round<3; round++) for (const path of paths) {
     }; requestAnimationFrame(tick);
   });
   app.workspace.offref(ref);
-  rows.push({round,path,opened,rendered,palette,paletteAtFirstPaint});
+  rows.push({round,path,opened,rendered,palette,paletteAtFirstPaint,...(${process.argv.includes('--frames')}?{frames}:{})});
 }
 window.__cvLatencyDone = true; return JSON.stringify(rows);
 })().catch(error => {window.__cvLatencyError = String(error); window.__cvLatencyDone = true;})`;
