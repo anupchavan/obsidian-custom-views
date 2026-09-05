@@ -780,13 +780,6 @@ const globalFunctions: Record<string, GlobalFn> = {
 		return buildExprFile(ctx.app, tfile);
 	},
 
-	// --- Conditionals ---
-	if: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {
-		const condition = args[0];
-		const thenVal = args.length > 1 ? args[1] : true;
-		const elseVal = args.length > 2 ? args[2] : null;
-		return isTruthy(condition) ? thenVal : elseVal;
-	},
 
 	// for(list, template) — iterate over list, return array of results
 	// template is a string with {{value}} and {{index}} placeholders
@@ -1396,6 +1389,12 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 		}
 
 		case "functionCall": {
+			if (node.name === "if") {
+				const condition = node.args[0] ? await evaluate(node.args[0], ctx) : null;
+				const truthy = isTruthy(condition);
+				const branch = node.args[truthy ? 1 : 2];
+				return branch ? evaluate(branch, ctx) : (truthy ? true : null);
+			}
 			const fn = globalFunctions[node.name];
 			if (!fn) {
 				// Maybe it's a frontmatter property that looks like a function call?
