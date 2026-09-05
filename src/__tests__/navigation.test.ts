@@ -87,6 +87,26 @@ describe("editable note navigation", () => {
 	});
 });
 
+
+describe("custom view navigation bar preference", () => {
+	it("applies the same preference in live preview and reading, and restores source mode", async () => {
+		const s = setup(); s.config.showNavigationBar = false;
+		await s.methods._processLeaf(s.view, s.file);
+		expect(s.container.classList.contains("cv-hide-navigation")).toBe(true);
+		s.view.getState = () => ({ mode: "preview", source: false });
+		await s.methods._processLeaf(s.view, s.file);
+		expect(s.container.classList.contains("cv-hide-navigation")).toBe(true);
+		s.view.getState = () => ({ mode: "source", source: true });
+		await s.methods._processLeaf(s.view, s.file);
+		expect(s.container.classList.contains("cv-hide-navigation")).toBe(false);
+	});
+	it.each([undefined, true])("shows navigation by default or when explicitly enabled: %s", async value => {
+		const s = setup(); s.config.showNavigationBar = value;
+		await s.methods._processLeaf(s.view, s.file);
+		expect(s.container.classList.contains("cv-hide-navigation")).toBe(false);
+	});
+});
+
 describe("open note changes", () => {
 	it.each(["rename", "delete"])("refreshes dependent views on a vault %s event", async event => {
 		const s = setup(); await s.methods._processLeaf(s.view, s.file);
