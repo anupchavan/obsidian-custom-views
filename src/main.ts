@@ -1,4 +1,5 @@
 import { RenderCoordinator } from "./render-coordinator";
+import { SettingsWriter } from "./settings-writer";
 import { Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
 import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -83,6 +84,7 @@ interface CompartmentEntry {
 export default class CustomViewsPlugin extends Plugin {
 	settings: CustomViewsSettings;
 	nativeRules: NativeRuleEngine;
+	private settingsWriter = new SettingsWriter<CustomViewsSettings>(settings => this.saveData(settings));
 
 	/**
 	 * Tracks editable state per MarkdownView content element.
@@ -863,7 +865,7 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	async saveSettings() {
-		await this.saveData(this.settings);
+		await this.settingsWriter.save(this.settings);
 	}
 
 	/**

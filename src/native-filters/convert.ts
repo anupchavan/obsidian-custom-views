@@ -19,11 +19,11 @@ function literal(value: string): string {
 }
 
 function convertFilter(app: App, filter: Filter): string {
-	const aliases: Record<string, string> = {
-		"file.name": "file.fullname", "file.extension": "file.ext",
-		"file links": "file.links", "file tags": "file.tags",
-	};
-	const field = aliases[filter.field] ?? (filter.field === "file" || filter.field.startsWith("file.") ? filter.field : `note[${JSON.stringify(filter.field)}]`);
+	const aliases = new Map([
+		["file.name", "file.fullname"], ["file.extension", "file.ext"],
+		["file links", "file.links"], ["file tags", "file.tags"],
+	]);
+	const field = aliases.get(filter.field) ?? (filter.field === "file" || filter.field.startsWith("file.") ? filter.field : `note[${JSON.stringify(filter.field)}]`);
 	const value = filter.value ?? "";
 	const type = (app as App & { metadataTypeManager?: { getAssignedType?(name: string): string } }).metadataTypeManager?.getAssignedType?.(filter.field);
 	const rhs = type === "checkbox" && /^(true|false)$/.test(value) ? value : literal(value);

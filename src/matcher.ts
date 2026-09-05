@@ -137,19 +137,18 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 
 			case "has tag":
 			case "does not have tag": {
-				const filterTags = filterValue.trim().split(",").map(t => t.trim()).filter(t => t.length > 0);
+				const filterTags = filterValue.split(",").map(t => t.trim().replace(/^#/, "").toLowerCase()).filter(t => t.length > 0);
 				if (filterTags.length === 0) {
 					return filter.operator === "does not have tag";
 				}
 
-				const fileTagNames = getFileTags(app, file, frontmatter);
+				const fileTagNames = getFileTags(app, file, frontmatter).map(tag => tag.toLowerCase());
 
-				// Match exact tags or parent/child tags (e.g., "movies" matches "movies/action")
+				// Bases matches a tag and its descendants, case-insensitively.
 				const hasAnyTag = filterTags.some(filterTag =>
 					fileTagNames.some(fileTag =>
 						fileTag === filterTag ||
-						fileTag.startsWith(filterTag + "/") ||
-						filterTag.startsWith(fileTag + "/")
+						fileTag.startsWith(filterTag + "/")
 					)
 				);
 
@@ -164,7 +163,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 				}
 
 				// Check if property exists in frontmatter
-				const hasProperty = frontmatter && propertyName in frontmatter;
+				const hasProperty = !!frontmatter && Object.prototype.hasOwnProperty.call(frontmatter, propertyName) === true;
 				return filter.operator === "has property" ? !!hasProperty : !hasProperty;
 			}
 
@@ -217,7 +216,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 	} else if (frontmatter) {
 		// Type-safe access to frontmatter field
 		const frontmatterRecord = frontmatter as Record<string, string | number | boolean | string[] | undefined>;
-		const fieldValue = frontmatterRecord[filter.field];
+		const fieldValue = Object.prototype.hasOwnProperty.call(frontmatterRecord, filter.field) ? frontmatterRecord[filter.field] : undefined;
 		targetValue = fieldValue !== undefined ? fieldValue : null;
 	}
 
@@ -240,7 +239,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 	// Numeric controls save comparison symbols, not text equality operators.
 	if (["=", "≠", "<", "≤", ">", "≥"].includes(filter.operator)) {
 		const rhs = String(filter.value ?? "").trim();
-		if (targetValue === "" || typeof targetValue === "boolean" || Array.isArray(targetValue) || !rhs) return false;
+		if ((typeof targetValue === "string" && !targetValue.trim()) || typeof targetValue === "boolean" || Array.isArray(targetValue) || !rhs) return false;
 		const left = Number(targetValue);
 		const right = Number(rhs);
 		if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
@@ -271,10 +270,10 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 			case "is exactly":
 			case "is not exactly": {
 				// Exact match: array must contain exactly the specified comma-separated values (order-independent)
-				const filterValues = (filter.value || "").split(",").map(v => v.trim()).filter(v => v.length > 0);
-				const targetStrings = targetArray.map((v: string | number | boolean) => String(v));
+				const filterValues = (filter.value || "").split(",").map(v => v.trim()).filter(v => v.length > 0).sort();
+				const targetStrings = targetArray.map((v: string | number | boolean) => String(v)).sort();
 				const match = filterValues.length === targetStrings.length &&
-					filterValues.every(fv => targetStrings.includes(fv));
+					filterValues.every((fv, index) => fv === targetStrings[index]);
 				return filter.operator === "is exactly" ? match : !match;
 			}
 			case "contains":

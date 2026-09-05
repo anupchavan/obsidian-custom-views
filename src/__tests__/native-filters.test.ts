@@ -141,6 +141,9 @@ describe("native Bases integration", () => {
 describe("legacy filter conversion", () => {
 	const app = {} as App;
 	const convert = (condition: Filter) => toBasesFilter(app, { type: "group", operator: "AND", conditions: [condition] });
+	it.each(["constructor", "toString", "__proto__"])("preserves the property %s when opening native filters", field => {
+		expect(convert({ type: "filter", field, operator: "is", value: "custom" })).toEqual({ and: [`note[${JSON.stringify(field)}] == "custom"`] });
+	});
 	it("escapes property names and values rather than interpolating formula code", () => {
 		expect(convert({ type: "filter", field: 'a"b', operator: "is", value: '"); true' })).toEqual({ and: ['note["a\\"b"] == "\\"); true"'] });
 	});
