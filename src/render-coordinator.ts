@@ -24,6 +24,10 @@ export class RenderCoordinator<Owner extends object> {
 		this.jobs.set(owner, job);
 		return job.promise;
 	}
+	cancel(owner: Owner): void {
+		this.jobs.get(owner)?.controller.abort();
+		this.jobs.delete(owner);
+	}
 	cancelAll(): void {
 		for (const job of this.jobs.values()) job.controller.abort();
 		this.jobs.clear();
