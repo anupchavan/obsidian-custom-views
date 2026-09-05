@@ -1,11 +1,10 @@
 import { nanoid } from "nanoid";
-import { inferTemplatePropertyType } from "./template-properties";
+import { getVaultTemplateProperties } from "./template-properties";
 import { mountNativeFilters } from "./native-filters/editor";
 import { App, PluginSettingTab, Setting, TextComponent, Modal, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup } from "./types";
 import { createTemplateEditor } from "./editor";
-import type { TemplateVariable } from "./editor";
 import type { EditorView } from "@codemirror/view";
 import { EditorState, StateEffect } from "@codemirror/state";
 
@@ -308,54 +307,13 @@ export class EditViewModal extends Modal {
 		this.plugin.unloadSignal.addEventListener("abort", this.closeOnUnload, { once: true });
 	}
 
-	/** Scans the vault for frontmatter properties with their types (for template autocomplete icons) */
-	private getVaultProperties(): TemplateVariable[] {
-		const propMap = new Map<string, TemplateVariable["type"]>();
-		const files = this.app.vault.getMarkdownFiles();
-
-		// Access Obsidian's undocumented metadataTypeManager for assigned types.
-		const typeManager = (this.app as {
-			metadataTypeManager?: { getAssignedType?(key: string): string | undefined };
-		}).metadataTypeManager;
-
-		const obsidianTypeMap: Record<string, TemplateVariable["type"]> = {
-			"text": "text", "number": "number", "date": "date",
-			"datetime": "datetime", "checkbox": "checkbox",
-			"tags": "list", "aliases": "list", "multitext": "list",
-		};
-
-		for (const file of files) {
-			const cache = this.app.metadataCache.getFileCache(file);
-			if (cache?.frontmatter) {
-				for (const [key, val] of Object.entries(cache.frontmatter)) {
-					if (key === "position") continue;
-					if (propMap.has(key) && propMap.get(key) !== "unknown") continue;
-
-					// Try Obsidian's assigned type first
-					if (typeManager?.getAssignedType) {
-						const obsType = typeManager.getAssignedType(key);
-						if (obsType && obsidianTypeMap[obsType]) {
-							propMap.set(key, obsidianTypeMap[obsType]);
-							continue;
-						}
-					}
-
-					propMap.set(key, inferTemplatePropertyType(val));
-				}
-			}
-		}
-
-		return Array.from(propMap.entries())
-			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([name, type]) => ({ name, type }));
-	}
 
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("cv-edit-view-modal");
 
-		const templateVariables = this.getVaultProperties();
+		const templateVariables = getVaultTemplateProperties(this.app);
 		const autoSave = this.saveChanges;
 
 		new Setting(contentEl)
