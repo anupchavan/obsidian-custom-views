@@ -319,3 +319,30 @@ describe("adding a view", () => {
 		expect(s.open).toHaveBeenCalledWith(s.plugin.settings.views[0]);
 	});
 });
+
+
+describe("display setting changes", () => {
+	function setup() {
+		const plugin = { settings: { ...DEFAULT_SETTINGS }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
+		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
+		const refreshDomState = vi.fn(); Object.assign(tab, { refreshDomState });
+		return { plugin, tab, refreshDomState };
+	}
+	it.each(["workInLivePreview", "editableContent", "workInCanvas", "allowJavaScript"])("applies %s before its disk write finishes", async key => {
+		const s = setup(); let finish!: () => void;
+		s.plugin.saveSettings.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+		const pending = s.tab.setControlValue(key, false);
+		expect(Reflect.get(s.plugin.settings, key)).toBe(false);
+		expect(s.plugin.refreshAllViews).toHaveBeenCalledOnce();
+		if (key === "workInLivePreview") expect(s.refreshDomState).toHaveBeenCalledOnce();
+		finish(); await pending;
+		expect(s.plugin.refreshAllViews).toHaveBeenCalledOnce();
+	});
+	it("applies display changes even when saving fails", async () => {
+		const s = setup(); s.plugin.saveSettings.mockRejectedValueOnce(new Error("Disk full"));
+		await expect(s.tab.setControlValue("workInLivePreview", false)).rejects.toThrow("Disk full");
+		expect(s.plugin.settings.workInLivePreview).toBe(false);
+		expect(s.plugin.refreshAllViews).toHaveBeenCalledOnce();
+		expect(s.refreshDomState).toHaveBeenCalledOnce();
+	});
+});
