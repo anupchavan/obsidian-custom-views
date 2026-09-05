@@ -1,3 +1,4 @@
+import { loadValidatedSettings } from "./settings-loader";
 import { RenderCoordinator } from "./render-coordinator";
 import { AtomicNavigation } from "./atomic-navigation";
 import { getSharedSettingsWriter } from "./settings-writer";
@@ -5,7 +6,7 @@ import { SaveFeedback } from "./save-feedback";
 import { Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
 import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { CustomViewsSettings, DEFAULT_SETTINGS, CustomViewsSettingTab } from "./settings";
+import { CustomViewsSettings, CustomViewsSettingTab } from "./settings";
 import { NativeRuleEngine } from "./native-filters/engine";
 import { getTemplateDependencies, renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR } from "./renderer";
 import { createEditableContentExtensions } from "./editable-content";
@@ -905,8 +906,9 @@ export default class CustomViewsPlugin extends Plugin {
 
 	async loadSettings() {
 		await this.settingsWriter.whenIdle();
-		const loadedData = await this.loadData() as Partial<CustomViewsSettings> | null;
-		this.settings = Object.assign(structuredClone(DEFAULT_SETTINGS), loadedData);
+		const result = loadValidatedSettings(await this.loadData());
+		this.settings = result.settings;
+		if (result.recovered) new Notice("Recovered malformed custom view settings. Invalid views were skipped. The original configuration will be preserved in the settings file on your next save.", 15000);
 	}
 
 	async saveSettings() {

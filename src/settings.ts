@@ -17,6 +17,8 @@ const DEFAULT_RULES: FilterGroup = {
 
 
 export interface CustomViewsSettings {
+	/** Original malformed configuration, retained for manual recovery. */
+	recoveryData?: unknown;
 	enabled: boolean;
 	workInLivePreview: boolean;
 	workInCanvas: boolean;
