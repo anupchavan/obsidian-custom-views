@@ -1443,6 +1443,8 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 
 		case "binaryOp": {
 			const left = await evaluate(node.left, ctx);
+			if (node.op === "&&") return isTruthy(left) ? evaluate(node.right, ctx) : left;
+			if (node.op === "||") return isTruthy(left) ? left : evaluate(node.right, ctx);
 			const right = await evaluate(node.right, ctx);
 
 			switch (node.op) {
@@ -1469,8 +1471,6 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 				case ">": return toNumber(left) > toNumber(right);
 				case "<=": return toNumber(left) <= toNumber(right);
 				case ">=": return toNumber(left) >= toNumber(right);
-				case "&&": return isTruthy(left) ? right : left;
-				case "||": return isTruthy(left) ? left : right;
 				default: return null;
 			}
 		}
