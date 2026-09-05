@@ -862,20 +862,22 @@ export default class CustomViewsPlugin extends Plugin {
 	// ─── Per-view Display Options ──────────────────────────────────────────────
 
 	/**
-	 * Applies per-view display options (show/hide properties and inline title).
+	 * Applies per-view navigation, properties, and inline-title options.
 	 * Uses CSS classes following the obsidian-hider pattern.
 	 *
-	 * Note: these options only take effect in editing view (live preview)
+	 * Note: properties and inline-title options only take effect in editing view (live preview)
 	 * because MarkdownRenderer.render() does not produce the native
 	 * .metadata-container or .inline-title elements in reading view.
 	 */
 	private applyViewDisplayOptions(container: HTMLElement, viewConfig?: ViewConfig) {
 		if (!viewConfig) return;
+		container.toggleClass("cv-hide-navigation", viewConfig.showNavigationBar === false);
 		container.toggleClass("cv-hide-properties", viewConfig.showProperties === false);
 		container.toggleClass("cv-hide-inline-title", viewConfig.showInlineTitle === false);
 	}
 
 	private restoreDisplayOptions(container: HTMLElement) {
+		container.removeClass("cv-hide-navigation");
 		container.removeClass("cv-hide-properties");
 		container.removeClass("cv-hide-inline-title");
 	}

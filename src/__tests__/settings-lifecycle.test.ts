@@ -75,3 +75,24 @@ describe("settings dialog layout", () => {
 		} finally { content.remove(); style.remove(); }
 	});
 });
+
+
+describe("custom view navigation layout", () => {
+	it.each(["obsidian-custom-view-editable", "obsidian-custom-view-hidden"])("anchors %s below the header and scopes hiding to that pane", mode => {
+		const style = window.document.createElement("style");
+		style.textContent = ".view-header { display: flex; }\n" + readFileSync("styles.css", "utf8");
+		window.document.head.appendChild(style);
+		const pane = window.document.body.appendChild(window.document.createElement("div"));
+		pane.className = "workspace-leaf-content";
+		const header = pane.appendChild(window.document.createElement("div")); header.className = "view-header";
+		const content = pane.appendChild(window.document.createElement("div")); content.className = `view-content ${mode}`;
+		try {
+			expect(window.getComputedStyle(content).position).toBe("relative");
+			expect(window.getComputedStyle(header).display).toBe("flex");
+			content.classList.add("cv-hide-navigation");
+			expect(window.getComputedStyle(header).display).toBe("none");
+			content.classList.remove("cv-hide-navigation");
+			expect(window.getComputedStyle(header).display).toBe("flex");
+		} finally { pane.remove(); style.remove(); }
+	});
+});

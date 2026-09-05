@@ -224,8 +224,14 @@
     pointer-events: none;
 }
 
-.obsidian-custom-view-hidden {
+/* Both overlay modes are anchored below the pane's navigation bar. */
+.obsidian-custom-view-hidden,
+.obsidian-custom-view-editable {
     position: relative;
+}
+
+.workspace-leaf-content:has(> .view-content.cv-hide-navigation) > .view-header {
+    display: none !important;
 }
 
 .obsidian-custom-view-render .markdown-rendered-content {
