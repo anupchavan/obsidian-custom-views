@@ -67,10 +67,15 @@ function convertFilter(app: App, filter: Filter): string {
 			const match = checks.length ? checks.join(filter.operator.endsWith("all of") ? " && " : " || ") : "false";
 			return filter.operator.startsWith("does not") ? `!(${match})` : match;
 		}
-		case "starts with": return call("startsWith");
-		case "does not start with": return "!" + call("startsWith");
-		case "ends with": return call("endsWith");
-		case "does not end with": return "!" + call("endsWith");
+		case "starts with": case "does not start with":
+		case "ends with": case "does not end with": {
+			const scalar = `if(${field} == null, "", ${field}.toString())`;
+			const slice = filter.operator.endsWith("start with") || filter.operator === "starts with" ? `0, ${value.length}` : `${-value.length}`;
+			const match = value === "" ? "true" : `${scalar}.slice(${slice}) == ${JSON.stringify(value)}`;
+			const result = filter.operator.startsWith("does not") ? `!(${match})` : match;
+			// Legacy prefix/suffix operators do not match lists, even when negated.
+			return `if(${field}.isType("list"), false, ${result})`;
+		}
 		case "links to": return call("hasLink");
 		case "does not link to": return "!" + call("hasLink");
 		case "in folder": return call("inFolder");
