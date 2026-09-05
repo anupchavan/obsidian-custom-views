@@ -246,7 +246,18 @@ describe("legacy filter conversion", () => {
 		const match = 'if(note["items"].isType("list"), note["items"].length == 0, note["items"] == null || note["items"].toString() == "")';
 		expect(convert({ type: "filter", field: "items", operator })).toEqual({ and: [operator === "is empty" ? match : `!(${match})`] });
 	});
+	it.each(["=", "≠", "<", "≤", ">", "≥"] as const)("guards invalid operands for numeric %s", operator => {
+		const result = convert({ type: "filter", field: "rating", operator, value: "2" });
+		expect(result).toEqual({ and: [expect.stringContaining('note["rating"] != null && !note["rating"].isType("boolean") && !note["rating"].isType("list")')] });
+		expect(result).toEqual({ and: [expect.stringContaining('note["rating"] > -number("Infinity") && note["rating"] < number("Infinity")')] });
+	});
+	it.each(["1e21", "1e-7"])("emits parser-compatible scientific notation for %s", value => {
+		expect(convert({ type: "filter", field: "rating", operator: "=", value })).toEqual({ and: [expect.stringContaining(`note["rating"] == number(${JSON.stringify(String(Number(value)))})`)] });
+	});
+	it.each(["", " ", "bad", "Infinity", "-Infinity", "1e999"])("does not convert invalid numeric input %j into a matching condition", value => {
+		expect(convert({ type: "filter", field: "rating", operator: "≠", value })).toEqual({ and: ["false"] });
+	});
 	it("converts numeric symbols without quoting numbers", () => {
-		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: ['note["rating"] >= 3.5'] });
+		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: [expect.stringContaining('note["rating"] >= 3.5')] });
 	});
 });
