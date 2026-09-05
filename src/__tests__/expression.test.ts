@@ -1309,3 +1309,29 @@ describe("complex expressions", () => {
 		expect(await evaluate(parseExpression("missing.upper()"), ctx)).toBe("");
 	});
 });
+
+
+describe("short-circuit expression evaluation", () => {
+	it.each([
+		['false && file("Unused").content()', false],
+		['0 && file("Unused").content()', 0],
+		['"Ready" || file("Unused").content()', "Ready"],
+		['true || file("Unused").content()', true],
+	])("skips unused file lookups in %s", async (expression, expected) => {
+		const ctx = makeContext({ dependencies: new Set() });
+		const resolve = vi.spyOn(ctx.app.metadataCache, "getFirstLinkpathDest");
+		resolve.mockImplementation(() => { throw new Error("Unused file must not be resolved"); });
+		expect(await evaluate(parseExpression(expression), ctx)).toBe(expected);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(ctx.dependencies?.size).toBe(0);
+	});
+	it.each(['true && file("Needed").content()', 'false || file("Needed").content()'])("evaluates the required branch exactly once in %s", async expression => {
+		const ctx = makeContext({ dependencies: new Set() });
+		const linked = makeMockFile({ path: "Needed.md" });
+		const resolve = vi.spyOn(ctx.app.metadataCache, "getFirstLinkpathDest").mockReturnValue(linked);
+		const read = vi.spyOn(ctx.app.vault, "cachedRead").mockResolvedValue("Linked body");
+		expect(await evaluate(parseExpression(expression), ctx)).toBe("Linked body");
+		expect(resolve).toHaveBeenCalledOnce(); expect(read).toHaveBeenCalledOnce();
+		expect(ctx.dependencies?.has(linked)).toBe(true);
+	});
+});
