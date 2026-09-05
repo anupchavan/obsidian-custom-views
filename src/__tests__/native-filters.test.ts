@@ -141,6 +141,47 @@ describe("native Bases integration", () => {
 		await getNativeBasesApi(s.app);
 		expect(config.basesFilters).toBeUndefined(); expect(save).not.toHaveBeenCalled(); close();
 	});
+	it("retries a failed native mount in place without saving or allocating duplicate controls", async () => {
+		const s = setup(); const parent = window.document.createElement("div");
+		const registry = (s.app as unknown as { embedRegistry: { embedByExtension: { base?: unknown } } }).embedRegistry.embedByExtension;
+		delete registry.base;
+		const config = view(); const save = vi.fn();
+		const close = mountNativeFilters(s.app, parent, config, save);
+		await vi.waitFor(() => expect(parent.querySelector('[role="alert"]')?.textContent).toContain("Enable"));
+		const retry = parent.querySelector("button")!;
+		expect(retry.textContent).toBe("Retry"); expect(retry.type).toBe("button");
+		registry.base = s.factorySpy;
+		retry.click(); retry.click();
+		await vi.waitFor(() => expect(s.factorySpy).toHaveBeenCalledTimes(2));
+		expect(parent.firstElementChild).toBe(s.entries[1].controller.filterMenu.globalFilterBuilder.innerContainerEl);
+		retry.click(); await Promise.resolve();
+		expect(s.factorySpy).toHaveBeenCalledTimes(2);
+		expect(save).not.toHaveBeenCalled(); expect(config.basesFilters).toBeUndefined(); close();
+	});
+	it("ignores retained retry buttons and repeated disposal after the host is reused", async () => {
+		const s = setup(); const parent = window.document.createElement("div");
+		const registry = (s.app as unknown as { embedRegistry: { embedByExtension: { base?: unknown } } }).embedRegistry.embedByExtension;
+		delete registry.base;
+		const close = mountNativeFilters(s.app, parent, view(), vi.fn());
+		await vi.waitFor(() => expect(parent.querySelector("button")).not.toBeNull());
+		const retry = parent.querySelector("button")!;
+		close(); parent.textContent = "New owner";
+		registry.base = s.factorySpy;
+		retry.click(); close(); await Promise.resolve();
+		expect(parent.textContent).toBe("New owner"); expect(s.factorySpy).not.toHaveBeenCalled();
+	});
+	it("does not mount a pending retry after the dialog closes", async () => {
+		const s = setup(); const parent = window.document.createElement("div");
+		const registry = (s.app as unknown as { embedRegistry: { embedByExtension: { base?: unknown } } }).embedRegistry.embedByExtension;
+		delete registry.base;
+		const save = vi.fn(); const close = mountNativeFilters(s.app, parent, view(), save);
+		await vi.waitFor(() => expect(parent.querySelector("button")).not.toBeNull());
+		registry.base = s.factorySpy;
+		parent.querySelector("button")!.click(); close();
+		await getNativeBasesApi(s.app);
+		expect(parent.children).toHaveLength(0); expect(s.factorySpy).toHaveBeenCalledOnce();
+		expect(save).not.toHaveBeenCalled();
+	});
 	it("can retry discovery after Bases is enabled", async () => {
 		const s = setup();
 		const registry = (s.app as unknown as { embedRegistry: { embedByExtension: { base?: unknown } } }).embedRegistry.embedByExtension;
