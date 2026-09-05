@@ -51,8 +51,10 @@ function convertFilter(app: App, filter: Filter): string {
 			const op = filter.operator === "is exactly" ? "==" : "!=";
 			return `if(${field}.isType("list"), ${field}.map(value.toString()).sort() ${op} [${exactValues}].sort(), false)`;
 		}
-		case "is empty": return call("isEmpty", "");
-		case "is not empty": return "!" + call("isEmpty", "");
+		case "is empty": case "is not empty": {
+			const match = `if(${field}.isType("list"), ${field}.length == 0, ${field} == null || ${field}.toString() == "")`;
+			return filter.operator === "is not empty" ? `!(${match})` : match;
+		}
 		case "contains": case "does not contain":
 		case "contains any of": case "does not contain any of":
 		case "contains all of": case "does not contain all of": {
