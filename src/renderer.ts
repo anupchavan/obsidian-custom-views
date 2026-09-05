@@ -280,7 +280,7 @@ function resolveChainSegment(context: ChainContext, key: string): unknown {
 
 	// Check frontmatter only when no built-in value was found. Built-ins like
 	// "content" should not be overridden by frontmatter.
-	if (value === undefined && context.frontmatter && context.frontmatter[key] !== undefined) {
+	if (value === undefined && context.frontmatter && Object.prototype.hasOwnProperty.call(context.frontmatter, key)) {
 		value = context.frontmatter[key];
 	}
 
@@ -290,10 +290,10 @@ function resolveChainSegment(context: ChainContext, key: string): unknown {
 function resolvePlainValueSegment(value: unknown, key: string): unknown {
 	if (Array.isArray(value)) {
 		if (key === "length") return value.length;
-		return (value as unknown as Record<string, unknown>)[key];
+		return Object.prototype.hasOwnProperty.call(value, key) ? (value as unknown as Record<string, unknown>)[key] : undefined;
 	}
 	if (isRecord(value)) {
-		return value[key];
+		return Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined;
 	}
 	return undefined;
 }
