@@ -37,7 +37,11 @@ function convertFilter(app: App, filter: Filter): string {
 	switch (filter.operator) {
 		case "=": case "≠": case "<": case "≤": case ">": case "≥": {
 			const op = { "=": "==", "≠": "!=", "<": "<", "≤": "<=", ">": ">", "≥": ">=" }[filter.operator];
-			return value.trim() && Number.isFinite(Number(value)) ? `${field} ${op} ${Number(value)}` : "false";
+			if (!value.trim() || !Number.isFinite(Number(value))) return "false";
+			const number = String(Number(value));
+			// Bases does not accept exponent notation in a numeric literal.
+			const numericRhs = /e/i.test(number) ? `number(${JSON.stringify(number)})` : number;
+			return `${field} != null && !${field}.isType("boolean") && !${field}.isType("list") && ${field}.toString().trim() != "" && ${field} > -number("Infinity") && ${field} < number("Infinity") && ${field} ${op} ${numericRhs}`;
 		}
 		case "is": case "is not": {
 			const text = JSON.stringify(value);

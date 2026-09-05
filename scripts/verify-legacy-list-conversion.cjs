@@ -13,6 +13,10 @@ window.cvListProof=(()=>{
   const api=app.plugins.plugins['custom-views'].nativeRules.api;
   const file=app.workspace.activeLeaf.view.file;
   const fixtures=[
+    [3,'2'], ['3','2'], [' 3 ','2'], ['3x','2'], ['Infinity','2'],
+    ['0x10','16'], ['0b10','2'], ['2e2','200'], [null,'0'], [false,'0'], [[], '0'],
+    [3,'bad'], [3,'Infinity'], ['1e999','2'], ['-Infinity','2'],
+    [1e21,'1e21'], [1e-7,'1e-7'], ['1e21','1e21'],
     [['b','a'],'a,b'], [['a','a'],'a,b'], [['a','a'],'a,a'],
     [['a','b','a'],'a,a,b'], [[], ''], [['a'],''],
     [[2,1],'1,2'], [[true,false],'false,true'],
@@ -26,10 +30,12 @@ window.cvListProof=(()=>{
     [['He said \"hi\"'],'\"hi\"'],
   ];
   const rows=[];
-  for(const [value,query] of fixtures) for(const operator of ['is empty','is not empty','starts with','does not start with','ends with','does not end with','is','is not','is exactly','is not exactly','contains','does not contain','contains any of','does not contain any of','contains all of','does not contain all of']){
+  for(const [value,query] of fixtures) for(const operator of ['=','≠','<','≤','>','≥','is empty','is not empty','starts with','does not start with','ends with','does not end with','is','is not','is exactly','is not exactly','contains','does not contain','contains any of','does not contain any of','contains all of','does not contain all of']){
     const rules={type:'group',operator:'AND',conditions:[{type:'filter',field:'fixture',operator,value:query}]};
     const converted=cvListProbe.toBasesFilter(app,rules).and[0];
-    const formula=converted.split('note["fixture"]').join('('+JSON.stringify(value)+')');
+    const literal=value=>Array.isArray(value)?'['+value.map(literal).join(',')+']':
+      typeof value==='number'&&/e/i.test(String(value))?'number('+JSON.stringify(String(value))+')':JSON.stringify(value);
+    const formula=converted.split('note["fixture"]').join('('+literal(value)+')');
     const expected=cvListProbe.checkRules(app,rules,file,{fixture:value});
     try {
       const parsed=api.parse(formula).filters;
