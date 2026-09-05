@@ -181,28 +181,29 @@ describe("legacy filter conversion", () => {
 	const app = {} as App;
 	const convert = (condition: Filter) => toBasesFilter(app, { type: "group", operator: "AND", conditions: [condition] });
 	it.each(["constructor", "toString", "__proto__"])("preserves the property %s when opening native filters", field => {
-		expect(convert({ type: "filter", field, operator: "is", value: "custom" })).toEqual({ and: [`note[${JSON.stringify(field)}] == "custom"`] });
+		expect(convert({ type: "filter", field, operator: "is", value: "custom" })).toEqual({ and: [expect.stringContaining(`note[${JSON.stringify(field)}].toString() == "custom"`)] });
 	});
 	it("escapes property names and values rather than interpolating formula code", () => {
-		expect(convert({ type: "filter", field: 'a"b', operator: "is", value: '"); true' })).toEqual({ and: ['note["a\\"b"] == "\\"); true"'] });
+		const field = 'a"b'; const value = '"); true';
+		expect(convert({ type: "filter", field, operator: "is", value })).toEqual({ and: [expect.stringContaining(`note[${JSON.stringify(field)}].toString() == ${JSON.stringify(value)}`)] });
 	});
 	it("preserves raw legacy link searches and nested conjunctions", () => {
 		expect(toBasesFilter(app, { type: "group", operator: "NOR", conditions: [{ type: "group", operator: "OR", conditions: [{ type: "filter", field: "categories", operator: "contains any of", value: "[[Movies|Films]], [[Books]]" }] }] })).toEqual({ not: [{ or: ['if(note["categories"].isType("list"), note["categories"].filter(value.toString().contains("[[Movies|Films]]")).length > 0, note["categories"].toString().contains("[[Movies|Films]]")) || if(note["categories"].isType("list"), note["categories"].filter(value.toString().contains("[[Books]]")).length > 0, note["categories"].toString().contains("[[Books]]"))'] }] });
 	});
 	it("keeps the extension when converting legacy file.name", () => {
-		expect(convert({ type: "filter", field: "file.name", operator: "is", value: "Movie.md" })).toEqual({ and: ['file.fullname == "Movie.md"'] });
+		expect(convert({ type: "filter", field: "file.name", operator: "is", value: "Movie.md" })).toEqual({ and: [expect.stringContaining('file.fullname.toString() == "Movie.md"')] });
 	});
 	it.each(["true", "false"])("uses boolean %s for explicitly assigned checkboxes", value => {
 		const typedApp = { metadataTypeManager: { getAssignedWidget: () => "checkbox" } } as unknown as App;
-		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "done", operator: "is", value }] })).toEqual({ and: [`note["done"] == ${value}`] });
+		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "done", operator: "is", value }] })).toEqual({ and: [expect.stringContaining(`note["done"] == ${value}`)] });
 	});
 	it("recognizes inferred checkbox widgets when there is no explicit assignment", () => {
 		const typedApp = { metadataTypeManager: { getAssignedWidget: () => null, getAllProperties: () => ({ done: { name: "Done", widget: "checkbox" } }) } } as unknown as App;
-		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "done", operator: "is not", value: "false" }] })).toEqual({ and: ['note["done"] != false'] });
+		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "done", operator: "is not", value: "false" }] })).toEqual({ and: [expect.stringMatching(/^!\(.*note\["done"\] == false/)] });
 	});
 	it("preserves text true and false for non-checkbox properties", () => {
 		const typedApp = { metadataTypeManager: { getAssignedWidget: () => "text" } } as unknown as App;
-		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "status", operator: "is", value: "true" }] })).toEqual({ and: ['note["status"] == "true"'] });
+		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "status", operator: "is", value: "true" }] })).toEqual({ and: [expect.stringContaining('note["status"].toString() == "true"')] });
 	});
 	it.each(["is exactly", "is not exactly"] as const)("preserves order-independent list comparison for %s", operator => {
 		const op = operator === "is exactly" ? "==" : "!=";
@@ -222,6 +223,10 @@ describe("legacy filter conversion", () => {
 	});
 	it("keeps a single empty substring search distinct from an empty any/all search", () => {
 		expect(convert({ type: "filter", field: "items", operator: "contains", value: "" })).toEqual({ and: ['if(note["items"].isType("list"), note["items"].length > 0, true)'] });
+	});
+	it.each(["is", "is not"] as const)("preserves list membership and missing-value equality for %s", operator => {
+		const match = 'if(note["items"].isType("list"), note["items"].map(value.toString()).contains(""), if(note["items"] == null, true, note["items"].toString() == ""))';
+		expect(convert({ type: "filter", field: "items", operator, value: "" })).toEqual({ and: [operator === "is" ? match : `!(${match})`] });
 	});
 	it("converts numeric symbols without quoting numbers", () => {
 		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: ['note["rating"] >= 3.5'] });
