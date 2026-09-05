@@ -718,7 +718,7 @@ async function buildExprFile(app: App, tfile: TFile, bases?: ExprValueArray): Pr
 	}
 	const links = cache?.links?.map(l => l.link) ?? [];
 
-	const properties: Record<string, ExprValue> = {};
+	const properties = Object.create(null) as Record<string, ExprValue>;
 	if (fm) {
 		for (const [k, v] of Object.entries(fm)) {
 			if (k !== "position") {
@@ -1186,7 +1186,7 @@ const fileMethods: Record<string, MethodFn> = {
 	hasProperty: (_ctx, obj, args) => {
 		if (!isExprFile(obj)) return false;
 		const prop = exprToString(args[0]);
-		return prop in obj.properties;
+		return hasOwn(obj.properties, prop);
 	},
 	hasTag: (_ctx, obj, args) => {
 		if (!isExprFile(obj)) return false;
@@ -1228,35 +1228,39 @@ const objectMethods: Record<string, MethodFn> = {
 	isType: (_ctx: ExprContext, _obj: ExprValue, args: ExprValue[]) => exprToString(args[0]) === "object",
 };
 
+function hasOwn(object: object, key: PropertyKey): boolean {
+	return Object.prototype.hasOwnProperty.call(object, key) === true;
+}
+
 /** Dispatch a method call to the right method table */
 async function callMethod(ctx: ExprContext, obj: ExprValue, method: string, args: ExprValue[]): Promise<ExprValue> {
 	// Try type-specific methods first
-	if (isExprFile(obj) && method in fileMethods) {
+	if (isExprFile(obj) && hasOwn(fileMethods, method)) {
 		return fileMethods[method](ctx, obj, args);
 	}
-	if (isExprLink(obj) && method in linkMethods) {
+	if (isExprLink(obj) && hasOwn(linkMethods, method)) {
 		return linkMethods[method](ctx, obj, args);
 	}
-	if (isExprDate(obj) && method in dateMethods) {
+	if (isExprDate(obj) && hasOwn(dateMethods, method)) {
 		return dateMethods[method](ctx, obj, args);
 	}
-	if (Array.isArray(obj) && method in listMethods) {
+	if (Array.isArray(obj) && hasOwn(listMethods, method)) {
 		return listMethods[method](ctx, obj, args);
 	}
-	if (typeof obj === "number" && method in numberMethods) {
+	if (typeof obj === "number" && hasOwn(numberMethods, method)) {
 		return numberMethods[method](ctx, obj, args);
 	}
-	if (typeof obj === "string" && method in stringMethods) {
+	if (typeof obj === "string" && hasOwn(stringMethods, method)) {
 		return stringMethods[method](ctx, obj, args);
 	}
 
 	// Fallback: try object methods
-	if (method in objectMethods) {
+	if (hasOwn(objectMethods, method)) {
 		return objectMethods[method](ctx, obj, args);
 	}
 
 	// Try string methods as a fallback for any type
-	if (method in stringMethods) {
+	if (hasOwn(stringMethods, method)) {
 		return stringMethods[method](ctx, exprToString(obj), args);
 	}
 
@@ -1267,11 +1271,11 @@ async function callMethod(ctx: ExprContext, obj: ExprValue, method: string, args
 function getProperty(obj: ExprValue, property: string): ExprValue {
 	// ExprFile properties
 	if (isExprFile(obj)) {
-		if (property in obj && property !== '__type' && property !== '_tfile') {
+		if (hasOwn(obj, property) && property !== '__type' && property !== '_tfile') {
 			return (obj as unknown as Record<string, ExprValue>)[property];
 		}
 		// Check file's frontmatter properties
-		if (property in obj.properties) {
+		if (hasOwn(obj.properties, property)) {
 			return obj.properties[property];
 		}
 		return null;
@@ -1301,7 +1305,7 @@ function getProperty(obj: ExprValue, property: string): ExprValue {
 	// Array .length
 	if (Array.isArray(obj)) {
 		if (property === "length") return obj.length;
-		return (obj as unknown as Record<string, ExprValue>)[property] ?? null;
+		return hasOwn(obj, property) ? (obj as unknown as Record<string, ExprValue>)[property] ?? null : null;
 	}
 
 	// String .length
@@ -1312,7 +1316,7 @@ function getProperty(obj: ExprValue, property: string): ExprValue {
 
 	// Generic object property access
 	if (obj !== null && typeof obj === "object") {
-		return (obj as Record<string, ExprValue>)[property] ?? null;
+		return hasOwn(obj, property) ? (obj as Record<string, ExprValue>)[property] ?? null : null;
 	}
 
 	return null;
@@ -1346,9 +1350,9 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 		case "identifier": {
 			const name = node.name;
 			// Check variables first (set by {% set %}, for loops, etc.)
-			if (name in ctx.variables) return ctx.variables[name];
+			if (hasOwn(ctx.variables, name)) return ctx.variables[name];
 			// Then check frontmatter
-			if (ctx.frontmatter && name in ctx.frontmatter) {
+			if (ctx.frontmatter && hasOwn(ctx.frontmatter, name)) {
 				return ctx.frontmatter[name] as ExprValue;
 			}
 			// Built-in file properties
@@ -1383,7 +1387,8 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 				return index < obj.length ? obj[index] : null;
 			}
 			if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-				return (obj as Record<string, ExprValue>)[exprToString(index)] ?? null;
+				const key = exprToString(index);
+				return hasOwn(obj, key) ? (obj as Record<string, ExprValue>)[key] ?? null : null;
 			}
 			return null;
 		}
@@ -1395,7 +1400,7 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 				const branch = node.args[truthy ? 1 : 2];
 				return branch ? evaluate(branch, ctx) : (truthy ? true : null);
 			}
-			const fn = globalFunctions[node.name];
+			const fn = hasOwn(globalFunctions, node.name) ? globalFunctions[node.name] : undefined;
 			if (!fn) {
 				// Maybe it's a frontmatter property that looks like a function call?
 				// Return null for unknown functions
@@ -1747,7 +1752,7 @@ async function evaluateForList(listExpr: string, ctx: ExprContext): Promise<Expr
 		const ast = parseExpression(listExpr);
 		return evaluate(ast, ctx);
 	} catch {
-		if (ctx.frontmatter && listExpr.trim() in ctx.frontmatter) {
+		if (ctx.frontmatter && hasOwn(ctx.frontmatter, listExpr.trim())) {
 			return ctx.frontmatter[listExpr.trim()] as ExprValue;
 		}
 		return null;
