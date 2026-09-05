@@ -16,7 +16,7 @@ Status as of 2026-09-05: active. The checks below describe completed work and re
 | Navigation | Tests cover cancellation, editable editor reuse, body and linked-note refreshes, and obsolete Canvas renders. The experimental branch also records frame-level navigation checks under `docs/performance/ATOMIC-NAVIGATION.md`. |
 | Templates | Tests cover expression short-circuiting, selected conditional branches, own-property lookup, current editor content, and missing linked-note dependencies. |
 | Editor usability | Native property registry used for autocomplete; labels on all three CodeMirror editors verified in the live dialog; scrolling limits tested against the shipped stylesheet. |
-| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,138 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
+| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,141 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
 
 ## Remaining audit work
 
@@ -33,3 +33,5 @@ The loader validates global switches, view fields, and filter tree shapes before
 The navigation bar is now anchored consistently above both reading and live preview overlays, with a per-view Display options toggle. Live checks confirmed identical overlay positions and header visibility in both modes; the delayed navigation regression still reported no exposed native frames.
 
 Checkbox conversion now uses the installed property-widget API and falls back to inferred registry widgets. Native parsing succeeded for true/false formulas for both assigned and inferred checkbox properties; evaluation matched the legacy boolean result on both existing notes with the inferred property. Regression tests also retain quoted values for text properties. Broader conversion equivalence remains open.
+
+Exact-list conversion now compares sorted string values and retains duplicate counts. `node scripts/verify-legacy-list-conversion.cjs` compares 24 cases against the actual Bases parser and legacy matcher (both exact operators, reordered values, duplicates, numbers, booleans, links, empty lists, and scalars). All 24 agreed in the installed host. Negated native groups were separately checked against all four two-condition truth-table combinations and already matched legacy NOR.
