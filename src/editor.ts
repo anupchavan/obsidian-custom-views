@@ -1313,7 +1313,12 @@ export interface TemplateEditorOptions {
 export function createTemplateEditor(
 	options: TemplateEditorOptions
 ): EditorView {
-	const extensions: Extension[] = [...buildEditorExtensions(options.language ?? "html", options.templateVariables ?? [])];
+	const language = options.language ?? "html";
+	const labels: Record<EditorLanguage, string> = { html: "HTML template", css: "CSS styles", javascript: "JavaScript code" };
+	const extensions: Extension[] = [
+		...buildEditorExtensions(language, options.templateVariables ?? []),
+		EditorView.contentAttributes.of({ "aria-label": labels[language] }),
+	];
 
 	if (options.onChange) {
 		const changeListener = EditorView.updateListener.of(
