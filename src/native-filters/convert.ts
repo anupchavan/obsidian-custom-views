@@ -25,7 +25,12 @@ function convertFilter(app: App, filter: Filter): string {
 	]);
 	const field = aliases.get(filter.field) ?? (filter.field === "file" || filter.field.startsWith("file.") ? filter.field : `note[${JSON.stringify(filter.field)}]`);
 	const value = filter.value ?? "";
-	const type = (app as App & { metadataTypeManager?: { getAssignedType?(name: string): string } }).metadataTypeManager?.getAssignedType?.(filter.field);
+	const manager = (app as App & { metadataTypeManager?: {
+		getAssignedWidget?(name: string): string | null;
+		getAllProperties?(): Record<string, { name: string; widget?: string }>;
+	} }).metadataTypeManager;
+	const type = manager?.getAssignedWidget?.(filter.field) ??
+		Object.values(manager?.getAllProperties?.() ?? {}).find(property => property.name.toLowerCase() === filter.field.toLowerCase())?.widget;
 	const rhs = type === "checkbox" && /^(true|false)$/.test(value) ? value : literal(value);
 	const values = value.split(",").map(v => v.trim()).filter(Boolean).map(literal).join(", ");
 	const call = (method: string, args = rhs) => `${field}.${method}(${args})`;
