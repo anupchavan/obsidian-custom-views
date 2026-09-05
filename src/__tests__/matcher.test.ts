@@ -310,9 +310,20 @@ describe("has tag / does not have tag", () => {
 		expect(checkRules(app, andGroup(filter("file", "has tag", "movies")), mockFile())).toBe(true);
 	});
 
-	it("matches a child tag (fileTag is 'movies', filter is 'movies/action')", () => {
+	it("does not invent a child tag when the note only has the parent", () => {
 		const app = mockApp({ bodyTags: [{ tag: "#movies" }] });
-		expect(checkRules(app, andGroup(filter("file", "has tag", "movies/action")), mockFile())).toBe(true);
+		expect(checkRules(app, andGroup(filter("file", "has tag", "movies/action")), mockFile())).toBe(false);
+		expect(checkRules(app, andGroup(filter("file", "does not have tag", "movies/action")), mockFile())).toBe(true);
+	});
+	it.each([
+		["#Movies/Action", "#movies", true],
+		["#movies/action", " MOVIES/Action ", true],
+		["#moviesarchive", "movies", false],
+		["#movies/action", "movies/comedy", false],
+	])("matches %s against %s with native Bases tag semantics", (tag, value, expected) => {
+		const app = mockApp({ bodyTags: [{ tag }] });
+		expect(checkRules(app, andGroup(filter("file", "has tag", value)), mockFile())).toBe(expected);
+		expect(checkRules(app, andGroup(filter("file", "does not have tag", value)), mockFile())).toBe(!expected);
 	});
 
 	it("matches a frontmatter tag (array)", () => {
@@ -353,6 +364,16 @@ describe("has tag / does not have tag", () => {
 // ---------------------------------------------------------------------------
 
 describe("has property / does not have property", () => {
+	it.each(["constructor", "toString", "__proto__"])("does not invent the inherited property %s", name => {
+		expect(checkRules(mockApp(), andGroup(filter("file", "has property", name)), mockFile(), {})).toBe(false);
+		expect(checkRules(mockApp(), andGroup(filter("file", "does not have property", name)), mockFile(), {})).toBe(true);
+		expect(checkRules(mockApp(), andGroup(filter(name, "is empty")), mockFile(), {})).toBe(true);
+	});
+	it("recognizes real properties even when their names shadow object members", () => {
+		const fm = { constructor: "custom" };
+		expect(checkRules(mockApp(), andGroup(filter("file", "has property", "constructor")), mockFile(), fm)).toBe(true);
+		expect(checkRules(mockApp(), andGroup(filter("constructor", "is", "custom")), mockFile(), fm)).toBe(true);
+	});
 	it("has property — true when property exists in frontmatter", () => {
 		const fm = { status: "done" };
 		expect(checkRules(mockApp(), andGroup(filter("file", "has property", "status")), mockFile(), fm)).toBe(true);
@@ -1500,8 +1521,9 @@ describe("numeric comparison controls", () => {
 		expect(checkRules(mockApp(), andGroup(filter("file.size", ">", "0")), mockFile())).toBe(true);
 		expect(checkRules(mockApp(), andGroup(filter("rating", "=", "0")), mockFile(), { rating: 0 })).toBe(true);
 	});
-	it.each([undefined, "", "banana", false, []])("does not coerce invalid property %s to zero", rating => {
+	it.each([undefined, "", " ", "\t\n", "\u00a0", "banana", false, []])("does not coerce invalid property %s to zero", rating => {
 		expect(checkRules(mockApp(), andGroup(filter("rating", "=", "0")), mockFile(), { rating })).toBe(false);
+		expect(checkRules(mockApp(), andGroup(filter("rating", "≠", "1")), mockFile(), { rating })).toBe(false);
 	});
 	it.each(["", "Infinity", "3foo"])("rejects invalid numeric input %s", value => {
 		expect(checkRules(mockApp(), andGroup(filter("rating", "≠", value)), mockFile(), { rating: 3 })).toBe(false);
@@ -1517,6 +1539,21 @@ describe("empty property checks", () => {
 	it.each([null, undefined, "", []])("treats missing or empty value %s as empty", value => {
 		expect(checkRules(mockApp(), andGroup(filter("value", "is empty")), mockFile(), { value })).toBe(true);
 		expect(checkRules(mockApp(), andGroup(filter("value", "is not empty")), mockFile(), { value })).toBe(false);
+	});
+});
+
+describe("exact list comparison", () => {
+	it.each([
+		[["a", "b"], "a, a", false],
+		[["a", "a"], "a, b", false],
+		[["a", "a"], "a, a", true],
+		[["b", "a"], "a, b", true],
+		[["a", "b", "a"], "a, b, b", false],
+	] as const)("compares all occurrences in %j against %s", (values, input, expected) => {
+		const items = [...values];
+		expect(checkRules(mockApp(), andGroup(filter("items", "is exactly", input)), mockFile(), { items })).toBe(expected);
+		expect(checkRules(mockApp(), andGroup(filter("items", "is not exactly", input)), mockFile(), { items })).toBe(!expected);
+		expect(items).toEqual(values);
 	});
 });
 
