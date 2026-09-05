@@ -1,5 +1,5 @@
 import { RenderCoordinator } from "./render-coordinator";
-import { SettingsWriter } from "./settings-writer";
+import { getSharedSettingsWriter } from "./settings-writer";
 import { SaveFeedback } from "./save-feedback";
 import { Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
 import { Compartment, StateEffect } from "@codemirror/state";
@@ -85,7 +85,7 @@ interface CompartmentEntry {
 export default class CustomViewsPlugin extends Plugin {
 	settings: CustomViewsSettings;
 	nativeRules: NativeRuleEngine;
-	private settingsWriter = new SettingsWriter<CustomViewsSettings>(settings => this.saveData(settings));
+	private get settingsWriter() { return getSharedSettingsWriter<CustomViewsSettings>(this.app, settings => this.saveData(settings)); }
 	private saveFeedback = new SaveFeedback(() => this.saveSettings());
 
 	/**
@@ -883,6 +883,7 @@ export default class CustomViewsPlugin extends Plugin {
 	// ─── Settings ──────────────────────────────────────────────────────────────
 
 	async loadSettings() {
+		await this.settingsWriter.whenIdle();
 		const loadedData = await this.loadData() as Partial<CustomViewsSettings> | null;
 		this.settings = Object.assign(structuredClone(DEFAULT_SETTINGS), loadedData);
 	}
