@@ -16,7 +16,7 @@ Status as of 2026-09-05: active. The checks below describe completed work and re
 | Navigation | Tests cover cancellation, editable editor reuse, body and linked-note refreshes, and obsolete Canvas renders. The experimental branch also records frame-level navigation checks under `docs/performance/ATOMIC-NAVIGATION.md`. |
 | Templates | Tests cover expression short-circuiting, selected conditional branches, own-property lookup, current editor content, and missing linked-note dependencies. |
 | Editor usability | Native property registry used for autocomplete; labels on all three CodeMirror editors verified in the live dialog; scrolling limits tested against the shipped stylesheet. |
-| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,157 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
+| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,171 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
 
 ## Remaining audit work
 
@@ -41,3 +41,5 @@ Legacy containment conversion now preserves partial matches inside list items, s
 Equality conversion now retains list membership and missing-value comparisons, with dynamic string comparison for unassigned scalar properties. Case-sensitive substring matching uses native literal split because native string contains ignores case. The live verifier now covers 320 cases, including null list entries, mixed-case terms, and literal regex punctuation, with no mismatches. Full tests/build/lint passed separately after the equality fix and after the case-sensitivity fix.
 
 Prefix/suffix conversion now uses case-sensitive string slices, preserves empty search behavior, and leaves list values unmatched even for negated operators as the legacy matcher does. Emptiness conversion uses explicit list length and scalar/missing-value checks so boolean properties do not invoke an unsupported native method. The live suite now contains 624 comparisons, all agreeing; full tests/build/lint were run after each fix.
+
+Numeric conversion now rejects missing, boolean, list, blank, invalid, and non-finite operands before comparison while retaining native numeric-string coercion (including hexadecimal and binary strings). Scientific-notation thresholds use the native number function because exponent literals are rejected by the parser. The live verifier now includes 1,254 comparisons, all agreeing with the legacy matcher.
