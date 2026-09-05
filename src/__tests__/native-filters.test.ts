@@ -204,6 +204,13 @@ describe("legacy filter conversion", () => {
 		const typedApp = { metadataTypeManager: { getAssignedWidget: () => "text" } } as unknown as App;
 		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "status", operator: "is", value: "true" }] })).toEqual({ and: ['note["status"] == "true"'] });
 	});
+	it.each(["is exactly", "is not exactly"] as const)("preserves order-independent list comparison for %s", operator => {
+		const op = operator === "is exactly" ? "==" : "!=";
+		expect(convert({ type: "filter", field: "items", operator, value: "b, a, a" })).toEqual({ and: [`if(note["items"].isType("list"), note["items"].map(value.toString()).sort() ${op} ["b", "a", "a"].sort(), false)`] });
+	});
+	it("keeps raw link spelling and aliases in exact legacy comparisons", () => {
+		expect(convert({ type: "filter", field: "items", operator: "is exactly", value: "[[Movies|Films]]" })).toEqual({ and: ['if(note["items"].isType("list"), note["items"].map(value.toString()).sort() == ["[[Movies|Films]]"].sort(), false)'] });
+	});
 	it("converts numeric symbols without quoting numbers", () => {
 		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: ['note["rating"] >= 3.5'] });
 	});
