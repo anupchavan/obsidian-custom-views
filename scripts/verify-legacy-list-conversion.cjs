@@ -18,13 +18,14 @@ window.cvListProof=(()=>{
     [[2,1],'1,2'], [[true,false],'false,true'],
     [['[[Movies|Films]]'],'[[Movies|Films]]'],
     ['a','a'], [null,''], [false,'false'],
+    [[null],'null'], [[null,'a'],'null,a'], [[null],''], [[''],''], [false,'False'],
     [['science fiction','drama'],'fiction'], [['science fiction','drama'],'fiction,dr'],
-    [['science fiction','drama'],'fiction,comedy'], [['ab'],'a,b'],
+    [['science fiction','drama'],'fiction,comedy'], [['ab'],'a,b'], [['a','b'],'a'], [[1],'1'], [1,'1'],
     ['science fiction','fiction'], [123,'2'], [null,'missing'],
     [['He said \"hi\"'],'\"hi\"'],
   ];
   const rows=[];
-  for(const [value,query] of fixtures) for(const operator of ['is exactly','is not exactly','contains','does not contain','contains any of','does not contain any of','contains all of','does not contain all of']){
+  for(const [value,query] of fixtures) for(const operator of ['is','is not','is exactly','is not exactly','contains','does not contain','contains any of','does not contain any of','contains all of','does not contain all of']){
     const rules={type:'group',operator:'AND',conditions:[{type:'filter',field:'fixture',operator,value:query}]};
     const converted=cvListProbe.toBasesFilter(app,rules).and[0];
     const formula=converted.split('note["fixture"]').join('('+JSON.stringify(value)+')');

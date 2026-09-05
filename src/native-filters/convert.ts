@@ -39,8 +39,12 @@ function convertFilter(app: App, filter: Filter): string {
 			const op = { "=": "==", "≠": "!=", "<": "<", "≤": "<=", ">": ">", "≥": ">=" }[filter.operator];
 			return value.trim() && Number.isFinite(Number(value)) ? `${field} ${op} ${Number(value)}` : "false";
 		}
-		case "is": return `${field} == ${rhs}`;
-		case "is not": return `${field} != ${rhs}`;
+		case "is": case "is not": {
+			const text = JSON.stringify(value);
+			const scalar = type === "checkbox" && /^(true|false)$/.test(value) ? `${field} == ${rhs}` : `${field}.toString() == ${text}`;
+			const match = `if(${field}.isType("list"), ${field}.map(value.toString()).contains(${text}), if(${field} == null, ${value === ""}, ${scalar}))`;
+			return filter.operator === "is not" ? `!(${match})` : match;
+		}
 		case "is exactly": case "is not exactly": {
 			// Legacy exact lists compare string values as a multiset, including duplicates.
 			const exactValues = value.split(",").map(v => v.trim()).filter(Boolean).map(v => JSON.stringify(v)).join(", ");
