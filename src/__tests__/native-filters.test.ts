@@ -192,6 +192,18 @@ describe("legacy filter conversion", () => {
 	it("keeps the extension when converting legacy file.name", () => {
 		expect(convert({ type: "filter", field: "file.name", operator: "is", value: "Movie.md" })).toEqual({ and: ['file.fullname == "Movie.md"'] });
 	});
+	it.each(["true", "false"])("uses boolean %s for explicitly assigned checkboxes", value => {
+		const typedApp = { metadataTypeManager: { getAssignedWidget: () => "checkbox" } } as unknown as App;
+		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "done", operator: "is", value }] })).toEqual({ and: [`note["done"] == ${value}`] });
+	});
+	it("recognizes inferred checkbox widgets when there is no explicit assignment", () => {
+		const typedApp = { metadataTypeManager: { getAssignedWidget: () => null, getAllProperties: () => ({ done: { name: "Done", widget: "checkbox" } }) } } as unknown as App;
+		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "done", operator: "is not", value: "false" }] })).toEqual({ and: ['note["done"] != false'] });
+	});
+	it("preserves text true and false for non-checkbox properties", () => {
+		const typedApp = { metadataTypeManager: { getAssignedWidget: () => "text" } } as unknown as App;
+		expect(toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "status", operator: "is", value: "true" }] })).toEqual({ and: ['note["status"] == "true"'] });
+	});
 	it("converts numeric symbols without quoting numbers", () => {
 		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: ['note["rating"] >= 3.5'] });
 	});
