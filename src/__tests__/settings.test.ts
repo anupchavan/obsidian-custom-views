@@ -162,7 +162,8 @@ describe("view priority changes", () => {
 		const views = ["first", "second", "third"].map(id => ({ ...DEFAULT_SETTINGS.views[0], id }));
 		const plugin = { settings: { views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
 		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
-		return { plugin, reorder: (from: number, to: number) => (tab as unknown as { reorderViews(a: number, b: number): Promise<void> }).reorderViews(from, to) };
+		const update = vi.fn(); Object.assign(tab, { update });
+		return { plugin, tab, update, reorder: (from: number, to: number) => (tab as unknown as { reorderViews(a: number, b: number): Promise<void> }).reorderViews(from, to) };
 	}
 	it("immediately reapplies first-match priority to open notes after saving", async () => {
 		const { plugin, reorder } = setup();
@@ -170,6 +171,31 @@ describe("view priority changes", () => {
 		expect(plugin.settings.views.map(v => v.id)).toEqual(["second", "first", "third"]);
 		expect(plugin.saveSettings).toHaveBeenCalledOnce();
 		expect(plugin.refreshAllViews).toHaveBeenCalledOnce();
+	});
+	it("refreshes the native list and open notes before a slow save finishes", async () => {
+		const s = setup(); let finish!: () => void;
+		s.plugin.saveSettings.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+		const pending = s.reorder(1, 0);
+		expect(s.update).toHaveBeenCalledOnce();
+		expect(s.plugin.refreshAllViews).toHaveBeenCalledOnce();
+		finish(); await pending;
+	});
+	it("ignores stale reorder callbacks and uses the new row order for deletion", async () => {
+		const s = setup();
+		const list = () => s.tab.getSettingDefinitions().find(item => "type" in item && item.type === "list") as { onReorder(from: number, to: number): void; onDelete(index: number): void };
+		const previous = list(); previous.onReorder(1, 0);
+		previous.onReorder(1, 0);
+		expect(s.plugin.settings.views.map(v => v.id)).toEqual(["second", "first", "third"]);
+		expect(s.plugin.saveSettings).toHaveBeenCalledOnce();
+		list().onDelete(0); await Promise.resolve();
+		expect(s.plugin.settings.views.map(v => v.id)).toEqual(["first", "third"]);
+	});
+	it("keeps the displayed list and priority consistent if persistence fails", async () => {
+		const s = setup(); s.plugin.saveSettings.mockRejectedValueOnce(new Error("Disk full"));
+		await expect(s.reorder(1, 0)).rejects.toThrow("Disk full");
+		expect(s.plugin.settings.views.map(v => v.id)).toEqual(["second", "first", "third"]);
+		expect(s.update).toHaveBeenCalledOnce();
+		expect(s.plugin.refreshAllViews).toHaveBeenCalledOnce();
 	});
 	it.each([[0, -1], [2, 3], [-1, 0], [3, 0], [0, 0], [0.5, 1]])("ignores invalid or unchanged moves %s → %s", async (from, to) => {
 		const { plugin, reorder } = setup();
