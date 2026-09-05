@@ -231,6 +231,17 @@ describe("legacy filter conversion", () => {
 	it("uses literal case-sensitive substring matching", () => {
 		expect(convert({ type: "filter", field: "items", operator: "contains", value: "F.*" })).toEqual({ and: ['if(note["items"].isType("list"), note["items"].filter(value.toString().split("F.*").length > 1).length > 0, note["items"].toString().split("F.*").length > 1)'] });
 	});
+	it.each([
+		["starts with", 'if(note["items"].isType("list"), false, if(note["items"] == null, "", note["items"].toString()).slice(0, 2) == "Ab")'],
+		["does not start with", 'if(note["items"].isType("list"), false, !(if(note["items"] == null, "", note["items"].toString()).slice(0, 2) == "Ab"))'],
+		["ends with", 'if(note["items"].isType("list"), false, if(note["items"] == null, "", note["items"].toString()).slice(-2) == "Ab")'],
+		["does not end with", 'if(note["items"].isType("list"), false, !(if(note["items"] == null, "", note["items"].toString()).slice(-2) == "Ab"))'],
+	] as const)("converts %s without case folding or matching lists", (operator, formula) => {
+		expect(convert({ type: "filter", field: "items", operator, value: "Ab" })).toEqual({ and: [formula] });
+	});
+	it("preserves an empty suffix without treating negative zero as the whole string", () => {
+		expect(convert({ type: "filter", field: "items", operator: "ends with", value: "" })).toEqual({ and: ['if(note["items"].isType("list"), false, true)'] });
+	});
 	it("converts numeric symbols without quoting numbers", () => {
 		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: ['note["rating"] >= 3.5'] });
 	});
