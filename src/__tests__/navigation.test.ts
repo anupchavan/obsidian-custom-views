@@ -87,6 +87,31 @@ describe("editable note navigation", () => {
 });
 
 describe("open note changes", () => {
+	it.each(["rename", "delete"])("refreshes dependent views on a vault %s event", async event => {
+		const s = setup(); await s.methods._processLeaf(s.view, s.file);
+		const linked = new TFile(); linked.path = "People/Actor.md";
+		vi.mocked(getTemplateDependencies).mockReturnValue(new Set([linked]));
+		const listeners = new Map<string, (file: TFile) => void>();
+		Object.assign(s.plugin.app, { vault: { on: (name: string, callback: (file: TFile) => void) => listeners.set(name, callback) } });
+		Object.assign(s.plugin.app.metadataCache, { on: vi.fn() });
+		Object.assign(s.plugin, { registerEvent: vi.fn() });
+		(s.plugin as unknown as { registerNoteRefreshEvents(): void }).registerNoteRefreshEvents();
+		vi.mocked(renderTemplate).mockClear(); vi.useFakeTimers();
+		if (event === "rename") linked.path = "People/Renamed.md";
+		listeners.get(event)!(linked);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(renderTemplate).toHaveBeenCalledOnce();
+		expect(vi.mocked(renderTemplate).mock.calls[0]?.[2]).toBe(s.file);
+	});
+	it("does not try to render a deleted note that has not yet closed", async () => {
+		const s = setup(); s.view.getState = () => ({ mode: "preview", source: false });
+		await s.methods._processLeaf(s.view, s.file);
+		vi.mocked(renderTemplate).mockClear(); vi.useFakeTimers();
+		(s.plugin as unknown as { queueNoteRefresh(file: TFile, dependenciesOnly: boolean): void }).queueNoteRefresh(s.file, true);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(renderTemplate).not.toHaveBeenCalled();
+	});
+
 	it("refreshes a view when a linked note used by its template changes", async () => {
 		const s = setup(); await s.methods._processLeaf(s.view, s.file);
 		const linked = new TFile(); linked.path = "People/Actor.md";
