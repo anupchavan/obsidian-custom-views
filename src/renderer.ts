@@ -196,6 +196,7 @@ export async function resolvePropertyChain(
 
 	for (let i = 0; i < segments.length; i++) {
 		const seg = segments[i];
+		if (currentContext.kind === "file" && seg.key === "content") dependencies?.add(currentContext.file);
 		let value = resolveChainSegment(currentContext, seg.key);
 
 		if (value === undefined) return null;
@@ -1002,6 +1003,7 @@ async function resolveTemplateRaw(
 	const resolvedValues: string[] = [];
 	for (const match of matches) {
 		if (match.innerExpr === "content" || match.innerExpr === "file.content") {
+			dependencies?.add(file);
 			resolvedValues.push(bodyContent);
 			continue;
 		}
