@@ -87,7 +87,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 		Query = query.constructor as unknown as QueryConstructor;
 		if (typeof Query.parse !== "function") throw new Error("The native Bases query parser is unavailable.");
 	} finally {
-		seed.unload();
+		cleanup(() => seed.unload());
 		host.remove();
 	}
 	const parse = (filters: BasesFilter | null): NativeQuery => Query.parse({
@@ -105,35 +105,37 @@ async function discover(app: App): Promise<NativeBasesApi> {
 			const query = parse(filters);
 			const internalHost = parent.ownerDocument.createElement("div");
 			const embed = factory({ app, containerEl: internalHost, sourcePath: "", linktext: "" }, file, "");
-			const controller = embed.controller;
-			const builder = controller.filterMenu.globalFilterBuilder;
+			let builder: NativeBuilder | undefined;
+			let disposed = false;
+			const dispose = () => {
+				if (disposed) return;
+				disposed = true;
+				cleanup(() => embed.controller?.filterMenu?.toolbarItem?.setOpen(false));
+				destroyFormulaEditors(builder?.root);
+				cleanup(() => builder?.innerContainerEl.remove());
+				cleanup(() => embed.unload());
+				internalHost.remove();
+			};
 			try {
+				const controller = embed.controller;
+				builder = controller?.filterMenu?.globalFilterBuilder;
+				if (!builder) throw new Error("This Obsidian version does not expose a compatible Bases filter editor.");
 				query.saveFn = () => {};
 				controller.query = query;
 				controller.viewName = "Rules";
 				controller.ctx = controller.buildBasesContext();
 				builder.updateQuery(value => {
+					if (disposed) return;
 					query.setGlobalFilters(value);
 					controller.ctx = controller.buildBasesContext();
 					save(value);
 				}, query.getViewConfig("Rules"), query.filters);
 				parent.replaceChildren(builder.innerContainerEl);
 			} catch (error) {
-				destroyFormulaEditors(builder.root);
-				embed.unload();
-				internalHost.remove();
+				dispose();
 				throw error;
 			}
-			let disposed = false;
-			return () => {
-				if (disposed) return;
-				disposed = true;
-				controller.filterMenu.toolbarItem?.setOpen(false);
-				destroyFormulaEditors(builder.root);
-				builder.innerContainerEl.remove();
-				embed.unload();
-				internalHost.remove();
-			};
+			return dispose;
 		},
 	};
 }
@@ -146,9 +148,15 @@ function destroyFormulaEditors(node: unknown): void {
 		leftInputEl?: { close(): void };
 		operatorComponent?: { close(): void };
 	};
-	item.leftInputEl?.close();
-	item.operatorComponent?.close();
-	item.advancedInputEditor?.destroy();
+	cleanup(() => item.leftInputEl?.close());
+	cleanup(() => item.operatorComponent?.close());
+	cleanup(() => item.advancedInputEditor?.destroy());
 	item.advancedInputEditor = null;
 	item.children?.forEach(destroyFormulaEditors);
+}
+
+/** Native controls may change independently; one failed disposer must not retain the rest. */
+function cleanup(action: () => void): void {
+	try { action(); }
+	catch (error) { console.error("[Custom Views] Could not clean up a native filter control:", error); }
 }
