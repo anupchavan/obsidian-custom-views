@@ -16,7 +16,7 @@ Status as of 2026-09-05: active. The checks below describe completed work and re
 | Navigation | Tests cover cancellation, editable editor reuse, body and linked-note refreshes, and obsolete Canvas renders. The experimental branch also records frame-level navigation checks under `docs/performance/ATOMIC-NAVIGATION.md`. |
 | Templates | Tests cover expression short-circuiting, selected conditional branches, own-property lookup, current editor content, and missing linked-note dependencies. |
 | Editor usability | Native property registry used for autocomplete; labels on all three CodeMirror editors verified in the live dialog; scrolling limits tested against the shipped stylesheet. |
-| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,171 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
+| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,174 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
 
 ## Remaining audit work
 
@@ -43,3 +43,5 @@ Equality conversion now retains list membership and missing-value comparisons, w
 Prefix/suffix conversion now uses case-sensitive string slices, preserves empty search behavior, and leaves list values unmatched even for negated operators as the legacy matcher does. Emptiness conversion uses explicit list length and scalar/missing-value checks so boolean properties do not invoke an unsupported native method. The live suite now contains 624 comparisons, all agreeing; full tests/build/lint were run after each fix.
 
 Numeric conversion now rejects missing, boolean, list, blank, invalid, and non-finite operands before comparison while retaining native numeric-string coercion (including hexadecimal and binary strings). Scientific-notation thresholds use the native number function because exponent literals are rejected by the parser. The live verifier now includes 1,254 comparisons, all agreeing with the legacy matcher.
+
+Native filter load errors now provide an accessible alert and a Retry button. In-place retry is guarded against overlapping requests, stale buttons, and dialog closure; repeated disposal does not clear a reused host. The live app recovered from an injected initial failure into the actual native editor in two attempts, with zero saves, unchanged rules, and complete cleanup.
