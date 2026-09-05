@@ -188,7 +188,7 @@ describe("legacy filter conversion", () => {
 		expect(convert({ type: "filter", field, operator: "is", value })).toEqual({ and: [expect.stringContaining(`note[${JSON.stringify(field)}].toString() == ${JSON.stringify(value)}`)] });
 	});
 	it("preserves raw legacy link searches and nested conjunctions", () => {
-		expect(toBasesFilter(app, { type: "group", operator: "NOR", conditions: [{ type: "group", operator: "OR", conditions: [{ type: "filter", field: "categories", operator: "contains any of", value: "[[Movies|Films]], [[Books]]" }] }] })).toEqual({ not: [{ or: ['if(note["categories"].isType("list"), note["categories"].filter(value.toString().contains("[[Movies|Films]]")).length > 0, note["categories"].toString().contains("[[Movies|Films]]")) || if(note["categories"].isType("list"), note["categories"].filter(value.toString().contains("[[Books]]")).length > 0, note["categories"].toString().contains("[[Books]]"))'] }] });
+		expect(toBasesFilter(app, { type: "group", operator: "NOR", conditions: [{ type: "group", operator: "OR", conditions: [{ type: "filter", field: "categories", operator: "contains any of", value: "[[Movies|Films]], [[Books]]" }] }] })).toEqual({ not: [{ or: ['if(note["categories"].isType("list"), note["categories"].filter(value.toString().split("[[Movies|Films]]").length > 1).length > 0, note["categories"].toString().split("[[Movies|Films]]").length > 1) || if(note["categories"].isType("list"), note["categories"].filter(value.toString().split("[[Books]]").length > 1).length > 0, note["categories"].toString().split("[[Books]]").length > 1)'] }] });
 	});
 	it("keeps the extension when converting legacy file.name", () => {
 		expect(convert({ type: "filter", field: "file.name", operator: "is", value: "Movie.md" })).toEqual({ and: [expect.stringContaining('file.fullname.toString() == "Movie.md"')] });
@@ -219,7 +219,7 @@ describe("legacy filter conversion", () => {
 		expect(convert({ type: "filter", field: "items", operator, value: "" })).toEqual({ and: ["!(false)"] });
 	});
 	it("converts partial list searches and scalar searches to string containment", () => {
-		expect(convert({ type: "filter", field: "items", operator: "contains", value: "fiction" })).toEqual({ and: ['if(note["items"].isType("list"), note["items"].filter(value.toString().contains("fiction")).length > 0, note["items"].toString().contains("fiction"))'] });
+		expect(convert({ type: "filter", field: "items", operator: "contains", value: "fiction" })).toEqual({ and: ['if(note["items"].isType("list"), note["items"].filter(value.toString().split("fiction").length > 1).length > 0, note["items"].toString().split("fiction").length > 1)'] });
 	});
 	it("keeps a single empty substring search distinct from an empty any/all search", () => {
 		expect(convert({ type: "filter", field: "items", operator: "contains", value: "" })).toEqual({ and: ['if(note["items"].isType("list"), note["items"].length > 0, true)'] });
@@ -227,6 +227,9 @@ describe("legacy filter conversion", () => {
 	it.each(["is", "is not"] as const)("preserves list membership and missing-value equality for %s", operator => {
 		const match = 'if(note["items"].isType("list"), note["items"].map(value.toString()).contains(""), if(note["items"] == null, true, note["items"].toString() == ""))';
 		expect(convert({ type: "filter", field: "items", operator, value: "" })).toEqual({ and: [operator === "is" ? match : `!(${match})`] });
+	});
+	it("uses literal case-sensitive substring matching", () => {
+		expect(convert({ type: "filter", field: "items", operator: "contains", value: "F.*" })).toEqual({ and: ['if(note["items"].isType("list"), note["items"].filter(value.toString().split("F.*").length > 1).length > 0, note["items"].toString().split("F.*").length > 1)'] });
 	});
 	it("converts numeric symbols without quoting numbers", () => {
 		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: ['note["rating"] >= 3.5'] });
