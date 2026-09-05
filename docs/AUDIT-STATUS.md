@@ -16,7 +16,7 @@ Status as of 2026-09-05: active. The checks below describe completed work and re
 | Navigation | Tests cover cancellation, editable editor reuse, body and linked-note refreshes, and obsolete Canvas renders. The experimental branch also records frame-level navigation checks under `docs/performance/ATOMIC-NAVIGATION.md`. |
 | Templates | Tests cover expression short-circuiting, selected conditional branches, own-property lookup, current editor content, and missing linked-note dependencies. |
 | Editor usability | Native property registry used for autocomplete; labels on all three CodeMirror editors verified in the live dialog; scrolling limits tested against the shipped stylesheet. |
-| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,141 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
+| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,147 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
 
 ## Remaining audit work
 
@@ -35,3 +35,5 @@ The navigation bar is now anchored consistently above both reading and live prev
 Checkbox conversion now uses the installed property-widget API and falls back to inferred registry widgets. Native parsing succeeded for true/false formulas for both assigned and inferred checkbox properties; evaluation matched the legacy boolean result on both existing notes with the inferred property. Regression tests also retain quoted values for text properties. Broader conversion equivalence remains open.
 
 Exact-list conversion now compares sorted string values and retains duplicate counts. `node scripts/verify-legacy-list-conversion.cjs` compares 24 cases against the actual Bases parser and legacy matcher (both exact operators, reordered values, duplicates, numbers, booleans, links, empty lists, and scalars). All 24 agreed in the installed host. Negated native groups were separately checked against all four two-condition truth-table combinations and already matched legacy NOR.
+
+Legacy containment conversion now preserves partial matches inside list items, scalar string conversion, empty searches, and all six positive/negative contains operators. The real-parser comparison script now covers 160 cases; the old converter disagreed in 50 cases and the corrected converter agreed in all 160. The verifier clears prior results and records parser exceptions per case so a failed run cannot reuse an earlier result.
