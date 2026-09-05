@@ -1030,3 +1030,25 @@ describe("derived note body dependencies", () => {
 		expect(getTemplateDependencies(container)?.has(file)).toBe(expected);
 	});
 });
+
+
+describe("initially missing linked notes", () => {
+	it.each(['<p>{{person.title}}</p>', '<p>{{file("Person").properties.title}}</p>'])("tracks newly resolved references in %s", async template => {
+		const file = new TFile(); file.path = "Movies/Test.md";
+		const created = new TFile(); created.path = "People/Person.md";
+		const unrelated = new TFile(); unrelated.path = "Other.md";
+		let destination: TFile | null = null;
+		const resolve = vi.fn(() => destination);
+		const app = { metadataCache: { getFirstLinkpathDest: resolve, getFileCache: (target: TFile) => ({ frontmatter: target === file ? { person: "[[Person]]" } : { title: "New actor" } }) }, vault: { cachedRead: async () => "Body" } } as unknown as App;
+		const container = window.document.createElement("div"); const component = new Component();
+		await renderTemplate(app, template, file, container, component, false, undefined, undefined, false, "Body");
+		const dependencies = getTemplateDependencies(container)!;
+		expect(dependencies.has(created)).toBe(false);
+		destination = created;
+		expect(dependencies.has(created)).toBe(true);
+		expect(dependencies.has(unrelated)).toBe(false);
+		expect(resolve).toHaveBeenLastCalledWith("Person", "Movies/Test.md");
+		await renderTemplate(app, "<p>Independent</p>", file, container, component, false, undefined, undefined, false, "Body");
+		expect(getTemplateDependencies(container)?.has(created)).toBe(false);
+	});
+});
