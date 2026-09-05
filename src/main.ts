@@ -141,7 +141,7 @@ export default class CustomViewsPlugin extends Plugin {
 				if ((dependenciesOnly || target !== file) && !dependencyChanged) return;
 				const rendered = this.renderedMetadata.get(view);
 				const state = view.getState();
-				if (!dependencyChanged && state.mode === "source" && state.source === false &&
+				if (!dependencyChanged && !(overlay && getTemplateDependencies(overlay)?.has(file)) && state.mode === "source" && state.source === false &&
 					this.editableStates.has(view.contentEl) &&
 					rendered?.path === file.path && rendered.value === metadata) return;
 				this.contentVersions.set(view, (this.contentVersions.get(view) ?? 0) + 1);

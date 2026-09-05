@@ -140,6 +140,16 @@ describe("open note changes", () => {
 		expect(renderTemplate).toHaveBeenCalledOnce();
 		expect(s.container.querySelectorAll(".obsidian-custom-view-render")).toHaveLength(1);
 	});
+	it("refreshes body-derived values while preserving the live editor and selection", async () => {
+		const s = setup(); await s.methods._processLeaf(s.view, s.file);
+		s.cm.dispatch({ selection: { anchor: 3 } });
+		vi.mocked(getTemplateDependencies).mockReturnValue(new Set([s.file]));
+		vi.mocked(renderTemplate).mockClear(); vi.useFakeTimers();
+		s.methods.queueNoteRefresh(s.file); await vi.advanceTimersByTimeAsync(150);
+		expect(renderTemplate).toHaveBeenCalledOnce();
+		expect(s.container.querySelector(".cm-editor")).toBe(s.cm.dom);
+		expect(s.cm.state.selection.main.anchor).toBe(3);
+	});
 	it("leaves the editable shell and editor intact for body-only typing", async () => {
 		const s = setup(); await s.methods._processLeaf(s.view, s.file);
 		const overlay = s.container.querySelector(".obsidian-custom-view-render");
