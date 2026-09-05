@@ -1,8 +1,9 @@
+import { RenderCoordinator } from "./render-coordinator";
 import { Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
 import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { CustomViewsSettings, DEFAULT_SETTINGS, CustomViewsSettingTab } from "./settings";
-import { checkRules } from "./matcher";
+import { NativeRuleEngine } from "./native-filters/engine";
 import { renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR } from "./renderer";
 import { createEditableContentExtensions } from "./editable-content";
 import { warmCustomViewScriptEngine } from "./script-engine";
@@ -81,6 +82,7 @@ interface CompartmentEntry {
 
 export default class CustomViewsPlugin extends Plugin {
 	settings: CustomViewsSettings;
+	nativeRules: NativeRuleEngine;
 
 	/**
 	 * Tracks editable state per MarkdownView content element.
@@ -94,11 +96,7 @@ export default class CustomViewsPlugin extends Plugin {
 	 */
 	private compartments: WeakMap<EditorView, CompartmentEntry> = new WeakMap();
 
-	/** Guard against concurrent processActiveView calls */
-	private processing = false;
-
-	/** Latest file requested while another render is in progress */
-	private pendingProcessFile: TFile | null = null;
+	private renders = new RenderCoordinator<MarkdownView>();
 
 	/** Bumped on settings save to invalidate stateKey cache */
 	private settingsVersion = 0;
@@ -106,19 +104,58 @@ export default class CustomViewsPlugin extends Plugin {
 	/** Counter for generating unique per-container scope IDs */
 	private nextScopeId = 0;
 
+	/** One delegated pair of link listeners per leaf, not per rendered note. */
+	private overlayLinkHosts = new WeakSet<HTMLElement>();
+
 	/** Provides Obsidian Bases query results to templates when Bases are referenced. */
 	private basesProvider: EmbeddedBasesProvider | undefined;
 
 	/** Prevents deferred startup work from running after a fast disable/reload. */
 	private unloaded = false;
+	private noteRefreshTimers = new Map<TFile, number>();
+	private contentVersions = new WeakMap<MarkdownView, number>();
+	private renderedMetadata = new WeakMap<MarkdownView, { path: string; value: string }>();
+
+	/** Refresh saved content without rebuilding the live editor for each keystroke. */
+	private queueNoteRefresh(file: TFile): void {
+		if (this.unloaded) return;
+		const previous = this.noteRefreshTimers.get(file);
+		if (previous !== undefined) window.clearTimeout(previous);
+		this.noteRefreshTimers.set(file, window.setTimeout(() => {
+			this.noteRefreshTimers.delete(file);
+			if (this.unloaded) return;
+			const metadata = JSON.stringify(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {});
+			this.app.workspace.iterateAllLeaves(leaf => {
+				if (!(leaf.view instanceof MarkdownView) || leaf.view.file !== file) return;
+				const view = leaf.view;
+				const rendered = this.renderedMetadata.get(view);
+				const state = view.getState();
+				if (state.mode === "source" && state.source === false &&
+					this.editableStates.has(view.contentEl) &&
+					rendered?.path === file.path && rendered.value === metadata) return;
+				this.contentVersions.set(view, (this.contentVersions.get(view) ?? 0) + 1);
+				this.clearAppliedState(view.contentEl);
+				void this._processLeaf(view, file);
+			});
+		}, 150));
+	}
 
 	async onload() {
 		this.unloaded = false;
 		await this.loadSettings();
+		this.nativeRules = new NativeRuleEngine(this.app, () => {
+			if (!this.unloaded) this.refreshAllViews();
+		});
+		try { await this.nativeRules.prepare(); } catch (error) {
+			if (this.settings.views.some(view => view.basesFilters != null)) {
+				new Notice(error instanceof Error ? error.message : "Native view filters are unavailable.");
+			}
+		}
 		this.prepareScriptEngine();
 		this.basesProvider = new EmbeddedBasesProvider(this);
 		this.basesProvider.register();
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
+		this.registerEvent(this.app.metadataCache.on("changed", file => this.queueNoteRefresh(file)));
 		this.app.workspace.onLayoutReady(() => {
 			window.setTimeout(() => {
 				if (!this.unloaded) {
@@ -217,6 +254,9 @@ export default class CustomViewsPlugin extends Plugin {
 
 	onunload() {
 		this.unloaded = true;
+		for (const timer of this.noteRefreshTimers.values()) window.clearTimeout(timer);
+		this.noteRefreshTimers.clear();
+		this.renders.cancelAll();
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView) {
 				this.restoreEditableView(leaf.view);
@@ -304,7 +344,7 @@ export default class CustomViewsPlugin extends Plugin {
 		if (!this.settings.enabled) return;
 		const cache = this.app.metadataCache.getFileCache(file);
 		const matches = this.settings.views.some(v =>
-			checkRules(this.app, v.rules, file, cache?.frontmatter)
+			this.nativeRules.matches(v, file, cache?.frontmatter)
 		);
 		if (!matches) return;
 
@@ -323,38 +363,14 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	async processActiveView(file: TFile | null) {
-		if (!file) return;
-
-		// Guard against concurrent calls (file-open + layout-change can fire together)
-		if (this.processing) {
-			this.pendingProcessFile = file;
-			return;
-		}
-		this.processing = true;
-		try {
-			// Find the leaf that is actually showing this exact file.
-			// Using getLeaf(false) would always return the active leaf and do DOM work
-			// even before the MarkdownView has updated its .file (e.g. during keyboard nav
-			// in the file explorer), which causes appendChild to steal focus.
-			// iterateAllLeaves with file matching naturally skips processing when the view
-			// hasn't settled yet, preventing the focus steal.
-			let targetView: MarkdownView | null = null;
-			this.app.workspace.iterateAllLeaves((leaf) => {
-				if (leaf.view instanceof MarkdownView && leaf.view.file === file) {
-					targetView = leaf.view;
-				}
-			});
-			if (targetView) {
-				await this._processLeaf(targetView, file);
+		if (!file || this.unloaded) return;
+		const pending: Promise<void>[] = [];
+		this.app.workspace.iterateAllLeaves(leaf => {
+			if (leaf.view instanceof MarkdownView && leaf.view.file === file) {
+				pending.push(this._processLeaf(leaf.view, file));
 			}
-		} finally {
-			this.processing = false;
-			const pendingFile = this.pendingProcessFile;
-			this.pendingProcessFile = null;
-			if (pendingFile && pendingFile !== file) {
-				void this.processActiveView(pendingFile);
-			}
-		}
+		});
+		await Promise.all(pending);
 	}
 
 	/**
@@ -376,7 +392,22 @@ export default class CustomViewsPlugin extends Plugin {
 		return `${file.path}::${configId}::${mode}::${this.settingsVersion}`;
 	}
 
-	private async _processLeaf(view: MarkdownView, file: TFile) {
+	private _processLeaf(view: MarkdownView, file: TFile): Promise<void> {
+		if (this.unloaded || view.file !== file) return Promise.resolve();
+		const state = view.getState();
+		const key = JSON.stringify([file.path, file.stat.mtime, state.mode, state.source, this.settingsVersion, this.contentVersions.get(view)]);
+		const metadata = JSON.stringify(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {});
+		return this.renders.run(view, key, async signal => {
+			await this.renderLeaf(view, file, signal);
+			if (!signal.aborted && view.file === file) this.renderedMetadata.set(view, { path: file.path, value: metadata });
+		}).catch(error => {
+			this.restoreEditableView(view);
+			this.restoreDefaultView(view);
+			console.error("[Custom Views] Failed to render note:", error);
+		});
+	}
+
+	private async renderLeaf(view: MarkdownView, file: TFile, signal: AbortSignal) {
 		const container = view.contentEl;
 
 		if (!this.settings.enabled) {
@@ -390,7 +421,7 @@ export default class CustomViewsPlugin extends Plugin {
 		let matchedConfig: ViewConfig | null = null;
 
 		for (const viewConfig of this.settings.views) {
-			const isMatch = checkRules(this.app, viewConfig.rules, file, cache?.frontmatter);
+			const isMatch = this.nativeRules.matches(viewConfig, file, cache?.frontmatter);
 			if (isMatch) {
 				matchedConfig = viewConfig;
 				break;
@@ -416,13 +447,8 @@ export default class CustomViewsPlugin extends Plugin {
 				return;
 			}
 		}
-
-		// Always clean up editable state first — before any mode/template checks.
-		// This ensures the editor is back in its original position before we decide
-		// what to do next.
-		this.restoreEditableView(view);
-
 		if (!matchedConfig) {
+			this.restoreEditableView(view);
 			this.restoreDefaultView(view);
 			this.setAppliedState(container, file, stateKey);
 			return;
@@ -431,12 +457,14 @@ export default class CustomViewsPlugin extends Plugin {
 		const matchedTemplate = matchedConfig.template;
 
 		if (isTrueSourceMode) {
+			this.restoreEditableView(view);
 			this.restoreDefaultView(view);
 			this.setAppliedState(container, file, stateKey);
 			return;
 		}
 
 		if (!this.settings.workInLivePreview && !isReadingMode) {
+			this.restoreEditableView(view);
 			this.restoreDefaultView(view);
 			this.setAppliedState(container, file, stateKey);
 			return;
@@ -450,14 +478,15 @@ export default class CustomViewsPlugin extends Plugin {
 			templateHasEditableContent(matchedTemplate);
 
 		if (canUseEditableMode) {
-			// Clean up any existing read-only overlay first
-			this.restoreDefaultView(view);
-			await this.injectEditableView(view, file, matchedConfig);
+			await this.injectEditableView(view, file, matchedConfig, signal);
 		} else {
-			await this.injectCustomView(view.contentEl, file, matchedTemplate, matchedConfig, this.getViewSourceContent(view, file));
+			this.restoreEditableView(view);
+			await this.injectCustomView(view.contentEl, file, matchedTemplate, matchedConfig, this.getViewSourceContent(view, file), signal);
 		}
 
-		this.setAppliedState(container, file, stateKey);
+		if (view.file === file && !this.unloaded && !signal.aborted) {
+			this.setAppliedState(container, file, stateKey);
+		}
 	}
 
 	// ─── Read-only Overlay (existing behavior) ─────────────────────────────────
@@ -468,6 +497,7 @@ export default class CustomViewsPlugin extends Plugin {
 		template: string,
 		viewConfig?: ViewConfig,
 		sourceContent?: string,
+		signal?: AbortSignal,
 	) {
 		// Hide markdown immediately — synchronously, before any async template work begins.
 		// This closes the gap where file-open fired but preHideIfMatch didn't catch the leaf
@@ -475,15 +505,13 @@ export default class CustomViewsPlugin extends Plugin {
 		// one (found via iterateAllLeaves in processActiveView), so this is safe.
 		container.addClass(HIDE_MARKDOWN_CLASS);
 
-		let customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`) as HTMLElement;
-
-		if (!customEl) {
-			customEl = activeDocument.createElement("div");
-			customEl.addClass(CUSTOM_VIEW_CLASS);
-			container.appendChild(customEl);
-
-			this.registerOverlayLinkHandlers(customEl, file.path);
-		}
+		const previousOverlay = container.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
+		const customEl = container.ownerDocument.createElement("div");
+		customEl.addClass(CUSTOM_VIEW_CLASS);
+		container.appendChild(customEl);
+		this.registerOverlayLinkHandlers(customEl, file.path);
+		const cancel = () => customEl.remove();
+		signal?.addEventListener("abort", cancel, { once: true });
 
 		let scopeId = container.getAttribute("data-cv-id");
 		if (!scopeId) {
@@ -505,9 +533,16 @@ export default class CustomViewsPlugin extends Plugin {
 				this.settings.allowJavaScript,
 				sourceContent,
 				this.basesProvider,
+				signal,
 			);
-		} finally {
+			if (signal?.aborted || this.unloaded) { customEl.remove(); return; }
+			previousOverlay?.remove();
 			customEl.removeClass(PENDING_VIEW_CLASS);
+		} catch (error) {
+			customEl.remove();
+			throw error;
+		} finally {
+			signal?.removeEventListener("abort", cancel);
 		}
 
 		this.applyViewDisplayOptions(container, viewConfig);
@@ -550,10 +585,17 @@ export default class CustomViewsPlugin extends Plugin {
 	 *                     element are ignored (the reparented CM6 editor in
 	 *                     editable mode handles its own clicks and context menus)
 	 */
-	private registerOverlayLinkHandlers(customEl: HTMLElement, sourcePath: string, skipSelector?: string) {
-		this.registerDomEvent(customEl, "click", (evt: MouseEvent) => {
+	private registerOverlayLinkHandlers(customEl: HTMLElement, sourcePath: string) {
+		customEl.setAttribute("data-cv-source-path", sourcePath);
+		const host = customEl.parentElement ?? customEl;
+		if (this.overlayLinkHosts.has(host)) return;
+		this.overlayLinkHosts.add(host);
+		this.registerDomEvent(host, "click", (evt: MouseEvent) => {
 			const target = evt.target as HTMLElement;
-			if (skipSelector && target.closest(skipSelector)) return;
+			if (target.closest(".markdown-source-view")) return;
+			const overlay = target.closest(`.${CUSTOM_VIEW_CLASS}`);
+			if (!overlay) return;
+			const sourcePath = overlay.getAttribute("data-cv-source-path") ?? "";
 
 			const link = target.closest(".internal-link");
 			if (link && link.instanceOf(HTMLAnchorElement)) {
@@ -566,9 +608,12 @@ export default class CustomViewsPlugin extends Plugin {
 			}
 		});
 
-		this.registerDomEvent(customEl, "contextmenu", (evt: MouseEvent) => {
+		this.registerDomEvent(host, "contextmenu", (evt: MouseEvent) => {
 			const target = evt.target as HTMLElement;
-			if (skipSelector && target.closest(skipSelector)) return;
+			if (target.closest(".markdown-source-view")) return;
+			const overlay = target.closest(`.${CUSTOM_VIEW_CLASS}`);
+			if (!overlay) return;
+			const sourcePath = overlay.getAttribute("data-cv-source-path") ?? "";
 
 			const internalLink = target.closest(".internal-link");
 			const externalLink = internalLink ? null : target.closest(".external-link");
@@ -628,6 +673,7 @@ export default class CustomViewsPlugin extends Plugin {
 		view: MarkdownView,
 		file: TFile,
 		viewConfig: ViewConfig,
+		signal?: AbortSignal,
 	) {
 		const container = view.contentEl;
 		const template = viewConfig.template;
@@ -638,29 +684,30 @@ export default class CustomViewsPlugin extends Plugin {
 		if (!cmView) {
 			// Fallback: if we can't access CM6, use the read-only overlay
 			console.warn("[Custom Views] Could not access CM6 EditorView, falling back to read-only mode.");
-			await this.injectCustomView(container, file, template, viewConfig, sourceContent);
+			this.restoreEditableView(view);
+			await this.injectCustomView(container, file, template, viewConfig, sourceContent, signal);
 			return;
 		}
 
 		// Find the editor element (.markdown-source-view)
 		const editorEl = container.querySelector(".markdown-source-view") as HTMLElement;
 		if (!editorEl) {
-			await this.injectCustomView(container, file, template, viewConfig, sourceContent);
+			this.restoreEditableView(view);
+			await this.injectCustomView(container, file, template, viewConfig, sourceContent, signal);
 			return;
 		}
 
-		// Create the overlay element
-		let customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`) as HTMLElement;
-		if (!customEl) {
-			customEl = activeDocument.createElement("div");
-			customEl.addClass(CUSTOM_VIEW_CLASS);
-			container.appendChild(customEl);
-
-			// Wire up link clicks/context menus for the template chrome. Events
-			// originating inside the reparented CM6 editor are skipped so the
-			// editor keeps handling its own links.
-			this.registerOverlayLinkHandlers(customEl, file.path, ".markdown-source-view");
-		}
+		// Keep the editor in place while preparing the next shell. Restoring and
+		// reconfiguring CM6 twice per navigation forces extra layout and parsing.
+		const previousOverlay = container.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
+		const previousState = this.editableStates.get(container);
+		const customEl = container.ownerDocument.createElement("div");
+		customEl.addClass(CUSTOM_VIEW_CLASS);
+		customEl.addClass(PENDING_VIEW_CLASS);
+		container.appendChild(customEl);
+		this.registerOverlayLinkHandlers(customEl, file.path);
+		const cancel = () => customEl.remove();
+		signal?.addEventListener("abort", cancel, { once: true });
 
 		// Assign a unique scope ID for CSS isolation
 		let scopeId = container.getAttribute("data-cv-id");
@@ -684,33 +731,49 @@ export default class CustomViewsPlugin extends Plugin {
 				this.settings.allowJavaScript,
 				sourceContent,
 				this.basesProvider,
+				signal,
 			);
+		} catch (error) {
+			customEl.remove();
+			throw error;
 		} finally {
-			customEl.removeClass(PENDING_VIEW_CLASS);
+			signal?.removeEventListener("abort", cancel);
+		}
+		if (view.file !== file || this.unloaded || signal?.aborted) {
+			customEl.remove();
+			return;
 		}
 
 		// Find the content placeholder
 		const placeholder = customEl.querySelector(`[${EDITABLE_PLACEHOLDER_ATTR}]`) as HTMLElement;
 		if (!placeholder) {
 			// Template has no content placeholder? Fall back to read-only.
+			this.restoreEditableView(view);
+			previousOverlay?.remove();
+			customEl.removeClass(PENDING_VIEW_CLASS);
 			container.addClass(HIDE_MARKDOWN_CLASS);
 			return;
 		}
 
 		// Save state for restoration
-		const originalParent = editorEl.parentElement!;
-		const originalNextSibling = editorEl.nextSibling;
+		const originalParent = previousState?.originalParent ?? editorEl.parentElement!;
+		const originalNextSibling = previousState ? previousState.originalNextSibling : editorEl.nextSibling;
 
 		// Get or create a compartment for this editor (reused across navigations)
 		const compartment = this.getOrCreateCompartment(cmView);
 
 		// Configure with our extensions
-		cmView.dispatch({
-			effects: compartment.reconfigure(createEditableContentExtensions())
-		});
+		if (!previousState || previousState.cmView !== cmView) {
+			cmView.dispatch({
+				effects: compartment.reconfigure(createEditableContentExtensions())
+			});
+		}
 
 		// Reparent the editor into the placeholder
 		placeholder.appendChild(editorEl);
+		previousOverlay?.remove();
+		customEl.removeClass(PENDING_VIEW_CLASS);
+		container.removeClass(HIDE_MARKDOWN_CLASS);
 
 		// Tell CM6 to recalculate its layout in the new position
 		cmView.requestMeasure();
@@ -796,7 +859,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 	async loadSettings() {
 		const loadedData = await this.loadData() as Partial<CustomViewsSettings> | null;
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+		this.settings = Object.assign(structuredClone(DEFAULT_SETTINGS), loadedData);
 	}
 
 	async saveSettings() {
@@ -860,13 +923,12 @@ export default class CustomViewsPlugin extends Plugin {
 		let matchedConfig: ViewConfig | null = null;
 
 		for (const viewConfig of this.settings.views) {
-			const isMatch = checkRules(this.app, viewConfig.rules, file, cache?.frontmatter);
+			const isMatch = this.nativeRules.matches(viewConfig, file, cache?.frontmatter);
 			if (isMatch) {
 				matchedConfig = viewConfig;
 				break;
 			}
 		}
-
 		if (!matchedConfig) {
 			this.restoreCanvasNode(node);
 			return;

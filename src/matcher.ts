@@ -1,3 +1,4 @@
+import { localDateKey } from "./matcher-dates";
 import { App, TFile, FrontMatterCache } from "obsidian";
 import { FilterGroup, Filter } from "./types";
 
@@ -222,56 +223,34 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 
 	if (targetValue === undefined || targetValue === null) targetValue = "";
 
-	// Special handling for date operators on file.ctime and file.mtime
-	const dateOperators = ["on", "not on", "before", "on or before", "after", "on or after", "is empty", "is not empty"];
-	if ((filter.field === "file.ctime" || filter.field === "file.mtime") &&
-		dateOperators.includes(filter.operator) &&
-		typeof targetValue === "number") {
-
-		// Handle empty checks
-		if (filter.operator === "is empty") {
-			return !targetValue || targetValue === 0;
-		}
-		if (filter.operator === "is not empty") {
-			return !!targetValue && targetValue !== 0;
-		}
-
-		// Filter value is a date string (YYYY-MM-DD), but may have time component
-		// Truncate to just the date part if it's a datetime string
-		const filterDateStr = (filter.value || "").toString().split('T')[0];
-
-		if (!filterDateStr || filterDateStr.length === 0) {
-			// Empty filter value - can't compare
-			return false;
-		}
-
-		// Convert timestamp to date string (YYYY-MM-DD)
-		const targetDate = new Date(targetValue);
-		const targetDateStr = targetDate.toISOString().split('T')[0];
-
-		// Compare dates
-		const targetDateObj = new Date(targetDateStr);
-		const filterDateObj = new Date(filterDateStr);
-
-		// Normalize to midnight for accurate date comparison
-		targetDateObj.setHours(0, 0, 0, 0);
-		filterDateObj.setHours(0, 0, 0, 0);
-
+	if (["on", "not on", "before", "on or before", "after", "on or after"].includes(filter.operator)) {
+		const left = localDateKey(targetValue);
+		const right = localDateKey(filter.value);
+		if (left === null || right === null) return false;
 		switch (filter.operator) {
-			case "on":
-				return targetDateObj.getTime() === filterDateObj.getTime();
-			case "not on":
-				return targetDateObj.getTime() !== filterDateObj.getTime();
-			case "before":
-				return targetDateObj.getTime() < filterDateObj.getTime();
-			case "on or before":
-				return targetDateObj.getTime() <= filterDateObj.getTime();
-			case "after":
-				return targetDateObj.getTime() > filterDateObj.getTime();
-			case "on or after":
-				return targetDateObj.getTime() >= filterDateObj.getTime();
-			default:
-				return false;
+			case "on": return left === right;
+			case "not on": return left !== right;
+			case "before": return left < right;
+			case "on or before": return left <= right;
+			case "after": return left > right;
+			case "on or after": return left >= right;
+		}
+	}
+
+	// Numeric controls save comparison symbols, not text equality operators.
+	if (["=", "≠", "<", "≤", ">", "≥"].includes(filter.operator)) {
+		const rhs = String(filter.value ?? "").trim();
+		if (targetValue === "" || typeof targetValue === "boolean" || Array.isArray(targetValue) || !rhs) return false;
+		const left = Number(targetValue);
+		const right = Number(rhs);
+		if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+		switch (filter.operator) {
+			case "=": return left === right;
+			case "≠": return left !== right;
+			case "<": return left < right;
+			case "≤": return left <= right;
+			case ">": return left > right;
+			case "≥": return left >= right;
 		}
 	}
 
@@ -335,9 +314,9 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 		const targetScalar = targetValue;
 		switch (filter.operator) {
 			case "is empty":
-				return !targetScalar;
+				return targetScalar === "";
 			case "is not empty":
-				return !!targetScalar;
+				return targetScalar !== "";
 			case "is":
 			case "is not": {
 				const match = String(targetScalar) === filterValue;

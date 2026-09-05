@@ -1,0 +1,89 @@
+{
+  "done": true,
+  "rows": [
+    {
+      "round": 0,
+      "path": "Movies/Interstellar.md",
+      "opened": 42.5,
+      "rendered": 108,
+      "palette": 108
+    },
+    {
+      "round": 0,
+      "path": "Movies/Monster.md",
+      "opened": 19.400000035762787,
+      "rendered": 82.90000003576279,
+      "palette": 82.90000003576279
+    },
+    {
+      "round": 0,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 17.30000001192093,
+      "rendered": 78.5,
+      "palette": 78.5
+    },
+    {
+      "round": 0,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 22.099999964237213,
+      "rendered": 62.30000001192093,
+      "palette": 62.30000001192093
+    },
+    {
+      "round": 1,
+      "path": "Movies/Interstellar.md",
+      "opened": 38.60000002384186,
+      "rendered": 45.5,
+      "palette": 45.5
+    },
+    {
+      "round": 1,
+      "path": "Movies/Monster.md",
+      "opened": 27.5,
+      "rendered": 31.69999998807907,
+      "palette": 31.69999998807907
+    },
+    {
+      "round": 1,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 20.100000023841858,
+      "rendered": 25.100000023841858,
+      "palette": 25.100000023841858
+    },
+    {
+      "round": 1,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 30.30000001192093,
+      "rendered": 35.19999998807907,
+      "palette": 35.19999998807907
+    },
+    {
+      "round": 2,
+      "path": "Movies/Interstellar.md",
+      "opened": 32.89999997615814,
+      "rendered": 38.39999997615814,
+      "palette": 38.39999997615814
+    },
+    {
+      "round": 2,
+      "path": "Movies/Monster.md",
+      "opened": 18.100000023841858,
+      "rendered": 22.30000001192093,
+      "palette": 22.30000001192093
+    },
+    {
+      "round": 2,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 17.69999998807907,
+      "rendered": 22.599999964237213,
+      "palette": 22.599999964237213
+    },
+    {
+      "round": 2,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 32.59999996423721,
+      "rendered": 38.30000001192093,
+      "palette": 38.30000001192093
+    }
+  ]
+}

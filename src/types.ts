@@ -1,4 +1,7 @@
+import type { BasesFilter } from "./native-filters/api";
+
 export type FilterOperator =
+	| "=" | "≠" | "<" | "≤" | ">" | "≥"
 	| "contains" | "does not contain"
 	| "contains any of" | "does not contain any of"
 	| "contains all of" | "does not contain all of"
@@ -33,6 +36,8 @@ export interface ViewConfig {
 	id: string;
 	name: string;
 	rules: FilterGroup;
+	/** Native Bases filters. Undefined keeps legacy rule evaluation; null matches every note. */
+	basesFilters?: BasesFilter | null;
 	template: string;
 	/** Optional CSS for the view (injected via <style> tag) */
 	css?: string;

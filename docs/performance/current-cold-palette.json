@@ -1,0 +1,102 @@
+{
+  "done": true,
+  "error": null,
+  "rows": [
+    {
+      "round": 0,
+      "path": "Movies/Interstellar.md",
+      "opened": 40.90000003576279,
+      "rendered": 58.60000002384186,
+      "palette": 116,
+      "paletteAtFirstPaint": false
+    },
+    {
+      "round": 0,
+      "path": "Movies/Monster.md",
+      "opened": 27.700000047683716,
+      "rendered": 35.60000002384186,
+      "palette": 73.40000003576279,
+      "paletteAtFirstPaint": false
+    },
+    {
+      "round": 0,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 20.600000023841858,
+      "rendered": 28.19999998807907,
+      "palette": 87.69999998807907,
+      "paletteAtFirstPaint": false
+    },
+    {
+      "round": 0,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 20,
+      "rendered": 108.09999996423721,
+      "palette": 108.09999996423721,
+      "paletteAtFirstPaint": true
+    },
+    {
+      "round": 1,
+      "path": "Movies/Interstellar.md",
+      "opened": 33.5,
+      "rendered": 45.69999998807907,
+      "palette": 45.69999998807907,
+      "paletteAtFirstPaint": true
+    },
+    {
+      "round": 1,
+      "path": "Movies/Monster.md",
+      "opened": 15.900000035762787,
+      "rendered": 23.80000001192093,
+      "palette": 23.80000001192093,
+      "paletteAtFirstPaint": true
+    },
+    {
+      "round": 1,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 21.900000035762787,
+      "rendered": 29.5,
+      "palette": 29.5,
+      "paletteAtFirstPaint": true
+    },
+    {
+      "round": 1,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 25.100000023841858,
+      "rendered": 33.700000047683716,
+      "palette": 33.700000047683716,
+      "paletteAtFirstPaint": true
+    },
+    {
+      "round": 2,
+      "path": "Movies/Interstellar.md",
+      "opened": 36.59999996423721,
+      "rendered": 48.19999998807907,
+      "palette": 48.19999998807907,
+      "paletteAtFirstPaint": true
+    },
+    {
+      "round": 2,
+      "path": "Movies/Monster.md",
+      "opened": 17.5,
+      "rendered": 24.600000023841858,
+      "palette": 24.600000023841858,
+      "paletteAtFirstPaint": true
+    },
+    {
+      "round": 2,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 19.399999976158142,
+      "rendered": 27,
+      "palette": 27,
+      "paletteAtFirstPaint": true
+    },
+    {
+      "round": 2,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 20.80000001192093,
+      "rendered": 29,
+      "palette": 29,
+      "paletteAtFirstPaint": true
+    }
+  ]
+}

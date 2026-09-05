@@ -15,7 +15,7 @@
  *   - Date operators on file.ctime / file.mtime
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { checkRules } from "../matcher";
 import type { FilterGroup, Filter } from "../types";
 
@@ -1484,5 +1484,63 @@ describe("cross-vault: 'file links to Science Fiction'", () => {
 		});
 		const file = mockFile({ basename: "Science Fiction", path: "Science Fiction.md", parent: { path: "" } });
 		expect(checkRules(app, linkToSFFilter, file)).toBe(false);
+	});
+});
+
+
+describe("numeric comparison controls", () => {
+	it.each([
+		["=", "3", true], ["=", "4", false], ["≠", "3", false], ["≠", "4", true],
+		["<", "4", true], ["<", "3", false], ["≤", "3", true], ["≤", "2", false],
+		[">", "2", true], [">", "3", false], ["≥", "3", true], ["≥", "4", false],
+	] as const)("evaluates 3 %s %s", (operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter("rating", operator, value)), mockFile(), { rating: 3 })).toBe(expected);
+	});
+	it("supports file size and zero", () => {
+		expect(checkRules(mockApp(), andGroup(filter("file.size", ">", "0")), mockFile())).toBe(true);
+		expect(checkRules(mockApp(), andGroup(filter("rating", "=", "0")), mockFile(), { rating: 0 })).toBe(true);
+	});
+	it.each([undefined, "", "banana", false, []])("does not coerce invalid property %s to zero", rating => {
+		expect(checkRules(mockApp(), andGroup(filter("rating", "=", "0")), mockFile(), { rating })).toBe(false);
+	});
+	it.each(["", "Infinity", "3foo"])("rejects invalid numeric input %s", value => {
+		expect(checkRules(mockApp(), andGroup(filter("rating", "≠", value)), mockFile(), { rating: 3 })).toBe(false);
+	});
+});
+
+
+describe("empty property checks", () => {
+	it.each([0, false])("treats %s as a populated value", value => {
+		expect(checkRules(mockApp(), andGroup(filter("value", "is empty")), mockFile(), { value })).toBe(false);
+		expect(checkRules(mockApp(), andGroup(filter("value", "is not empty")), mockFile(), { value })).toBe(true);
+	});
+	it.each([null, undefined, "", []])("treats missing or empty value %s as empty", value => {
+		expect(checkRules(mockApp(), andGroup(filter("value", "is empty")), mockFile(), { value })).toBe(true);
+		expect(checkRules(mockApp(), andGroup(filter("value", "is not empty")), mockFile(), { value })).toBe(false);
+	});
+});
+
+
+describe("calendar date filtering", () => {
+	it.each([
+		["on", "2024-06-15", true], ["not on", "2024-06-15", false],
+		["before", "2024-06-16", true], ["on or before", "2024-06-15", true],
+		["after", "2024-06-14", true], ["on or after", "2024-06-15", true],
+	] as const)("supports note dates: %s %s", (operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter("published", operator, value)), mockFile(), { published: "2024-06-15" })).toBe(expected);
+	});
+	it.each(["2024-02-30", "not a date", "", undefined])("rejects invalid dates even with negative comparisons: %s", published => {
+		expect(checkRules(mockApp(), andGroup(filter("published", "not on", "2024-06-15")), mockFile(), { published })).toBe(false);
+	});
+	it("uses the local day at the UTC boundary", () => {
+		vi.stubEnv("TZ", "Asia/Kolkata");
+		try {
+			const timestamp = new Date(2024, 5, 15, 0, 30).getTime();
+			const file = mockFile({ stat: { ctime: timestamp, mtime: timestamp, size: 0 } });
+			expect(checkRules(mockApp(), andGroup(filter("file.ctime", "on", "2024-06-15")), file)).toBe(true);
+		} finally { vi.unstubAllEnvs(); }
+	});
+	it("accepts the Unix epoch as a populated timestamp", () => {
+		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "is not empty")), mockFile())).toBe(true);
 	});
 });

@@ -371,10 +371,13 @@ export async function renderTemplate(
 	allowJavaScript: boolean = true,
 	sourceContent?: string,
 	basesProvider?: BasesDataProvider,
+	signal?: AbortSignal,
 ) {
+	signal?.throwIfAborted();
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
 	const rawContent = sourceContent ?? await readCachedSourceContent(app, file);
+	signal?.throwIfAborted();
 	const renderTemplateContent = stripTemplateBaseBlocks(template);
 
 	const bodyContent = stripFrontmatter(cache, rawContent);
@@ -390,6 +393,7 @@ export async function renderTemplate(
 		component,
 	);
 
+	signal?.throwIfAborted();
 	const markdownQueue: { id: string, content: string }[] = [];
 	const contentPlaceholderId = `custom-view-content-${Date.now()}`;
 
@@ -451,12 +455,16 @@ export async function renderTemplate(
 		}
 	}
 
+	signal?.throwIfAborted();
 	const filledTemplate = applyReplacements(processedTemplate, matches, resolvedValues);
 
 	// Use DOMParser to safely parse HTML instead of innerHTML
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(filledTemplate, 'text/html');
 	const tempContainer = doc.body;
+	// DOMParser treats leading styles/scripts as document head content even
+	// when the user supplied an HTML fragment. Keep them in the rendered view.
+	tempContainer.prepend(...Array.from(doc.head.querySelectorAll("style, script")));
 
 	// Disconnect any previous CSS-scoping MutationObserver from a prior render
 	const scoped = container as ScopedContainer;
@@ -470,7 +478,8 @@ export async function renderTemplate(
 		container.appendChild(tempContainer.firstChild);
 	}
 
-	for (const item of markdownQueue) {
+	// Independent placeholders must not wait on one another's async renderers.
+	await Promise.all(markdownQueue.map(async (item) => {
 		const span = container.querySelector(`#${item.id}`) as HTMLElement;
 		if (span) {
 			await MarkdownRenderer.render(app, item.content, span, file.path, component);
@@ -478,8 +487,9 @@ export async function renderTemplate(
 
 			unwrapSingleParagraph(span);
 		}
-	}
+	}));
 
+	signal?.throwIfAborted();
 	applyNativeInternalLinkState(app, container, file.path);
 
 	const contentEl = container.querySelector(`#${contentPlaceholderId}`) as HTMLElement;
@@ -499,6 +509,7 @@ export async function renderTemplate(
 		}
 	}
 
+	signal?.throwIfAborted();
 	// Inject CSS from the separate CSS field (with template resolution)
 	if (viewConfig?.css) {
 		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases);
@@ -509,6 +520,7 @@ export async function renderTemplate(
 		}
 	}
 
+	signal?.throwIfAborted();
 	if (allowJavaScript) {
 		const scripts = Array.from(container.querySelectorAll("script"));
 		const hasExecutableInlineScripts = scripts.some(hasExecutableInlineScriptCode);
@@ -520,7 +532,9 @@ export async function renderTemplate(
 		if (hasExecutableInlineScripts || viewJs) {
 			const scriptContext = createScriptContext(app, file, container, frontmatter, bodyContent, viewConfig);
 
-			await executeScripts(scripts, scriptContext);
+			signal?.throwIfAborted();
+			await executeScripts(scripts, scriptContext, signal);
+			signal?.throwIfAborted();
 
 			if (viewJs) {
 				try {
@@ -536,6 +550,7 @@ export async function renderTemplate(
 		}
 	}
 
+	signal?.throwIfAborted();
 	// Scope all <style> elements inside the container so CSS doesn't leak
 	// between tabs.  The parent container has data-cv-id="<scopeId>", and
 	// this element (customEl) is a child of it.  Wrapping each stylesheet's
@@ -548,6 +563,11 @@ export async function renderTemplate(
 		// an image loads) so they get scoped too.
 		const observer = new MutationObserver((mutations) => {
 			for (const m of mutations) {
+				const target = m.target.nodeType === Node.ELEMENT_NODE ? m.target as Element : m.target.parentElement;
+				if (target?.closest("style")) {
+					scopeStyleElements(container, scopeId);
+					return;
+				}
 				for (const node of Array.from(m.addedNodes)) {
 					if (node.nodeType !== Node.ELEMENT_NODE) continue;
 					const el = node as HTMLElement;
@@ -558,7 +578,7 @@ export async function renderTemplate(
 				}
 			}
 		});
-		observer.observe(container, { childList: true, subtree: true });
+		observer.observe(container, { childList: true, subtree: true, characterData: true });
 
 		// Store the observer so it can be disconnected on re-render
 		// (the container is cleared at the top of renderTemplate, which
@@ -592,12 +612,16 @@ function createScriptContext(
  * Wrap all unscoped <style> elements inside a container with a CSS nesting
  * selector that restricts rules to a specific data-cv-id scope.
  */
+const scopedStyleContents = new WeakMap<HTMLStyleElement, string>();
+
 function scopeStyleElements(container: HTMLElement, scopeId: string) {
 	const styles = container.querySelectorAll("style");
 	for (const style of Array.from(styles)) {
 		const raw = style.textContent;
-		if (raw && !style.hasAttribute("data-cv-scoped")) {
-			style.textContent = `[data-cv-id="${scopeId}"] {\n${raw}\n}`;
+		if (raw && raw !== scopedStyleContents.get(style)) {
+			const scoped = `[data-cv-id="${scopeId}"] {\n${raw}\n}`;
+			scopedStyleContents.set(style, scoped);
+			style.textContent = scoped;
 			style.setAttribute("data-cv-scoped", "true");
 		}
 	}
@@ -1022,8 +1046,10 @@ function mayContainBaseSources(templateContent: string, sourceContent: string): 
 async function executeScripts(
 	scripts: HTMLScriptElement[],
 	scriptContext: CustomViewScriptContext,
+	signal?: AbortSignal,
 ): Promise<void> {
 	for (const script of scripts) {
+		signal?.throwIfAborted();
 		// Silently drop src-based scripts — external code must never be loaded.
 		if (!script.src) {
 			const code = script.textContent?.trim();

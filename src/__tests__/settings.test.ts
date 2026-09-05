@@ -3,12 +3,12 @@
  *
  * Covers:
  *   - DEFAULT_SETTINGS shape and values
- *   - FilterBuilder.inferType — the function that guesses the property type
+ *   - inferTemplatePropertyType — the function that guesses the property type
  *     from a frontmatter value
  */
 
-import { describe, it, expect } from "vitest";
-import { DEFAULT_SETTINGS } from "../settings";
+import { describe, it, expect, vi } from "vitest";
+import { DEFAULT_SETTINGS, CustomViewsSettingTab } from "../settings";
 
 // ---------------------------------------------------------------------------
 // DEFAULT_SETTINGS
@@ -68,41 +68,15 @@ describe("DEFAULT_SETTINGS", () => {
 });
 
 // ---------------------------------------------------------------------------
-// FilterBuilder.inferType
+// inferTemplatePropertyType
 //
-// FilterBuilder requires a real Plugin instance in its constructor because it
-// calls this.plugin.app.vault.getMarkdownFiles(). We provide a minimal stub.
+// Template completion still infers types when Obsidian has no assigned type.
 // ---------------------------------------------------------------------------
 
-import { FilterBuilder } from "../settings";
-import type CustomViewsPlugin from "../main";
+import { inferTemplatePropertyType as inferType } from "../template-properties";
+import CustomViewsPlugin from "../main";
 
-// Minimal plugin stub that satisfies what FilterBuilder's constructor needs.
-function makeStubPlugin() {
-	return {
-		app: {
-			vault: {
-				getMarkdownFiles: () => [],
-			},
-			metadataCache: {
-				getFileCache: () => null,
-			},
-		},
-	} as unknown as CustomViewsPlugin;
-}
-
-// Helper: create a FilterBuilder and call inferType
-function inferType(val: unknown) {
-	const fb = new FilterBuilder(
-		makeStubPlugin(),
-		{ type: "group", operator: "AND", conditions: [] },
-		() => { },
-		() => { }
-	);
-	return fb.inferType(val);
-}
-
-describe("FilterBuilder.inferType", () => {
+describe("inferTemplatePropertyType", () => {
 	it("returns 'unknown' for null", () => expect(inferType(null)).toBe("unknown"));
 	it("returns 'unknown' for undefined", () => expect(inferType(undefined)).toBe("unknown"));
 
@@ -179,5 +153,69 @@ describe("ViewConfig optional fields", () => {
 			showProperties: false,
 		};
 		expect(view.showProperties).toBe(false);
+	});
+});
+
+
+describe("view priority changes", () => {
+	function setup() {
+		const views = ["first", "second", "third"].map(id => ({ ...DEFAULT_SETTINGS.views[0], id }));
+		const plugin = { settings: { views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
+		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
+		return { plugin, reorder: (from: number, to: number) => (tab as unknown as { reorderViews(a: number, b: number): Promise<void> }).reorderViews(from, to) };
+	}
+	it("immediately reapplies first-match priority to open notes after saving", async () => {
+		const { plugin, reorder } = setup();
+		await reorder(1, 0);
+		expect(plugin.settings.views.map(v => v.id)).toEqual(["second", "first", "third"]);
+		expect(plugin.saveSettings).toHaveBeenCalledOnce();
+		expect(plugin.refreshAllViews).toHaveBeenCalledOnce();
+	});
+	it.each([[0, -1], [2, 3], [-1, 0], [3, 0], [0, 0], [0.5, 1]])("ignores invalid or unchanged moves %s → %s", async (from, to) => {
+		const { plugin, reorder } = setup();
+		await reorder(from, to);
+		expect(plugin.settings.views.map(v => v.id)).toEqual(["first", "second", "third"]);
+		expect(plugin.saveSettings).not.toHaveBeenCalled();
+		expect(plugin.refreshAllViews).not.toHaveBeenCalled();
+	});
+});
+
+
+describe("stable settings row identity", () => {
+	it("uses unique IDs for views created in the same millisecond", () => {
+		const now = vi.spyOn(Date, "now").mockReturnValue(1234);
+		try {
+			const tab = new CustomViewsSettingTab({} as import("obsidian").App, {} as CustomViewsPlugin);
+			const create = () => (tab as unknown as { createNewView(): ViewConfig }).createNewView();
+			expect(create().id).not.toBe(create().id);
+		} finally { now.mockRestore(); }
+	});
+	it("keeps duplicate view names distinct when settings are reconciled", () => {
+		const plugin = { settings: { ...DEFAULT_SETTINGS, views: [
+			{ ...DEFAULT_SETTINGS.views[0], id: "one", name: "New View" },
+			{ ...DEFAULT_SETTINGS.views[0], id: "two", name: "New View" },
+		] } } as CustomViewsPlugin;
+		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin);
+		const definition = tab.getSettingDefinitions().find(item => "type" in item && item.type === "list") as unknown as { items: { id: string; name: string }[] };
+		expect(definition.items.map(item => item.id)).toEqual(["one", "two"]);
+		expect(definition.items.map(item => item.name)).toEqual(["New View", "New View"]);
+	});
+});
+
+
+describe("fresh settings defaults", () => {
+	it("does not share mutable default views between plugin loads", async () => {
+		const create = async () => {
+			const plugin = new CustomViewsPlugin({} as import("obsidian").App, {} as import("obsidian").PluginManifest);
+			Object.assign(plugin, { loadData: async () => null });
+			await plugin.loadSettings(); return plugin;
+		};
+		const first = await create();
+		first.settings.views[0].name = "Changed";
+		first.settings.views[0].rules.conditions.push({ type: "filter", field: "status", operator: "is", value: "done" });
+		const second = await create();
+		expect(second.settings.views[0].name).toBe("View 1");
+		expect(second.settings.views[0].rules.conditions).toEqual([]);
+		expect(DEFAULT_SETTINGS.views[0].name).toBe("View 1");
 	});
 });

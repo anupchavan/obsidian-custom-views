@@ -1,0 +1,89 @@
+{
+  "done": true,
+  "rows": [
+    {
+      "round": 0,
+      "path": "Movies/Interstellar.md",
+      "opened": 37.39999997615814,
+      "rendered": 47,
+      "palette": 121.39999997615814
+    },
+    {
+      "round": 0,
+      "path": "Movies/Monster.md",
+      "opened": 26.100000023841858,
+      "rendered": 33.10000002384186,
+      "palette": 93.60000002384186
+    },
+    {
+      "round": 0,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 15,
+      "rendered": 21.799999952316284,
+      "palette": 94.19999998807907
+    },
+    {
+      "round": 0,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 25.5,
+      "rendered": 28.19999998807907,
+      "palette": 28.19999998807907
+    },
+    {
+      "round": 1,
+      "path": "Movies/Interstellar.md",
+      "opened": 35.200000047683716,
+      "rendered": 38.90000003576279,
+      "palette": 38.90000003576279
+    },
+    {
+      "round": 1,
+      "path": "Movies/Monster.md",
+      "opened": 28.399999976158142,
+      "rendered": 29.899999976158142,
+      "palette": 30
+    },
+    {
+      "round": 1,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 21.099999964237213,
+      "rendered": 23.69999998807907,
+      "palette": 23.69999998807907
+    },
+    {
+      "round": 1,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 23.19999998807907,
+      "rendered": 26.099999964237213,
+      "palette": 26.099999964237213
+    },
+    {
+      "round": 2,
+      "path": "Movies/Interstellar.md",
+      "opened": 32.700000047683716,
+      "rendered": 36.200000047683716,
+      "palette": 36.200000047683716
+    },
+    {
+      "round": 2,
+      "path": "Movies/Monster.md",
+      "opened": 29.100000023841858,
+      "rendered": 30.600000023841858,
+      "palette": 30.700000047683716
+    },
+    {
+      "round": 2,
+      "path": "Movies/Oppenheimer.md",
+      "opened": 22.600000023841858,
+      "rendered": 25,
+      "palette": 25
+    },
+    {
+      "round": 2,
+      "path": "Movies/The Amazing Spider-Man 2.md",
+      "opened": 28.69999998807907,
+      "rendered": 31.5,
+      "palette": 31.5
+    }
+  ]
+}
