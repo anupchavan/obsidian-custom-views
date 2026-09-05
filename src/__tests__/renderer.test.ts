@@ -18,6 +18,7 @@ import {
 	parsePropertyPath,
 	extractWikiLink,
 	renderTemplate,
+	getTemplateDependencies,
 } from "../renderer";
 import { Component, MarkdownRenderer, TFile } from "obsidian";
 import type { App } from "obsidian";
@@ -986,4 +987,29 @@ it("stops remaining inline scripts when navigation aborts during script executio
 	const container = window.document.createElement("div");
 	await expect(renderTemplate(app, '<script>tp.app.cancel();</script><script>this.dataset.stale = "yes";</script>', new TFile(), container, new Component(), false, undefined, undefined, true, undefined, undefined, controller.signal)).rejects.toThrow();
 	expect(cancel).toHaveBeenCalledOnce(); expect(container.dataset.stale).toBeUndefined();
+});
+
+
+describe("template file dependencies", () => {
+	it.each([
+		'<article data-name="{{person.title}}"></article>',
+		`<article data-name='{{file("Person").properties.title}}'></article>`,
+		'{% if file("Person").properties.title %}<article>Exists</article>{% endif %}',
+	])("tracks referenced files in %s and clears old dependencies on rerender", async template => {
+		const file = new TFile(); file.path = "Movie.md";
+		const linked = new TFile(); linked.path = "Person.md";
+		const app = {
+			metadataCache: {
+				getFileCache: (target: TFile) => ({ frontmatter: target === file ? { person: "[[Person]]" } : { title: "Actor" } }),
+				getFirstLinkpathDest: () => linked,
+			},
+			vault: { cachedRead: async () => "Linked body" },
+		} as unknown as App;
+		const container = window.document.createElement("div");
+		const component = new Component();
+		await renderTemplate(app, template, file, container, component, false, undefined, undefined, false, "Body");
+		expect(getTemplateDependencies(container)?.has(linked)).toBe(true);
+		await renderTemplate(app, "<article>Independent</article>", file, container, component, false, undefined, undefined, false, "Body");
+		expect(getTemplateDependencies(container)?.size).toBe(0);
+	});
 });

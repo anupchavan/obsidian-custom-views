@@ -4,12 +4,13 @@ import { EditorState } from "@codemirror/state";
 import { App, MarkdownView, TFile, type PluginManifest, type WorkspaceLeaf } from "obsidian";
 import CustomViewsPlugin from "../main";
 import { DEFAULT_SETTINGS } from "../settings";
-import { renderTemplate, EDITABLE_PLACEHOLDER_ATTR } from "../renderer";
+import { getTemplateDependencies, renderTemplate, EDITABLE_PLACEHOLDER_ATTR } from "../renderer";
 import type { ViewConfig } from "../types";
 
 vi.mock("../renderer", async (original) => ({
 	...await original<typeof import("../renderer")>(),
 	renderTemplate: vi.fn(),
+	getTemplateDependencies: vi.fn(),
 }));
 
 const editors: EditorView[] = [];
@@ -86,6 +87,25 @@ describe("editable note navigation", () => {
 });
 
 describe("open note changes", () => {
+	it("refreshes a view when a linked note used by its template changes", async () => {
+		const s = setup(); await s.methods._processLeaf(s.view, s.file);
+		const linked = new TFile(); linked.path = "People/Actor.md";
+		vi.mocked(getTemplateDependencies).mockReturnValue(new Set([linked]));
+		vi.mocked(renderTemplate).mockClear(); vi.useFakeTimers();
+		s.methods.queueNoteRefresh(linked);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(renderTemplate).toHaveBeenCalledOnce();
+		expect(vi.mocked(renderTemplate).mock.calls[0]?.[2]).toBe(s.file);
+		expect(s.container.querySelectorAll(".cm-editor")).toHaveLength(1);
+	});
+	it("does not refresh a view for an unrelated note change", async () => {
+		const s = setup(); await s.methods._processLeaf(s.view, s.file);
+		vi.mocked(getTemplateDependencies).mockReturnValue(new Set());
+		vi.mocked(renderTemplate).mockClear(); vi.useFakeTimers();
+		s.methods.queueNoteRefresh(new TFile());
+		await vi.advanceTimersByTimeAsync(150);
+		expect(renderTemplate).not.toHaveBeenCalled();
+	});
 	it("refreshes changed properties without navigating away", async () => {
 		const s = setup(); await s.methods._processLeaf(s.view, s.file);
 		vi.mocked(renderTemplate).mockClear(); vi.useFakeTimers();

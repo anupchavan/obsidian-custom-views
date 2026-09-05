@@ -84,6 +84,7 @@ export interface ExprContext {
 	variables: Record<string, ExprValue>;
 	bases?: ExprValueArray;
 	deferredMarkdown?: DeferredMarkdownStore;
+	dependencies?: Set<TFile>;
 }
 
 export interface DeferredMarkdownStore {
@@ -696,8 +697,10 @@ function extractLinkTarget(value: string): string | null {
 }
 
 /** Resolve a TFile from a link target or filename */
-async function resolveToFile(app: App, target: string, sourcePath: string): Promise<TFile | null> {
-	return app.metadataCache.getFirstLinkpathDest(target, sourcePath);
+async function resolveToFile(app: App, target: string, sourcePath: string, dependencies?: Set<TFile>): Promise<TFile | null> {
+	const file = app.metadataCache.getFirstLinkpathDest(target, sourcePath);
+	if (file) dependencies?.add(file);
+	return file;
 }
 
 /** Build an ExprFile wrapper from a TFile */
@@ -772,7 +775,7 @@ const globalFunctions: Record<string, GlobalFn> = {
 
 	file: async (ctx: ExprContext, args: ExprValue[]): Promise<ExprValue> => {
 		const target = exprToString(args[0]);
-		const tfile = await resolveToFile(ctx.app, target, ctx.file.path);
+		const tfile = await resolveToFile(ctx.app, target, ctx.file.path, ctx.dependencies);
 		if (!tfile) return null;
 		return buildExprFile(ctx.app, tfile);
 	},
@@ -1153,7 +1156,7 @@ const dateMethods: Record<string, MethodFn> = {
 const linkMethods: Record<string, MethodFn> = {
 	asFile: async (ctx, obj) => {
 		if (!isExprLink(obj)) return null;
-		const tfile = await resolveToFile(ctx.app, obj.target, ctx.file.path);
+		const tfile = await resolveToFile(ctx.app, obj.target, ctx.file.path, ctx.dependencies);
 		if (!tfile) return null;
 		return buildExprFile(ctx.app, tfile);
 	},
@@ -1161,7 +1164,7 @@ const linkMethods: Record<string, MethodFn> = {
 		if (!isExprLink(obj)) return false;
 		const target = exprToString(args[0]);
 		// Resolve the link's file and check its links
-		const tfile = await resolveToFile(ctx.app, obj.target, ctx.file.path);
+		const tfile = await resolveToFile(ctx.app, obj.target, ctx.file.path, ctx.dependencies);
 		if (!tfile) return false;
 		const cache = ctx.app.metadataCache.getFileCache(tfile);
 		const links = cache?.links?.map(l => l.link) ?? [];
@@ -1427,7 +1430,7 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 				// Maybe it's a wiki-link value and the property is on the linked file
 				const linkTarget = extractLinkTarget(obj);
 				if (linkTarget) {
-					const tfile = await resolveToFile(ctx.app, linkTarget, ctx.file.path);
+					const tfile = await resolveToFile(ctx.app, linkTarget, ctx.file.path, ctx.dependencies);
 					if (tfile) {
 						const exprFile = await buildExprFile(ctx.app, tfile);
 						return getProperty(exprFile, node.property);

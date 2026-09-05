@@ -7,7 +7,7 @@ import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { CustomViewsSettings, DEFAULT_SETTINGS, CustomViewsSettingTab } from "./settings";
 import { NativeRuleEngine } from "./native-filters/engine";
-import { renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR } from "./renderer";
+import { getTemplateDependencies, renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR } from "./renderer";
 import { createEditableContentExtensions } from "./editable-content";
 import { warmCustomViewScriptEngine } from "./script-engine";
 import type { ViewConfig } from "./types";
@@ -134,16 +134,20 @@ export default class CustomViewsPlugin extends Plugin {
 			if (this.unloaded) return;
 			const metadata = JSON.stringify(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {});
 			this.app.workspace.iterateAllLeaves(leaf => {
-				if (!(leaf.view instanceof MarkdownView) || leaf.view.file !== file) return;
+				if (!(leaf.view instanceof MarkdownView) || !leaf.view.file) return;
 				const view = leaf.view;
+				const target = view.file!;
+				const overlay = view.contentEl.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
+				const dependencyChanged = target !== file && !!overlay && !!getTemplateDependencies(overlay)?.has(file);
+				if (target !== file && !dependencyChanged) return;
 				const rendered = this.renderedMetadata.get(view);
 				const state = view.getState();
-				if (state.mode === "source" && state.source === false &&
+				if (!dependencyChanged && state.mode === "source" && state.source === false &&
 					this.editableStates.has(view.contentEl) &&
 					rendered?.path === file.path && rendered.value === metadata) return;
 				this.contentVersions.set(view, (this.contentVersions.get(view) ?? 0) + 1);
 				this.clearAppliedState(view.contentEl);
-				void this._processLeaf(view, file);
+				void this._processLeaf(view, target);
 			});
 		}, 150));
 	}
