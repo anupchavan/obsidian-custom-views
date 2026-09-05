@@ -41,8 +41,12 @@ function convertFilter(app: App, filter: Filter): string {
 		}
 		case "is": return `${field} == ${rhs}`;
 		case "is not": return `${field} != ${rhs}`;
-		case "is exactly": return `${field} == [${values}]`;
-		case "is not exactly": return `${field} != [${values}]`;
+		case "is exactly": case "is not exactly": {
+			// Legacy exact lists compare string values as a multiset, including duplicates.
+			const exactValues = value.split(",").map(v => v.trim()).filter(Boolean).map(v => JSON.stringify(v)).join(", ");
+			const op = filter.operator === "is exactly" ? "==" : "!=";
+			return `if(${field}.isType("list"), ${field}.map(value.toString()).sort() ${op} [${exactValues}].sort(), false)`;
+		}
 		case "is empty": return call("isEmpty", "");
 		case "is not empty": return "!" + call("isEmpty", "");
 		case "contains": return call("contains");
