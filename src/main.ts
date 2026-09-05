@@ -118,6 +118,7 @@ export default class CustomViewsPlugin extends Plugin {
 	private unloaded = false;
 	private lifetime = new AbortController();
 	get unloadSignal(): AbortSignal { return this.lifetime.signal; }
+	private canvasRenders = new RenderCoordinator<CanvasNode>();
 	private noteRefreshTimers = new Map<TFile, number>();
 	private contentVersions = new WeakMap<MarkdownView, number>();
 	private renderedMetadata = new WeakMap<MarkdownView, { path: string; value: string }>();
@@ -280,6 +281,7 @@ export default class CustomViewsPlugin extends Plugin {
 		for (const timer of this.noteRefreshTimers.values()) window.clearTimeout(timer);
 		this.noteRefreshTimers.clear();
 		this.renders.cancelAll();
+		this.canvasRenders.cancelAll();
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView) {
 				this.restoreEditableView(leaf.view);
@@ -907,9 +909,7 @@ export default class CustomViewsPlugin extends Plugin {
 				void this._processLeaf(leaf.view, leaf.view.file);
 			}
 		});
-		if (this.settings.workInCanvas) {
-			void this.processAllCanvasNodes();
-		}
+		this.processAllCanvasNodes();
 	}
 
 	// ─── Canvas Support ────────────────────────────────────────────────────────
@@ -918,7 +918,7 @@ export default class CustomViewsPlugin extends Plugin {
 	 * Process all markdown file nodes in canvas files
 	 */
 	processAllCanvasNodes() {
-		if (!this.settings.enabled || !this.settings.workInCanvas) {
+		if (this.unloaded || !this.settings.enabled || !this.settings.workInCanvas) {
 			this.restoreAllCanvasNodes();
 			return;
 		}
@@ -945,6 +945,10 @@ export default class CustomViewsPlugin extends Plugin {
 	 * Process a single canvas node
 	 */
 	async processCanvasNode(node: CanvasNode) {
+		if (this.unloaded || !this.settings.enabled || !this.settings.workInCanvas) {
+			this.restoreCanvasNode(node);
+			return;
+		}
 		const file = node.file;
 		if (!(file instanceof TFile)) return;
 
@@ -971,13 +975,21 @@ export default class CustomViewsPlugin extends Plugin {
 		const previewContainer = nodeEl.querySelector(".markdown-preview-view") as HTMLElement;
 		if (!previewContainer) return;
 
-		await this.injectCustomView(previewContainer, file, matchedConfig.template, matchedConfig);
+		const config = matchedConfig;
+		const key = JSON.stringify([file.path, file.stat.mtime, config.id, this.settingsVersion]);
+		await this.canvasRenders.run(node, key, signal =>
+			this.injectCustomView(previewContainer, file, config.template, config, undefined, signal)
+		).catch(error => {
+			this.restoreCanvasNode(node);
+			console.error("[Custom Views] Failed to render a canvas node:", error);
+		});
 	}
 
 	/**
 	 * Restore a canvas node to default view
 	 */
 	restoreCanvasNode(node: CanvasNode) {
+		this.canvasRenders.cancel(node);
 		const nodeEl = node.nodeEl as HTMLElement;
 		if (!nodeEl) return;
 

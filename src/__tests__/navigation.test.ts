@@ -170,3 +170,44 @@ describe("open note changes", () => {
 		expect(renderTemplate).not.toHaveBeenCalled();
 	});
 });
+
+
+describe("canvas rendering lifetime", () => {
+	function canvasSetup() {
+		const s = setup(); s.plugin.settings.workInCanvas = true;
+		const nodeEl = window.document.createElement("div");
+		const preview = nodeEl.appendChild(window.document.createElement("div"));
+		preview.className = "markdown-preview-view";
+		const node = { file: s.file, nodeEl };
+		s.plugin.app.workspace.iterateAllLeaves = callback => callback({ view: { canvas: { nodes: [node] } } } as unknown as WorkspaceLeaf);
+		return { ...s, node, preview };
+	}
+	it("coalesces repeated requests while a canvas node render is pending", async () => {
+		const s = canvasSetup(); let finish!: () => void;
+		const render = vi.spyOn(s.plugin, "injectCustomView").mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+		const first = s.plugin.processCanvasNode(s.node); const second = s.plugin.processCanvasNode(s.node);
+		await Promise.resolve(); expect(render).toHaveBeenCalledOnce();
+		finish(); await Promise.all([first, second]);
+	});
+	it("removes a pending overlay when canvas rendering is disabled", async () => {
+		const s = canvasSetup(); let finish!: () => void;
+		vi.mocked(renderTemplate).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+		const pending = s.plugin.processCanvasNode(s.node); await Promise.resolve();
+		expect(s.preview.querySelector(".obsidian-custom-view-render")).not.toBeNull();
+		s.plugin.settings.workInCanvas = false;
+		Object.assign(s.plugin, { prepareScriptEngine: vi.fn() });
+		s.plugin.refreshAllViews();
+		expect(s.preview.querySelector(".obsidian-custom-view-render")).toBeNull();
+		finish(); await pending;
+		expect(s.preview.querySelector(".obsidian-custom-view-render")).toBeNull();
+	});
+	it("aborts an old node render when the node changes files", async () => {
+		const s = canvasSetup(); const signals: AbortSignal[] = [];
+		const render = vi.spyOn(s.plugin, "injectCustomView").mockImplementation(async (_container, _file, _template, _config, _source, signal) => { signals.push(signal!); await new Promise<void>(resolve => signal!.addEventListener("abort", () => resolve(), { once: true })); });
+		const first = s.plugin.processCanvasNode(s.node); await Promise.resolve();
+		s.node.file = new TFile(); s.node.file.path = "Other.md";
+		const second = s.plugin.processCanvasNode(s.node); await Promise.resolve();
+		expect(signals[0]?.aborted).toBe(true); expect(render).toHaveBeenCalledTimes(2);
+		s.plugin.restoreCanvasNode(s.node); await Promise.all([first, second]);
+	});
+});
