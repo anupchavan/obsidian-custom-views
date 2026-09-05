@@ -181,6 +181,7 @@ export async function resolvePropertyChain(
 	frontmatter: Record<string, unknown> | undefined,
 	bodyContent: string,
 	bases?: TemplateBases,
+	dependencies?: Set<TFile>,
 ): Promise<unknown> {
 	if (segments.length === 0) return null;
 
@@ -219,6 +220,7 @@ export async function resolvePropertyChain(
 
 			const linkedFile = resolveLinkedFile(app, linkTarget, linkSourceFile.path);
 			if (!linkedFile) return null;
+			dependencies?.add(linkedFile);
 
 			// Get the linked file's frontmatter
 			const linkedCache = app.metadataCache.getFileCache(linkedFile);
@@ -345,6 +347,12 @@ interface SourceContentCacheEntry {
 
 const sourceContentCache = new WeakMap<App, Map<string, SourceContentCacheEntry>>();
 
+const templateDependencies = new WeakMap<HTMLElement, Set<TFile>>();
+
+export function getTemplateDependencies(container: HTMLElement): ReadonlySet<TFile> | undefined {
+	return templateDependencies.get(container);
+}
+
 /**
  * Renders a template into a container.
  * @param app - The Obsidian app instance
@@ -374,6 +382,8 @@ export async function renderTemplate(
 	signal?: AbortSignal,
 ) {
 	signal?.throwIfAborted();
+	const dependencies = new Set<TFile>();
+	templateDependencies.set(container, dependencies);
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
 	const rawContent = sourceContent ?? await readCachedSourceContent(app, file);
@@ -399,6 +409,7 @@ export async function renderTemplate(
 
 	// Build expression context for logic blocks and expression mode
 	const exprCtx: ExprContext = {
+		dependencies,
 		app,
 		file,
 		frontmatter,
@@ -512,7 +523,7 @@ export async function renderTemplate(
 	signal?.throwIfAborted();
 	// Inject CSS from the separate CSS field (with template resolution)
 	if (viewConfig?.css) {
-		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases);
+		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
 		if (resolvedCss.trim()) {
 			const styleEl = container.ownerDocument.createElement("style");
 			styleEl.textContent = resolvedCss;
@@ -525,7 +536,7 @@ export async function renderTemplate(
 		const scripts = Array.from(container.querySelectorAll("script"));
 		const hasExecutableInlineScripts = scripts.some(hasExecutableInlineScriptCode);
 		const resolvedJs = viewConfig?.js?.trim()
-			? await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent, bases)
+			? await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent, bases, dependencies)
 			: "";
 		const viewJs = resolvedJs.trim();
 
@@ -817,7 +828,7 @@ async function resolveExprValue(
 
 	const directLookup = parseDirectPropertyLookup(innerExpr);
 	if (directLookup) {
-		const value = await resolvePropertyChain(app, directLookup.segments, file, frontmatter, bodyContent, bases);
+		const value = await resolvePropertyChain(app, directLookup.segments, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
 		if (value !== null && value !== undefined) {
 			if (directLookup.filterChain) {
 				return applyFilterChain(value as Parameters<typeof applyFilterChain>[0], directLookup.filterChain);
@@ -857,7 +868,7 @@ async function resolveExprValue(
 	const segments = parsePropertyPath(chain);
 	if (segments.length === 0) return null;
 
-	const value = await resolvePropertyChain(app, segments, file, frontmatter, bodyContent, bases);
+	const value = await resolvePropertyChain(app, segments, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
 	if (value === null || value === undefined) return null;
 
 	if (filterChain) {
@@ -964,8 +975,10 @@ async function resolveTemplateRaw(
 	frontmatter: Record<string, unknown> | undefined,
 	bodyContent: string,
 	bases: TemplateBases = [],
+	dependencies?: Set<TFile>,
 ): Promise<string> {
 	const exprCtx: ExprContext = {
+		dependencies,
 		app,
 		file,
 		frontmatter,
