@@ -1,3 +1,6 @@
+// Test the shipped stylesheet in the DOM; Node is used only by the test runner.
+// eslint-disable-next-line import/no-nodejs-modules
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { App, type PluginManifest } from "obsidian";
 import CustomViewsPlugin from "../main";
@@ -55,4 +58,20 @@ describe("settings dialog lifetime", () => {
 		} finally { report.mockRestore(); }
 	});
 
+});
+
+
+describe("settings dialog layout", () => {
+	it("applies height and scrolling limits to the actual modal content element", () => {
+		const style = window.document.createElement("style");
+		style.textContent = readFileSync("styles.css", "utf8");
+		window.document.head.appendChild(style);
+		const content = window.document.body.appendChild(window.document.createElement("div"));
+		content.className = "modal-content cv-edit-view-modal";
+		try {
+			const computed = window.getComputedStyle(content);
+			expect(computed.maxHeight).toBe("80vh");
+			expect(computed.overflowY).toBe("auto");
+		} finally { content.remove(); style.remove(); }
+	});
 });
