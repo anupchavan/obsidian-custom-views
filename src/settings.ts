@@ -331,13 +331,23 @@ export class EditViewModal extends Modal {
 				});
 			});
 
-		// Display options — only shown when editableContent is enabled
+		contentEl.createEl("h3", { text: "Display options" });
+		new Setting(contentEl)
+			.setName("Show navigation bar")
+			.setDesc("Show back/forward buttons and the note path in reading view and live preview.")
+			.addToggle(toggle => toggle
+				.setValue(this.view.showNavigationBar ?? true)
+				.onChange(value => {
+					this.view.showNavigationBar = value;
+					autoSave();
+				}));
+
+		// Native editor properties and inline title only apply to editable content.
 		if (this.plugin.settings.editableContent) {
 			const obsidianShowInlineTitle = (this.app.vault as unknown as {
 				getConfig(key: string): unknown;
 			}).getConfig("showInlineTitle") as boolean;
 
-			contentEl.createEl("h3", { text: "Display options" });
 
 			new Setting(contentEl)
 				.setName("Show properties in editing view")
