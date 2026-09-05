@@ -2,7 +2,7 @@
 
 The Rules section of each view uses Obsidian's actual Bases filter editor. It is no longer a separately implemented copy. Enable the Bases core plugin before opening the editor.
 
-The integration has been inspected and exercised in Obsidian 1.14.0. It uses internal APIs because Obsidian does not expose a public API for mounting this control. Discovery checks for a compatible editor and parser; if they are unavailable, the Rules section displays the error. Other view fields remain editable.
+The integration has been inspected and exercised in Obsidian 1.14.0. It uses internal APIs because Obsidian does not expose a public API for mounting this control. Discovery checks for a compatible editor and parser; if they are unavailable, the Rules section displays the error. Other view fields remain editable. After resolving a temporary failure (for example, enabling Bases), use Retry in the Rules section to load the editor without closing the dialog. Retry does not change or save the rules.
 
 ## Editing rules
 
