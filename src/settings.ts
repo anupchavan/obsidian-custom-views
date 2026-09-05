@@ -104,7 +104,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					action: () => { void this.addNewViewAndEdit(); },
 				},
 				onReorder: (oldIndex: number, newIndex: number) => {
-					void this.reorderViews(oldIndex, newIndex);
+					void this.reorderViews(oldIndex, newIndex, listedViews).catch(() => {});
 				},
 				onDelete: (index: number) => {
 					const view = listedViews[index];
@@ -155,8 +155,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		this.plugin.refreshAllViews();
 	}
 
-	private async reorderViews(oldIndex: number, newIndex: number) {
+	private async reorderViews(oldIndex: number, newIndex: number, listedViews?: readonly ViewConfig[]) {
 		const views = this.plugin.settings.views;
+		if (listedViews && (listedViews.length !== views.length || listedViews.some((view, index) => view !== views[index]))) return;
 		if (!Number.isInteger(oldIndex) || !Number.isInteger(newIndex) ||
 			oldIndex < 0 || oldIndex >= views.length ||
 			newIndex < 0 || newIndex >= views.length || oldIndex === newIndex) return;
@@ -164,8 +165,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		if (moved !== undefined) {
 			views.splice(newIndex, 0, moved);
 		}
-		await this.plugin.saveSettings();
+		this.refreshSettingsTab();
 		this.plugin.refreshAllViews();
+		await this.plugin.saveSettings();
 	}
 
 	private openEditModal(view: ViewConfig) {
@@ -259,7 +261,8 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			});
 		}
 
-		this.plugin.settings.views.forEach((view, index) => {
+		const listedViews = [...this.plugin.settings.views];
+		listedViews.forEach((view, index) => {
 			viewsList.addSetting((setting) => {
 				setting
 					.setName(view.name)
@@ -267,16 +270,14 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						cb.setIcon("chevron-up")
 							.setTooltip("Move up")
 							.onClick(async () => {
-								await this.reorderViews(index, index - 1);
-								this.renderLegacySettings();
+								await this.reorderViews(index, index - 1, listedViews).catch(() => {});
 							});
 					})
 					.addExtraButton((cb: ExtraButtonComponent) => {
 						cb.setIcon("chevron-down")
 							.setTooltip("Move down")
 							.onClick(async () => {
-								await this.reorderViews(index, index + 1);
-								this.renderLegacySettings();
+								await this.reorderViews(index, index + 1, listedViews).catch(() => {});
 							});
 					})
 					.addExtraButton((cb: ExtraButtonComponent) => {
