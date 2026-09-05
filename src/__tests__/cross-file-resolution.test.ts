@@ -534,3 +534,22 @@ describe("resolvePropertyChain", () => {
 		expect(result).toBeNull();
 	});
 });
+
+
+describe("legacy placeholder property ownership", () => {
+	it.each(["constructor", "toString", "__proto__", "nested.constructor", "nested.__proto__", "items.constructor"])("treats inherited property %s as missing", async path => {
+		const file = createMockFile("Test", "Test.md");
+		expect(await resolvePropertyChain(createMockApp([]), parsePropertyPath(path), file, { nested: {}, items: [] }, "")).toBe(null);
+	});
+	it.each(["constructor", "toString", "__proto__"])("preserves own properties named %s at the root and in nested data", async name => {
+		const file = createMockFile("Test", "Test.md");
+		const frontmatter = JSON.parse(`{"${name}":"Root value","nested":{"${name}":"Nested value"}}`) as Record<string, unknown>;
+		expect(await resolvePropertyChain(createMockApp([]), parsePropertyPath(name), file, frontmatter, "")).toBe("Root value");
+		expect(await resolvePropertyChain(createMockApp([]), parsePropertyPath(`nested.${name}`), file, frontmatter, "")).toBe("Nested value");
+	});
+	it("applies the same missing-property semantics after following a linked note", async () => {
+		const file = createMockFile("Test", "Test.md"); const linked = createMockFile("Linked", "Linked.md");
+		const app = createMockApp([{ file: linked, frontmatter: {}, rawContent: "Body" }]);
+		expect(await resolvePropertyChain(app, parsePropertyPath("reference.constructor"), file, { reference: "[[Linked]]" }, "")).toBe(null);
+	});
+});
