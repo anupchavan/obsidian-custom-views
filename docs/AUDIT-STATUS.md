@@ -16,7 +16,7 @@ Status as of 2026-09-05: active. The checks below describe completed work and re
 | Navigation | Tests cover cancellation, editable editor reuse, body and linked-note refreshes, and obsolete Canvas renders. The experimental branch also records frame-level navigation checks under `docs/performance/ATOMIC-NAVIGATION.md`. |
 | Templates | Tests cover expression short-circuiting, selected conditional branches, own-property lookup, current editor content, and missing linked-note dependencies. |
 | Editor usability | Native property registry used for autocomplete; labels on all three CodeMirror editors verified in the live dialog; scrolling limits tested against the shipped stylesheet. |
-| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,134 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
+| Validation | Full tests, TypeScript/build, and lint were rerun after each completed fix. Latest installed code verification: 1,138 tests across 24 files; no captured live errors. Counts are historical and will change as the audit continues. |
 
 ## Remaining audit work
 
@@ -31,3 +31,5 @@ The latency reports are measurements of specific builds and cache conditions. Th
 The loader validates global switches, view fields, and filter tree shapes before use. Invalid views (including duplicate IDs) are skipped without changing valid view order or converting broken filters into match-all rules. Invalid global switches become off. Loading never saves the file. A recovery notice explains what happened; the original malformed configuration is retained under `recoveryData` in `data.json` on the next ordinary save, including templates and scripts from skipped entries. That backup survives later reloads and edits and can be used for manual recovery. Native formula syntax is still validated by Obsidian itself.
 
 The navigation bar is now anchored consistently above both reading and live preview overlays, with a per-view Display options toggle. Live checks confirmed identical overlay positions and header visibility in both modes; the delayed navigation regression still reported no exposed native frames.
+
+Checkbox conversion now uses the installed property-widget API and falls back to inferred registry widgets. Native parsing succeeded for true/false formulas for both assigned and inferred checkbox properties; evaluation matched the legacy boolean result on both existing notes with the inferred property. Regression tests also retain quoted values for text properties. Broader conversion equivalence remains open.
