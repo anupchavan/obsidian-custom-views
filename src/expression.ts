@@ -1,3 +1,4 @@
+import { recordLinkDependency } from "./template-dependencies";
 /**
  * Expression engine supporting Bases-style function/method syntax.
  *
@@ -699,7 +700,7 @@ function extractLinkTarget(value: string): string | null {
 /** Resolve a TFile from a link target or filename */
 async function resolveToFile(app: App, target: string, sourcePath: string, dependencies?: Set<TFile>): Promise<TFile | null> {
 	const file = app.metadataCache.getFirstLinkpathDest(target, sourcePath);
-	if (file) dependencies?.add(file);
+	recordLinkDependency(dependencies, target, sourcePath, file);
 	return file;
 }
 

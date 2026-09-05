@@ -1,3 +1,4 @@
+import { TemplateDependencies, recordLinkDependency } from "./template-dependencies";
 import { App, TFile, MarkdownRenderer, Component } from "obsidian";
 import { applyFilterChain } from "./filters";
 import {
@@ -220,8 +221,8 @@ export async function resolvePropertyChain(
 			}
 
 			const linkedFile = resolveLinkedFile(app, linkTarget, linkSourceFile.path);
+			recordLinkDependency(dependencies, linkTarget, linkSourceFile.path, linkedFile);
 			if (!linkedFile) return null;
-			dependencies?.add(linkedFile);
 
 			// Get the linked file's frontmatter
 			const linkedCache = app.metadataCache.getFileCache(linkedFile);
@@ -383,7 +384,7 @@ export async function renderTemplate(
 	signal?: AbortSignal,
 ) {
 	signal?.throwIfAborted();
-	const dependencies = new Set<TFile>();
+	const dependencies = new TemplateDependencies(app);
 	templateDependencies.set(container, dependencies);
 	const cache = app.metadataCache.getFileCache(file);
 	const frontmatter = cache?.frontmatter;
