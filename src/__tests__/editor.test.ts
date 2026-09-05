@@ -167,6 +167,20 @@ describe("buildEditorExtensions", () => {
 // ---------------------------------------------------------------------------
 
 describe("createTemplateEditor", () => {
+	it.each([
+		["html", "HTML template"], ["css", "CSS styles"], ["javascript", "JavaScript code"],
+	] as const)("gives the %s editing surface an accessible name", (language, label) => {
+		const view = createAndTrack({ initialContent: "", language });
+		expect(view.contentDOM.getAttribute("role")).toBe("textbox");
+		expect(view.contentDOM.getAttribute("aria-label")).toBe(label);
+		view.dispatch({ changes: { from: 0, insert: "Updated" } });
+		expect(view.contentDOM.getAttribute("aria-label")).toBe(label);
+	});
+	it("labels the default HTML editor", () => {
+		const view = createAndTrack({ initialContent: "" });
+		expect(view.contentDOM.getAttribute("aria-label")).toBe("HTML template");
+	});
+
 	it("returns an EditorView instance", () => {
 		const view = createAndTrack({ initialContent: "" });
 		expect(view).toBeInstanceOf(EditorView);
