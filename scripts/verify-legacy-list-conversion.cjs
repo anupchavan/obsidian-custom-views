@@ -17,7 +17,7 @@ window.cvListProof=(()=>{
     [['a','b','a'],'a,a,b'], [[], ''], [['a'],''],
     [[2,1],'1,2'], [[true,false],'false,true'],
     [['[[Movies|Films]]'],'[[Movies|Films]]'],
-    ['a','a'], ['Alpha','a'], ['Alpha','A'], ['Alpha','ha'], ['', ''], [0,'0'], [null,''], [false,'false'],
+    ['a','a'], ['Alpha','a'], ['Alpha','A'], ['Alpha','ha'], ['', ''], [0,'0'], [true,'true'], [' ',''], [null,''], [false,'false'],
     [[null],'null'], [[null,'a'],'null,a'], [[null],''], [[''],''], [false,'False'],
     [['science fiction','drama'],'fiction'], [['science fiction','drama'],'fiction,dr'],
     [['science fiction','drama'],'fiction,comedy'], [['ab'],'a,b'], [['a','b'],'a'], [[1],'1'], [1,'1'],

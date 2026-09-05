@@ -242,6 +242,10 @@ describe("legacy filter conversion", () => {
 	it("preserves an empty suffix without treating negative zero as the whole string", () => {
 		expect(convert({ type: "filter", field: "items", operator: "ends with", value: "" })).toEqual({ and: ['if(note["items"].isType("list"), false, true)'] });
 	});
+	it.each(["is empty", "is not empty"] as const)("supports %s on lists, missing values, and scalar booleans", operator => {
+		const match = 'if(note["items"].isType("list"), note["items"].length == 0, note["items"] == null || note["items"].toString() == "")';
+		expect(convert({ type: "filter", field: "items", operator })).toEqual({ and: [operator === "is empty" ? match : `!(${match})`] });
+	});
 	it("converts numeric symbols without quoting numbers", () => {
 		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: ['note["rating"] >= 3.5'] });
 	});
