@@ -10,7 +10,7 @@ Choose properties, operators, and values with the native pickers. Combine condit
 
 Existing configurations retain their legacy `rules` data. Opening a dialog converts those rules for display without writing a migration. Once a rule is edited, the native serialized filters are stored in `basesFilters` and evaluated by Bases. An empty native filter matches every file. If several views match, the first one wins.
 
-Legacy and native operators are not universally interchangeable: for example, array containment and equality can differ from the old engine. Review the conditions when first editing a legacy view. A view without `basesFilters` continues using the legacy matcher; there is no automatic rewrite on startup.
+Legacy and native operators are not universally interchangeable: for example, array substring containment can differ from the old engine. Review the conditions when first editing a legacy view. A view without `basesFilters` continues using the legacy matcher; there is no automatic rewrite on startup.
 
 ## Implementation and lifecycle
 
