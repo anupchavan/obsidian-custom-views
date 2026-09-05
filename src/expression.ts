@@ -1173,6 +1173,7 @@ const fileMethods: Record<string, MethodFn> = {
 	content: async (ctx, obj) => {
 		if (!isExprFile(obj)) return null;
 		ctx.dependencies?.add(obj._tfile);
+		if (obj._tfile === ctx.file) return ctx.bodyContent;
 		return readFileContent(ctx.app, obj._tfile);
 	},
 	asLink: (_ctx, obj) => {
