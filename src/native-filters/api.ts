@@ -107,11 +107,11 @@ async function discover(app: App): Promise<NativeBasesApi> {
 			const embed = factory({ app, containerEl: internalHost, sourcePath: "", linktext: "" }, file, "");
 			const controller = embed.controller;
 			const builder = controller.filterMenu.globalFilterBuilder;
-			query.saveFn = () => {};
-			controller.query = query;
-			controller.viewName = "Rules";
-			controller.ctx = controller.buildBasesContext();
 			try {
+				query.saveFn = () => {};
+				controller.query = query;
+				controller.viewName = "Rules";
+				controller.ctx = controller.buildBasesContext();
 				builder.updateQuery(value => {
 					query.setGlobalFilters(value);
 					controller.ctx = controller.buildBasesContext();
