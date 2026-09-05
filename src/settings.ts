@@ -101,7 +101,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				emptyState: "No views added yet.",
 				addItem: {
 					name: "Add view",
-					action: () => { void this.addNewViewAndEdit(); },
+					action: () => { void this.addNewViewAndEdit().catch(() => {}); },
 				},
 				onReorder: (oldIndex: number, newIndex: number) => {
 					void this.reorderViews(oldIndex, newIndex, listedViews).catch(() => {});
@@ -142,9 +142,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 	private async addNewViewAndEdit() {
 		const newView = this.createNewView();
 		this.plugin.settings.views.push(newView);
-		await this.plugin.saveSettings();
 		this.refreshSettingsTab();
 		this.openEditModal(newView);
+		await this.plugin.saveSettings();
 	}
 
 	private async deleteView(view: ViewConfig) {
@@ -253,7 +253,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			.addExtraButton((cb: ExtraButtonComponent) => {
 				cb.setIcon("plus")
 					.setTooltip("Add new view")
-					.onClick(() => { void this.addNewViewAndEdit(); });
+					.onClick(() => { void this.addNewViewAndEdit().catch(() => {}); });
 			});
 
 		if (this.plugin.settings.views.length === 0) {

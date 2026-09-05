@@ -290,3 +290,32 @@ describe("fresh settings defaults", () => {
 		expect(DEFAULT_SETTINGS.views[0].name).toBe("View 1");
 	});
 });
+
+
+describe("adding a view", () => {
+	function setup() {
+		const plugin = { settings: { ...DEFAULT_SETTINGS, views: [] as ViewConfig[] }, saveSettings: vi.fn(async () => {}) };
+		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
+		const update = vi.fn(); const open = vi.fn();
+		Object.assign(tab, { update, openEditModal: open });
+		const add = () => (tab as unknown as { addNewViewAndEdit(): Promise<void> }).addNewViewAndEdit();
+		return { plugin, update, open, add };
+	}
+	it("opens the new view immediately while its save is pending", async () => {
+		const s = setup(); let finish!: () => void;
+		s.plugin.saveSettings.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+		const pending = s.add();
+		expect(s.plugin.settings.views).toHaveLength(1);
+		expect(s.update).toHaveBeenCalledOnce();
+		expect(s.open).toHaveBeenCalledWith(s.plugin.settings.views[0]);
+		finish(); await pending;
+		expect(s.open).toHaveBeenCalledOnce();
+	});
+	it("keeps the new view editable when persistence fails", async () => {
+		const s = setup(); s.plugin.saveSettings.mockRejectedValueOnce(new Error("Disk full"));
+		await expect(s.add()).rejects.toThrow("Disk full");
+		expect(s.plugin.settings.views).toHaveLength(1);
+		expect(s.update).toHaveBeenCalledOnce();
+		expect(s.open).toHaveBeenCalledWith(s.plugin.settings.views[0]);
+	});
+});
