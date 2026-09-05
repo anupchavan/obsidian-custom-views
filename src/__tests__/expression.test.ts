@@ -1335,3 +1335,17 @@ describe("short-circuit expression evaluation", () => {
 		expect(ctx.dependencies?.has(linked)).toBe(true);
 	});
 });
+
+
+describe("conditional expression branches", () => {
+	it.each(['if(true, "Chosen", file("Unused").content())', 'if(false, file("Unused").content(), "Chosen")'])("does not evaluate the unused branch in %s", async expression => {
+		const ctx = makeContext({ dependencies: new Set() });
+		const resolve = vi.spyOn(ctx.app.metadataCache, "getFirstLinkpathDest").mockImplementation(() => { throw new Error("Unused branch"); });
+		expect(await evaluate(parseExpression(expression), ctx)).toBe("Chosen");
+		expect(resolve).not.toHaveBeenCalled();
+		expect(ctx.dependencies?.size).toBe(0);
+	});
+	it.each([['if(true)', true], ['if(false)', null], ['if()', null]])("preserves default branch values for %s", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), makeContext())).toBe(expected);
+	});
+});
