@@ -233,10 +233,25 @@ describe("view deletion", () => {
 		const views = ["first", "second", "third"].map(id => ({ ...DEFAULT_SETTINGS.views[0], id }));
 		const plugin = { settings: { ...DEFAULT_SETTINGS, views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
 		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
-		Object.assign(tab, { update: vi.fn() });
+		const update = vi.fn(); Object.assign(tab, { update });
 		const definition = tab.getSettingDefinitions().find(item => "type" in item && item.type === "list") as unknown as { onDelete(index: number): void };
-		return { plugin, definition };
+		return { plugin, definition, update };
 	}
+	it("removes the row and reapplies views while deletion is still saving", async () => {
+		const s = setup(); let finish!: () => void;
+		s.plugin.saveSettings.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+		s.definition.onDelete(0);
+		expect(s.update).toHaveBeenCalledOnce();
+		expect(s.plugin.refreshAllViews).toHaveBeenCalledOnce();
+		finish(); await Promise.resolve();
+	});
+	it("keeps the list and rendered priority consistent when a deletion save fails", async () => {
+		const s = setup(); s.plugin.saveSettings.mockRejectedValueOnce(new Error("Disk full"));
+		s.definition.onDelete(0); await Promise.resolve(); await Promise.resolve();
+		expect(s.plugin.settings.views.map(view => view.id)).toEqual(["second", "third"]);
+		expect(s.update).toHaveBeenCalledOnce();
+		expect(s.plugin.refreshAllViews).toHaveBeenCalledOnce();
+	});
 	it("does not delete another view when the same row is clicked twice during a save", async () => {
 		const s = setup(); let finish!: () => void;
 		s.plugin.saveSettings.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
