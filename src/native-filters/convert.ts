@@ -49,12 +49,19 @@ function convertFilter(app: App, filter: Filter): string {
 		}
 		case "is empty": return call("isEmpty", "");
 		case "is not empty": return "!" + call("isEmpty", "");
-		case "contains": return call("contains");
-		case "does not contain": return "!" + call("contains");
-		case "contains any of": return call("containsAny", values);
-		case "does not contain any of": return "!" + call("containsAny", values);
-		case "contains all of": return call("containsAll", values);
-		case "does not contain all of": return "!" + call("containsAll", values);
+		case "contains": case "does not contain":
+		case "contains any of": case "does not contain any of":
+		case "contains all of": case "does not contain all of": {
+			const single = filter.operator === "contains" || filter.operator === "does not contain";
+			const terms = single ? [value] : value.split(",").map(v => v.trim()).filter(Boolean);
+			const checks = terms.map(term => {
+				if (term === "") return `if(${field}.isType("list"), ${field}.length > 0, true)`;
+				const text = JSON.stringify(term);
+				return `if(${field}.isType("list"), ${field}.filter(value.toString().contains(${text})).length > 0, ${field}.toString().contains(${text}))`;
+			});
+			const match = checks.length ? checks.join(filter.operator.endsWith("all of") ? " && " : " || ") : "false";
+			return filter.operator.startsWith("does not") ? `!(${match})` : match;
+		}
 		case "starts with": return call("startsWith");
 		case "does not start with": return "!" + call("startsWith");
 		case "ends with": return call("endsWith");
