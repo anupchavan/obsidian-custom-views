@@ -1370,3 +1370,21 @@ describe("expression property ownership", () => {
 		expect(await evaluate(parseExpression(`file.properties["${name}"]`), ctx)).toBe("Stored value");
 	});
 });
+
+
+describe("current file content expressions", () => {
+	it.each(['file.content()', 'file("test").content()', 'link("test").asFile().content()'])("uses the current render text for %s", async expression => {
+		const ctx = makeContext({ bodyContent: "Unsaved editor text", dependencies: new Set() });
+		vi.spyOn(ctx.app.metadataCache, "getFirstLinkpathDest").mockReturnValue(ctx.file);
+		const read = vi.spyOn(ctx.app.vault, "cachedRead").mockResolvedValue("Old disk text");
+		expect(await evaluate(parseExpression(expression), ctx)).toBe("Unsaved editor text");
+		expect(read).not.toHaveBeenCalled();
+		expect(ctx.dependencies?.has(ctx.file)).toBe(true);
+	});
+	it("preserves an empty current body instead of reading stale disk content", async () => {
+		const ctx = makeContext({ bodyContent: "" });
+		const read = vi.spyOn(ctx.app.vault, "cachedRead").mockResolvedValue("Deleted text");
+		expect(await evaluate(parseExpression("file.content()"), ctx)).toBe("");
+		expect(read).not.toHaveBeenCalled();
+	});
+});
