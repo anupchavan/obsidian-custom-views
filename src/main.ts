@@ -1,6 +1,7 @@
 import { RenderCoordinator } from "./render-coordinator";
 import { AtomicNavigation } from "./atomic-navigation";
 import { SettingsWriter } from "./settings-writer";
+import { SaveFeedback } from "./save-feedback";
 import { Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
 import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -87,6 +88,7 @@ export default class CustomViewsPlugin extends Plugin {
 	nativeRules: NativeRuleEngine;
 	experimentalNavigation?: AtomicNavigation;
 	private settingsWriter = new SettingsWriter<CustomViewsSettings>(settings => this.saveData(settings));
+	private saveFeedback = new SaveFeedback(() => this.saveSettings());
 
 	/**
 	 * Tracks editable state per MarkdownView content element.
@@ -116,6 +118,8 @@ export default class CustomViewsPlugin extends Plugin {
 
 	/** Prevents deferred startup work from running after a fast disable/reload. */
 	private unloaded = false;
+	private lifetime = new AbortController();
+	get unloadSignal(): AbortSignal { return this.lifetime.signal; }
 	private noteRefreshTimers = new Map<TFile, number>();
 	private contentVersions = new WeakMap<MarkdownView, number>();
 	private renderedMetadata = new WeakMap<MarkdownView, { path: string; value: string }>();
@@ -146,6 +150,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 	async onload() {
 		this.unloaded = false;
+		this.lifetime = new AbortController();
 		await this.loadSettings();
 		this.nativeRules = new NativeRuleEngine(this.app, () => {
 			if (!this.unloaded) this.refreshAllViews();
@@ -272,6 +277,8 @@ export default class CustomViewsPlugin extends Plugin {
 	onunload() {
 		this.unloaded = true;
 		this.experimentalNavigation?.dispose();
+		this.lifetime.abort();
+		this.saveFeedback.clear();
 		for (const timer of this.noteRefreshTimers.values()) window.clearTimeout(timer);
 		this.noteRefreshTimers.clear();
 		this.renders.cancelAll();
@@ -884,7 +891,13 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	async saveSettings() {
-		await this.settingsWriter.save(this.settings);
+		try {
+			await this.settingsWriter.save(this.settings);
+			this.saveFeedback.clear();
+		} catch (error) {
+			if (!this.unloaded) this.saveFeedback.failed(error);
+			throw error;
+		}
 	}
 
 	/**
