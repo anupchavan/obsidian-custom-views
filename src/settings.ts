@@ -67,6 +67,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		if (!requireApiVersion("1.13.0")) return [];
+		const listedViews = [...this.plugin.settings.views];
 
 		return [
 			{
@@ -106,9 +107,10 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					void this.reorderViews(oldIndex, newIndex);
 				},
 				onDelete: (index: number) => {
-					void this.deleteView(index).then(() => this.refreshSettingsTab());
+					const view = listedViews[index];
+					if (view) void this.deleteView(view).then(() => this.refreshSettingsTab());
 				},
-				items: this.plugin.settings.views.map((view) => ({
+				items: listedViews.map((view) => ({
 					// Obsidian's reconciler accepts an explicit id independently of the label.
 					id: view.id,
 					name: view.name,
@@ -145,7 +147,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		this.openEditModal(newView);
 	}
 
-	private async deleteView(index: number) {
+	private async deleteView(view: ViewConfig) {
+		const index = this.plugin.settings.views.indexOf(view);
+		if (index < 0) return;
 		this.plugin.settings.views.splice(index, 1);
 		await this.plugin.saveSettings();
 		this.plugin.refreshAllViews();
@@ -284,7 +288,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						cb.setIcon("trash")
 							.setTooltip("Delete " + view.name)
 							.onClick(async () => {
-								await this.deleteView(index);
+								await this.deleteView(view);
 								this.renderLegacySettings();
 							});
 					});
@@ -294,7 +298,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 }
 
-class EditViewModal extends Modal {
+export class EditViewModal extends Modal {
 	plugin: CustomViewsPlugin;
 	view: ViewConfig;
 	onClose_cb: () => void;
@@ -303,6 +307,11 @@ class EditViewModal extends Modal {
 	private templateEditor: EditorView | null = null;
 	private cssEditor: EditorView | null = null;
 	private jsEditor: EditorView | null = null;
+	private closed = false;
+	private closeOnUnload = () => this.close();
+	private saveChanges = () => {
+		if (!this.closed && !this.plugin.unloadSignal.aborted) void this.plugin.saveSettings().catch(() => {});
+	};
 
 	constructor(app: App, plugin: CustomViewsPlugin, view: ViewConfig, onClose_cb: () => void) {
 		super(app);
@@ -310,6 +319,7 @@ class EditViewModal extends Modal {
 		this.view = view; // Edit the original directly — changes auto-save
 		this.onClose_cb = onClose_cb;
 		this.setTitle('Edit view');
+		this.plugin.unloadSignal.addEventListener("abort", this.closeOnUnload, { once: true });
 	}
 
 	/** Scans the vault for frontmatter properties with their types (for template autocomplete icons) */
@@ -360,7 +370,7 @@ class EditViewModal extends Modal {
 		contentEl.addClass("cv-edit-view-modal");
 
 		const templateVariables = this.getVaultProperties();
-		const autoSave = () => { void this.plugin.saveSettings(); };
+		const autoSave = this.saveChanges;
 
 		new Setting(contentEl)
 			.setName("View name")
@@ -472,22 +482,21 @@ class EditViewModal extends Modal {
 	}
 
 	onClose() {
-		this.disposeFilters?.();
+		if (this.closed) return;
+		this.closed = true;
+		this.plugin.unloadSignal.removeEventListener("abort", this.closeOnUnload);
+		const cleanups = [
+			this.disposeFilters,
+			...[this.templateEditor, this.cssEditor, this.jsEditor].map(editor => editor ? () => editor.destroy() : undefined),
+		];
 		this.disposeFilters = undefined;
-		if (this.templateEditor) {
-			this.templateEditor.destroy();
-			this.templateEditor = null;
-		}
-		if (this.cssEditor) {
-			this.cssEditor.destroy();
-			this.cssEditor = null;
-		}
-		if (this.jsEditor) {
-			this.jsEditor.destroy();
-			this.jsEditor = null;
+		this.templateEditor = this.cssEditor = this.jsEditor = null;
+		for (const cleanup of cleanups) {
+			try { cleanup?.(); }
+			catch (error) { console.error("[Custom Views] Could not clean up a settings editor:", error); }
 		}
 		const { contentEl } = this;
 		contentEl.empty();
-		this.onClose_cb();
+		if (!this.plugin.unloadSignal.aborted) this.onClose_cb();
 	}
 }

@@ -87,6 +87,17 @@ describe("native Bases integration", () => {
 		expect(() => api.createEditor(window.document.createElement("div"), "throw", vi.fn())).toThrow();
 		expect(s.factorySpy).toHaveBeenCalledTimes(1);
 	});
+	it("unloads the native embed when context initialization fails", async () => {
+		const s = setup(); const api = await getNativeBasesApi(s.app);
+		const factory = s.factorySpy.getMockImplementation()!;
+		s.factorySpy.mockImplementationOnce(() => {
+			const embed = factory();
+			embed.controller.buildBasesContext.mockImplementation(() => { throw new Error("Missing formula context"); });
+			return embed;
+		});
+		expect(() => api.createEditor(window.document.createElement("div"), "true", vi.fn())).toThrow("Missing formula context");
+		expect(s.entries[1].unload).toHaveBeenCalledOnce();
+	});
 	it("does not remount or mutate settings after a modal closes during initialization", async () => {
 		const s = setup(); const parent = window.document.createElement("div");
 		const config = view(); const save = vi.fn();

@@ -202,6 +202,36 @@ describe("stable settings row identity", () => {
 	});
 });
 
+describe("view deletion", () => {
+	function setup() {
+		const views = ["first", "second", "third"].map(id => ({ ...DEFAULT_SETTINGS.views[0], id }));
+		const plugin = { settings: { ...DEFAULT_SETTINGS, views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
+		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
+		Object.assign(tab, { update: vi.fn() });
+		const definition = tab.getSettingDefinitions().find(item => "type" in item && item.type === "list") as unknown as { onDelete(index: number): void };
+		return { plugin, definition };
+	}
+	it("does not delete another view when the same row is clicked twice during a save", async () => {
+		const s = setup(); let finish!: () => void;
+		s.plugin.saveSettings.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+		s.definition.onDelete(0); s.definition.onDelete(0);
+		expect(s.plugin.settings.views.map(view => view.id)).toEqual(["second", "third"]);
+		expect(s.plugin.saveSettings).toHaveBeenCalledOnce();
+		finish(); await Promise.resolve(); await Promise.resolve();
+	});
+	it("deletes the displayed row's view after indices change", async () => {
+		const s = setup(); s.plugin.settings.views.reverse();
+		s.definition.onDelete(0);
+		await Promise.resolve();
+		expect(s.plugin.settings.views.map(view => view.id)).toEqual(["third", "second"]);
+	});
+	it.each([-1, 3, 0.5])("ignores invalid row index %s", index => {
+		const s = setup(); s.definition.onDelete(index);
+		expect(s.plugin.settings.views).toHaveLength(3);
+		expect(s.plugin.saveSettings).not.toHaveBeenCalled();
+	});
+});
+
 
 describe("fresh settings defaults", () => {
 	it("does not share mutable default views between plugin loads", async () => {
