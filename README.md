@@ -17,12 +17,14 @@ Custom Views lets structured notes render as purpose-built pages while keeping t
 ## Getting started
 
 1. Enable the plugin in **Settings -> Community plugins**.
-2. Open **Settings -> Custom Views**.
-3. Add a view and choose the rules that decide which files it applies to.
+2. Enable **Bases** in **Settings → Core plugins**, then open **Settings → Custom Views**.
+3. Add a view and choose its rules using the native Bases filter editor.
 4. Add an HTML template, then optional CSS and JavaScript.
 5. Open a matching note in reading mode or live preview.
 
-The first matching view is used, so place more specific views above broader ones.
+The first matching view is used, so place more specific views above broader ones. Changes save automatically. If a save fails, a persistent notice offers a retry while your edits remain in memory.
+
+The Rules editor uses Obsidian’s internal Bases controls, including property pickers, nested groups, and advanced formulas. See [native filter integration](docs/NATIVE-FILTERS.md) for requirements and legacy-rule behavior.
 
 ## Documentation
 
