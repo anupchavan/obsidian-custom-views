@@ -123,7 +123,7 @@ export default class CustomViewsPlugin extends Plugin {
 	private renderedMetadata = new WeakMap<MarkdownView, { path: string; value: string }>();
 
 	/** Refresh saved content without rebuilding the live editor for each keystroke. */
-	private queueNoteRefresh(file: TFile): void {
+	private queueNoteRefresh(file: TFile, dependenciesOnly = false): void {
 		if (this.unloaded) return;
 		const previous = this.noteRefreshTimers.get(file);
 		if (previous !== undefined) window.clearTimeout(previous);
@@ -137,7 +137,7 @@ export default class CustomViewsPlugin extends Plugin {
 				const target = view.file!;
 				const overlay = view.contentEl.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
 				const dependencyChanged = target !== file && !!overlay && !!getTemplateDependencies(overlay)?.has(file);
-				if (target !== file && !dependencyChanged) return;
+				if ((dependenciesOnly || target !== file) && !dependencyChanged) return;
 				const rendered = this.renderedMetadata.get(view);
 				const state = view.getState();
 				if (!dependencyChanged && state.mode === "source" && state.source === false &&
@@ -148,6 +148,16 @@ export default class CustomViewsPlugin extends Plugin {
 				void this._processLeaf(view, target);
 			});
 		}, 150));
+	}
+
+	private registerNoteRefreshEvents(): void {
+		this.registerEvent(this.app.metadataCache.on("changed", file => this.queueNoteRefresh(file)));
+		this.registerEvent(this.app.vault.on("rename", file => {
+			if (file instanceof TFile) this.queueNoteRefresh(file);
+		}));
+		this.registerEvent(this.app.vault.on("delete", file => {
+			if (file instanceof TFile) this.queueNoteRefresh(file, true);
+		}));
 	}
 
 	async onload() {
@@ -166,7 +176,7 @@ export default class CustomViewsPlugin extends Plugin {
 		this.basesProvider = new EmbeddedBasesProvider(this);
 		this.basesProvider.register();
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
-		this.registerEvent(this.app.metadataCache.on("changed", file => this.queueNoteRefresh(file)));
+		this.registerNoteRefreshEvents();
 		this.app.workspace.onLayoutReady(() => {
 			window.setTimeout(() => {
 				if (!this.unloaded) {
