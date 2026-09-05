@@ -1349,3 +1349,24 @@ describe("conditional expression branches", () => {
 		expect(await evaluate(parseExpression(expression), makeContext())).toBe(expected);
 	});
 });
+
+
+describe("expression property ownership", () => {
+	it.each(["constructor", "toString", "__proto__"])("does not resolve inherited identifier %s", async name => {
+		expect(await evaluate(parseExpression(name), makeContext())).toBe(null);
+	});
+	it.each(['constructor()', 'hasOwnProperty("x")', '"text".constructor()', '[1].constructor()', 'file.hasProperty("constructor")'])("does not expose inherited functions through %s", async expression => {
+		const result = await evaluate(parseExpression(expression), makeContext());
+		expect(result).toBe(expression.includes("hasProperty") ? false : null);
+	});
+	it.each(['value.constructor', 'value["constructor"]', 'file.constructor', 'file.properties.constructor', '[1].constructor'])("does not resolve inherited properties in %s", async expression => {
+		expect(await evaluate(parseExpression(expression), makeContext({ variables: { value: {} } }))).toBe(null);
+	});
+	it.each(["constructor", "toString", "__proto__"])("preserves actual frontmatter properties named %s", async name => {
+		const frontmatter = JSON.parse(`{"${name}":"Stored value"}`) as Record<string, string>;
+		const ctx = makeContext({ frontmatter });
+		vi.spyOn(ctx.app.metadataCache, "getFileCache").mockReturnValue({ frontmatter: { ...frontmatter, position: {} } });
+		expect(await evaluate(parseExpression(name), ctx)).toBe("Stored value");
+		expect(await evaluate(parseExpression(`file.properties["${name}"]`), ctx)).toBe("Stored value");
+	});
+});
