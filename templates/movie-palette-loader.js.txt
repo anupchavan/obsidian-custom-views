@@ -1,0 +1,49 @@
+// Drop-in replacement for the movie template's loadPaletteFromImage function.
+// Increment the key if the extraction algorithm or its sampling changes.
+function loadPaletteFromImage() {
+	const bgImg = container.querySelector("#bgImg");
+	if (!bgImg) return;
+	const src = bgImg.currentSrc || bgImg.src;
+	if (!src || !bgImg.getAttribute("src")) return;
+	const key = "custom-views:movie-palettes:64-v1";
+	const limit = 128;
+	const valid = (hex) => typeof hex === "string" && /^#[0-9a-f]{6}$/i.test(hex);
+	const paletteCache = (win.__cvMoviePalettes ??= new Map());
+
+	// Read the cache before waiting for the new image element to load. The
+	// image may need a network round trip even though its color is known.
+	if (!paletteCache.size) {
+		try {
+			const saved = JSON.parse(win.localStorage.getItem(key) || "[]");
+			if (Array.isArray(saved)) {
+				for (const entry of saved.slice(-limit)) {
+					if (Array.isArray(entry) && typeof entry[0] === "string" && valid(entry[1])) {
+						paletteCache.set(entry[0], entry[1]);
+					}
+				}
+			}
+		} catch { /* Storage can be unavailable; the in-memory cache still works. */ }
+	}
+	const cached = paletteCache.get(src);
+	if (valid(cached)) {
+		applyPalette(cached);
+		return;
+	}
+
+	const applyFromLoadedImage = () => {
+		// A previous render's callback must never style a different note.
+		if (!container.contains(bgImg)) return;
+		const hex = extractDominantColor(bgImg);
+		if (!valid(hex)) return; // Keep the neutral theme on CORS/load failure.
+		paletteCache.delete(src);
+		paletteCache.set(src, hex);
+		while (paletteCache.size > limit) paletteCache.delete(paletteCache.keys().next().value);
+		applyPalette(hex);
+		try { win.localStorage.setItem(key, JSON.stringify([...paletteCache])); } catch { /* Optional cache. */ }
+	};
+	if (bgImg.complete && bgImg.naturalWidth > 0) {
+		applyFromLoadedImage();
+	} else {
+		bgImg.addEventListener("load", applyFromLoadedImage, { once: true });
+	}
+}

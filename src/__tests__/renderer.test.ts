@@ -886,3 +886,104 @@ describe("renderTemplate source content", () => {
 		expect(container.textContent).toBe("https://example.com/cover.jpg");
 	});
 });
+
+it("starts independent markdown placeholders without waiting for the first renderer", async () => {
+	let releaseFirst: (() => void) | undefined;
+	let calls = 0;
+	const spy = vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (_app, markdown, el) => {
+		calls++;
+		if (calls === 1) await new Promise<void>(resolve => { releaseFirst = resolve; });
+		else releaseFirst?.();
+		el.textContent = markdown;
+	});
+	const app = {
+		metadataCache: { getFileCache: () => ({ frontmatter: { first: "[[One]]", second: "[[Two]]" } }) },
+		vault: { cachedRead: async () => "" },
+	} as unknown as App;
+	const container = window.document.createElement("div");
+	try {
+		await renderTemplate(app, "<p>{{first}}</p><p>{{second}}</p>", new TFile(), container, new Component(), false, undefined, undefined, false);
+		expect(calls).toBe(2);
+		expect(container.textContent).toBe("[[One]][[Two]]");
+	} finally {
+		releaseFirst?.();
+		spy.mockRestore();
+	}
+}, 1000);
+
+
+describe("dynamic template CSS isolation", () => {
+	async function setupStyle() {
+		const app = { metadataCache: { getFileCache: () => null }, vault: { cachedRead: async () => "" } } as unknown as App;
+		const container = window.document.createElement("div");
+		await renderTemplate(app, '<div><style data-cv-scoped="true">body { color: red; }</style></div>', new TFile(), container, new Component(), false, undefined, "scope-test", false);
+		return container.querySelector("style")!;
+	}
+	it("scopes template-supplied styles even if they already carry a scoped attribute", async () => {
+		const style = await setupStyle();
+		expect(style.textContent).toBe('[data-cv-id="scope-test"] {\nbody { color: red; }\n}');
+	});
+	it("re-scopes an existing stylesheet when asynchronous JS replaces its text", async () => {
+		const style = await setupStyle();
+		style.textContent = "body { color: blue; }";
+		await Promise.resolve(); await Promise.resolve();
+		expect(style.textContent).toBe('[data-cv-id="scope-test"] {\nbody { color: blue; }\n}');
+		const stable = style.textContent;
+		await Promise.resolve();
+		expect(style.textContent).toBe(stable);
+	});
+	it("handles direct edits to a stylesheet's text node", async () => {
+		const style = await setupStyle();
+		(style.firstChild as Text).data = "body { color: green; }";
+		await Promise.resolve(); await Promise.resolve();
+		expect(style.textContent).toBe('[data-cv-id="scope-test"] {\nbody { color: green; }\n}');
+	});
+});
+
+
+describe("leading template assets", () => {
+	const app = { metadataCache: { getFileCache: () => null }, vault: { cachedRead: async () => "" } } as unknown as App;
+	it("keeps a leading stylesheet and scopes it to its view", async () => {
+		const container = window.document.createElement("div");
+		await renderTemplate(app, '<style>p { color: red; }</style><p>Hello</p>', new TFile(), container, new Component(), false, undefined, "leading", false);
+		expect(container.querySelector("style")?.textContent).toBe('[data-cv-id="leading"] {\np { color: red; }\n}');
+		expect(container.querySelector("p")?.textContent).toBe("Hello");
+	});
+	it("executes a leading inline script after the body has been rendered", async () => {
+		const container = window.document.createElement("div");
+		await renderTemplate(app, '<script>this.querySelector("p").textContent = "Updated";</script><p>Original</p>', new TFile(), container, new Component());
+		expect(container.querySelector("p")?.textContent).toBe("Updated");
+	});
+	it("still respects disabled JavaScript for leading scripts", async () => {
+		const container = window.document.createElement("div");
+		await renderTemplate(app, '<script>this.querySelector("p").textContent = "Updated";</script><p>Original</p>', new TFile(), container, new Component(), false, undefined, undefined, false);
+		expect(container.querySelector("p")?.textContent).toBe("Original");
+	});
+});
+
+it("does not overwrite a container or execute scripts after its request is aborted", async () => {
+	let finishRead!: (content: string) => void;
+	const app = {
+		metadataCache: { getFileCache: () => null },
+		vault: { cachedRead: () => new Promise<string>(resolve => { finishRead = resolve; }) },
+	} as unknown as App;
+	const container = window.document.createElement("div"); container.textContent = "Current note";
+	const controller = new AbortController();
+	const pending = renderTemplate(app, '<p>Old note</p><script>this.dataset.stale = "yes";</script>', new TFile(), container, new Component(), false, undefined, undefined, true, undefined, undefined, controller.signal);
+	controller.abort(); finishRead("Old content");
+	await expect(pending).rejects.toThrow();
+	expect(container.textContent).toBe("Current note");
+	expect(container.dataset.stale).toBeUndefined();
+});
+
+
+it("stops remaining inline scripts when navigation aborts during script execution", async () => {
+	const controller = new AbortController();
+	const cancel = vi.fn(() => controller.abort());
+	const app = {
+		metadataCache: { getFileCache: () => null }, vault: { cachedRead: async () => "" }, cancel,
+	} as unknown as App;
+	const container = window.document.createElement("div");
+	await expect(renderTemplate(app, '<script>tp.app.cancel();</script><script>this.dataset.stale = "yes";</script>', new TFile(), container, new Component(), false, undefined, undefined, true, undefined, undefined, controller.signal)).rejects.toThrow();
+	expect(cancel).toHaveBeenCalledOnce(); expect(container.dataset.stale).toBeUndefined();
+});

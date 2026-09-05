@@ -150,3 +150,5 @@ export function parseYaml(yaml: string): unknown {
 	if (trimmed === "views: []") return { views: [] };
 	return {};
 }
+
+export function requireApiVersion() { return true; }
