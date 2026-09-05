@@ -47,4 +47,6 @@ export interface ViewConfig {
 	showProperties?: boolean;
 	/** When true, show the inline title in editing view */
 	showInlineTitle?: boolean;
+	/** Show the pane navigation bar in custom reading and live preview views (default true). */
+	showNavigationBar?: boolean;
 }
