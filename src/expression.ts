@@ -1172,6 +1172,7 @@ const linkMethods: Record<string, MethodFn> = {
 const fileMethods: Record<string, MethodFn> = {
 	content: async (ctx, obj) => {
 		if (!isExprFile(obj)) return null;
+		ctx.dependencies?.add(obj._tfile);
 		return readFileContent(ctx.app, obj._tfile);
 	},
 	asLink: (_ctx, obj) => {
@@ -1356,7 +1357,7 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 				return ctx.frontmatter[name] as ExprValue;
 			}
 			// Built-in file properties
-			if (name === "content") return ctx.bodyContent;
+			if (name === "content") { ctx.dependencies?.add(ctx.file); return ctx.bodyContent; }
 			if (name === "name") return ctx.file.name;
 			if (name === "basename") return ctx.file.basename;
 			if (name === "size") return ctx.file.stat.size;
