@@ -108,7 +108,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				},
 				onDelete: (index: number) => {
 					const view = listedViews[index];
-					if (view) void this.deleteView(view).then(() => this.refreshSettingsTab());
+					if (view) void this.deleteView(view).catch(() => {});
 				},
 				items: listedViews.map((view) => ({
 					// Obsidian's reconciler accepts an explicit id independently of the label.
@@ -151,8 +151,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		const index = this.plugin.settings.views.indexOf(view);
 		if (index < 0) return;
 		this.plugin.settings.views.splice(index, 1);
-		await this.plugin.saveSettings();
+		this.refreshSettingsTab();
 		this.plugin.refreshAllViews();
+		await this.plugin.saveSettings();
 	}
 
 	private async reorderViews(oldIndex: number, newIndex: number, listedViews?: readonly ViewConfig[]) {
@@ -289,8 +290,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						cb.setIcon("trash")
 							.setTooltip("Delete " + view.name)
 							.onClick(async () => {
-								await this.deleteView(view);
-								this.renderLegacySettings();
+								await this.deleteView(view).catch(() => {});
 							});
 					});
 			});
