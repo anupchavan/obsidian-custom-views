@@ -42,6 +42,41 @@ describe("settings dialog lifetime", () => {
 		s.plugin.onunload();
 		expect(s.done).toHaveBeenCalledOnce();
 	});
+	it.each(["focused", "moved", "closed", "detached"])("respects %s name-input focus when deferred selection runs", state => {
+		const s = setup();
+		const input = window.document.body.appendChild(window.document.createElement("input")); input.value = "View name";
+		const other = window.document.body.appendChild(window.document.createElement("input"));
+		const select = vi.spyOn(input, "select"); let callback!: FrameRequestCallback;
+		const request = vi.spyOn(window, "requestAnimationFrame").mockImplementation(fn => { callback = fn; return 123; });
+		const cancel = vi.spyOn(window, "cancelAnimationFrame");
+		try {
+			input.focus();
+			const schedule = Reflect.get(s.modal, "selectFocusedName") as (input: HTMLInputElement) => void;
+			schedule.call(s.modal, input);
+			if (state === "moved") other.focus();
+			if (state === "closed") s.modal.onClose();
+			if (state === "detached") input.remove();
+			callback(0);
+			expect(select).toHaveBeenCalledTimes(state === "focused" ? 1 : 0);
+			if (state === "moved") expect(window.document.activeElement).toBe(other);
+			if (state === "closed") expect(cancel).toHaveBeenCalledWith(123);
+		} finally { s.modal.onClose(); input.remove(); other.remove(); request.mockRestore(); cancel.mockRestore(); }
+	});
+
+	it("schedules selection in the input's own window", () => {
+		const s = setup();
+		const frame = window.document.body.appendChild(window.document.createElement("iframe"));
+		const childWindow = frame.contentWindow!; const childDocument = frame.contentDocument!;
+		const input = childDocument.body.appendChild(childDocument.createElement("input"));
+		const request = vi.spyOn(childWindow, "requestAnimationFrame").mockReturnValue(99);
+		const cancel = vi.spyOn(childWindow, "cancelAnimationFrame");
+		try {
+			const schedule = Reflect.get(s.modal, "selectFocusedName") as (input: HTMLInputElement) => void;
+			schedule.call(s.modal, input); s.modal.onClose();
+			expect(request).toHaveBeenCalledOnce(); expect(cancel).toHaveBeenCalledWith(99);
+		} finally { s.modal.onClose(); request.mockRestore(); cancel.mockRestore(); frame.remove(); }
+	});
+
 	it.each([0, 1, 2, 3])("finishes closing when editor cleanup %i throws", index => {
 		const s = setup();
 		const error = new Error("Editor cleanup failed");

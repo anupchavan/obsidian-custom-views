@@ -291,6 +291,7 @@ export class EditViewModal extends Modal {
 	onClose_cb: () => void;
 	private disposeFilters: (() => void) | undefined;
 	private nameTextComponent: TextComponent | null = null;
+	private cancelNameSelection: (() => void) | undefined;
 	private templateEditor: EditorView | null = null;
 	private cssEditor: EditorView | null = null;
 	private jsEditor: EditorView | null = null;
@@ -328,9 +329,7 @@ export class EditViewModal extends Modal {
 						this.view.name = value;
 						autoSave();
 					});
-				window.requestAnimationFrame(() => {
-					text.inputEl.select();
-				});
+				this.selectFocusedName(text.inputEl);
 			});
 
 		contentEl.createEl("h3", { text: "Display options" });
@@ -437,9 +436,24 @@ export class EditViewModal extends Modal {
 		}
 	}
 
+	private selectFocusedName(input: HTMLInputElement) {
+		this.cancelNameSelection?.();
+		const ownerWindow = input.ownerDocument.defaultView;
+		if (!ownerWindow || this.closed) return;
+		const frame = ownerWindow.requestAnimationFrame(() => {
+			this.cancelNameSelection = undefined;
+			if (!this.closed && input.isConnected && input.ownerDocument.activeElement === input) input.select();
+		});
+		this.cancelNameSelection = () => ownerWindow.cancelAnimationFrame(frame);
+	}
+
+
 	onClose() {
 		if (this.closed) return;
 		this.closed = true;
+		this.cancelNameSelection?.();
+		this.cancelNameSelection = undefined;
+		this.nameTextComponent = null;
 		this.plugin.unloadSignal.removeEventListener("abort", this.closeOnUnload);
 		const cleanups = [
 			this.disposeFilters,
