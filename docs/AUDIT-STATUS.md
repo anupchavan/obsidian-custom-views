@@ -1,11 +1,12 @@
 # Custom Views audit status
 
-Status as of 2026-09-05: active. The checks below describe completed work and remaining verification, not a claim that every possible plugin issue has been eliminated.
+Status as of 2026-09-05: paused at the user’s request. The checks below describe completed work and remaining verification, not a claim that every possible plugin issue has been eliminated.
 
 ## Branches
 
-- `fix/native-filters-and-ux` contains the native filter integration and general fixes.
-- `experiment/atomic-note-navigation` additionally contains the user-requested, unreleased navigation hooks. General fixes are copied into it so the installed development vault retains the flicker experiment. Obsidian's application binary has not been modified.
+All completed refinement work and the atomic navigation experiment are merged into `main`. The source branches (`fix/native-filters-and-ux`, `experiment/atomic-note-navigation`, and the earlier render/Bases experiments) are retained in history. The flicker protection remains enabled with the retained-shell strategy. Obsidian's application binary has not been modified.
+
+This merge does not bump the version, create a tag, or publish a release. The outstanding work below is paused; new feature work awaits the user's selection.
 
 ## Evidence reviewed
 

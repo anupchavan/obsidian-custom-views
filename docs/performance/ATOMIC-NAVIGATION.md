@@ -1,6 +1,6 @@
 # Atomic note navigation experiment
 
-Branch: `experiment/atomic-note-navigation`, based on `fix/native-filters-and-ux` at `0a089ea`. This is a local, unreleased experiment. The Obsidian binary was not modified.
+Originally developed on `experiment/atomic-note-navigation`, based on `fix/native-filters-and-ux` at `0a089ea`. Merged into `main` at the user’s request on 2026-09-05; no release has been published for this work. The Obsidian binary was not modified.
 
 Obsidian populates MarkdownView before emitting `file-open`. Replacing the normal view in that event leaves a presentation gap. This experiment wraps `WorkspaceLeaf.setViewState` and `MarkdownView.setState` before the native load starts, holds the previous note, awaits native loading and the custom render, then reveals the completed view without a fade.
 
