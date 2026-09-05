@@ -1,3 +1,4 @@
+import { TemplateDependencies } from "../template-dependencies";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
@@ -112,6 +113,20 @@ describe("open note changes", () => {
 		expect(renderTemplate).not.toHaveBeenCalled();
 	});
 
+	it("refreshes when a newly indexed file resolves a previously missing template link", async () => {
+		const s = setup(); await s.methods._processLeaf(s.view, s.file);
+		const created = new TFile(); created.path = "People/New actor.md";
+		let destination: TFile | null = null;
+		Object.assign(s.plugin.app.metadataCache, { getFirstLinkpathDest: () => destination });
+		const dependencies = new TemplateDependencies(s.plugin.app);
+		dependencies.addMissingLink("New actor", s.file.path);
+		vi.mocked(getTemplateDependencies).mockReturnValue(dependencies);
+		vi.mocked(renderTemplate).mockClear(); vi.useFakeTimers();
+		destination = created;
+		s.methods.queueNoteRefresh(created); await vi.advanceTimersByTimeAsync(150);
+		expect(renderTemplate).toHaveBeenCalledOnce();
+		expect(vi.mocked(renderTemplate).mock.calls[0]?.[2]).toBe(s.file);
+	});
 	it("refreshes a view when a linked note used by its template changes", async () => {
 		const s = setup(); await s.methods._processLeaf(s.view, s.file);
 		const linked = new TFile(); linked.path = "People/Actor.md";
