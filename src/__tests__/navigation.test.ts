@@ -174,7 +174,7 @@ describe("open note changes", () => {
 
 describe("canvas rendering lifetime", () => {
 	function canvasSetup() {
-		const s = setup(); s.plugin.settings.workInCanvas = true;
+		const s = setup(); s.plugin.settings.workInCanvas = true; s.file.extension = "md";
 		const nodeEl = window.document.createElement("div");
 		const preview = nodeEl.appendChild(window.document.createElement("div"));
 		preview.className = "markdown-preview-view";
@@ -182,6 +182,18 @@ describe("canvas rendering lifetime", () => {
 		s.plugin.app.workspace.iterateAllLeaves = callback => callback({ view: { canvas: { nodes: [node] } } } as unknown as WorkspaceLeaf);
 		return { ...s, node, preview };
 	}
+	it.each(["cleared", "image"])("cancels pending Markdown rendering after the node becomes %s", async kind => {
+		const s = canvasSetup(); let finish!: () => void;
+		vi.mocked(renderTemplate).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+		const pending = s.plugin.processCanvasNode(s.node); await Promise.resolve();
+		expect(s.preview.querySelector(".obsidian-custom-view-render")).not.toBeNull();
+		if (kind === "cleared") Reflect.deleteProperty(s.node, "file");
+		else { s.node.file = new TFile(); s.node.file.extension = "png"; s.node.file.path = "Poster.png"; }
+		s.plugin.processAllCanvasNodes();
+		expect(s.preview.querySelector(".obsidian-custom-view-render")).toBeNull();
+		finish(); await pending;
+		expect(s.preview.querySelector(".obsidian-custom-view-render")).toBeNull();
+	});
 	it("coalesces repeated requests while a canvas node render is pending", async () => {
 		const s = canvasSetup(); let finish!: () => void;
 		const render = vi.spyOn(s.plugin, "injectCustomView").mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
@@ -205,7 +217,7 @@ describe("canvas rendering lifetime", () => {
 		const s = canvasSetup(); const signals: AbortSignal[] = [];
 		const render = vi.spyOn(s.plugin, "injectCustomView").mockImplementation(async (_container, _file, _template, _config, _source, signal) => { signals.push(signal!); await new Promise<void>(resolve => signal!.addEventListener("abort", () => resolve(), { once: true })); });
 		const first = s.plugin.processCanvasNode(s.node); await Promise.resolve();
-		s.node.file = new TFile(); s.node.file.path = "Other.md";
+		s.node.file = new TFile(); s.node.file.path = "Other.md"; s.node.file.extension = "md";
 		const second = s.plugin.processCanvasNode(s.node); await Promise.resolve();
 		expect(signals[0]?.aborted).toBe(true); expect(render).toHaveBeenCalledTimes(2);
 		s.plugin.restoreCanvasNode(s.node); await Promise.all([first, second]);
