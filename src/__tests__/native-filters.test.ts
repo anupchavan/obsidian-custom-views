@@ -82,6 +82,34 @@ describe("native Bases integration", () => {
 		expect(parent.children).toHaveLength(0); expect(destroy).toHaveBeenCalledOnce();
 		expect(s.entries[1].unload).toHaveBeenCalledOnce();
 	});
+	it.each(["toolbar", "property", "operator", "formula", "embed"])("cleans up remaining native resources when %s cleanup throws", async failing => {
+		const s = setup(); const api = await getNativeBasesApi(s.app);
+		const parent = window.document.createElement("div"); const save = vi.fn();
+		const dispose = api.createEditor(parent, "true", save);
+		const embed = s.entries[1]; const builder = embed.controller.filterMenu.globalFilterBuilder;
+		const row = builder.root.children[0];
+		const cleanups = { toolbar: embed.controller.filterMenu.toolbarItem.setOpen, property: row.leftInputEl.close, operator: row.operatorComponent.close, formula: row.advancedInputEditor.destroy, embed: embed.unload };
+		const error = new Error("Native control failed to close");
+		cleanups[failing as keyof typeof cleanups].mockImplementation(() => { throw error; });
+		const report = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			expect(dispose).not.toThrow(); dispose();
+			for (const close of Object.values(cleanups)) expect(close).toHaveBeenCalledOnce();
+			expect(parent.children).toHaveLength(0);
+			const callback = builder.updateQuery.mock.calls[0][0] as (filter: BasesFilter | null) => void;
+			callback("false"); expect(save).not.toHaveBeenCalled();
+			expect(report).toHaveBeenCalledWith("[Custom Views] Could not clean up a native filter control:", error);
+		} finally { report.mockRestore(); }
+	});
+	it("unloads a later embed if its filter menu is unavailable", async () => {
+		const s = setup(); const api = await getNativeBasesApi(s.app);
+		const factory = s.factorySpy.getMockImplementation()!;
+		s.factorySpy.mockImplementationOnce(() => {
+			const embed = factory(); Reflect.deleteProperty(embed.controller, "filterMenu"); return embed;
+		});
+		expect(() => api.createEditor(window.document.createElement("div"), null, vi.fn())).toThrow("compatible Bases filter editor");
+		expect(s.entries[1].unload).toHaveBeenCalledOnce();
+	});
 	it("does not allocate an editor for an unparseable saved query", async () => {
 		const s = setup(); const api = await getNativeBasesApi(s.app);
 		expect(() => api.createEditor(window.document.createElement("div"), "throw", vi.fn())).toThrow();
