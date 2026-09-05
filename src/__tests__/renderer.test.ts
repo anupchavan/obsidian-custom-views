@@ -1013,3 +1013,20 @@ describe("template file dependencies", () => {
 		expect(getTemplateDependencies(container)?.size).toBe(0);
 	});
 });
+
+
+describe("derived note body dependencies", () => {
+	it.each([
+		['<p>{{content}}</p>', false],
+		['<p>{{content | upper}}</p>', true],
+		['<p>{{content.length}}</p>', true],
+		['{% if content %}<p>Has body</p>{% endif %}', true],
+		['<p>{{file.content()}}</p>', true],
+	])("tracks body reads outside the editable placeholder in %s", async (template, expected) => {
+		const file = new TFile(); file.path = "Body.md";
+		const app = { metadataCache: { getFileCache: () => null }, vault: { cachedRead: async () => "Body text" } } as unknown as App;
+		const container = window.document.createElement("div");
+		await renderTemplate(app, template, file, container, new Component(), true, undefined, undefined, false, "Body text");
+		expect(getTemplateDependencies(container)?.has(file)).toBe(expected);
+	});
+});
