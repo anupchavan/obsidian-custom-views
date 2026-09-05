@@ -60,8 +60,9 @@ function convertFilter(app: App, filter: Filter): string {
 			const terms = single ? [value] : value.split(",").map(v => v.trim()).filter(Boolean);
 			const checks = terms.map(term => {
 				if (term === "") return `if(${field}.isType("list"), ${field}.length > 0, true)`;
+				// Native contains() ignores case; literal split preserves legacy case sensitivity.
 				const text = JSON.stringify(term);
-				return `if(${field}.isType("list"), ${field}.filter(value.toString().contains(${text})).length > 0, ${field}.toString().contains(${text}))`;
+				return `if(${field}.isType("list"), ${field}.filter(value.toString().split(${text}).length > 1).length > 0, ${field}.toString().split(${text}).length > 1)`;
 			});
 			const match = checks.length ? checks.join(filter.operator.endsWith("all of") ? " && " : " || ") : "false";
 			return filter.operator.startsWith("does not") ? `!(${match})` : match;

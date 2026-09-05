@@ -21,7 +21,8 @@ window.cvListProof=(()=>{
     [[null],'null'], [[null,'a'],'null,a'], [[null],''], [[''],''], [false,'False'],
     [['science fiction','drama'],'fiction'], [['science fiction','drama'],'fiction,dr'],
     [['science fiction','drama'],'fiction,comedy'], [['ab'],'a,b'], [['a','b'],'a'], [[1],'1'], [1,'1'],
-    ['science fiction','fiction'], [123,'2'], [null,'missing'],
+    ['science fiction','fiction'], [['Fiction'],'fiction'], [['fiction'],'Fiction'],
+    [['a.*b'],'a.*'], [['abcd'],'a.*'], [123,'2'], [null,'missing'],
     [['He said \"hi\"'],'\"hi\"'],
   ];
   const rows=[];
