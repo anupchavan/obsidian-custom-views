@@ -1,0 +1,30 @@
+{
+  "done": true,
+  "rows": [
+    {
+      "path": "Untitled.md",
+      "mode": "source",
+      "source": false,
+      "slow": false,
+      "badFrames": 0,
+      "heldFrames": 0,
+      "overlays": 0,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    },
+    {
+      "path": "Movies/Interstellar.md",
+      "mode": "source",
+      "source": false,
+      "slow": true,
+      "badFrames": 27,
+      "heldFrames": 0,
+      "overlays": 1,
+      "editors": 1,
+      "heldAfter": false,
+      "opacity": ""
+    }
+  ],
+  "error": "Error: Navigation invariant failed: {\"path\":\"Movies/Interstellar.md\",\"mode\":\"source\",\"source\":false,\"slow\":true,\"badFrames\":27,\"heldFrames\":0,\"overlays\":1,\"editors\":1,\"heldAfter\":false,\"opacity\":\"\"}"
+}
