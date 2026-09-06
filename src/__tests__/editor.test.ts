@@ -21,6 +21,7 @@ import {
 	htmlLanguage,
 } from "../editor";
 import { EditorView } from "@codemirror/view";
+import { startCompletion, currentCompletions, completionStatus } from "@codemirror/autocomplete";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -460,6 +461,42 @@ describe("htmlLanguage", () => {
 // Helper: simulate inputHandler
 // ---------------------------------------------------------------------------
 
+describe("syntax-aware suggestions", () => {
+	async function suggestions(language: "html" | "css" | "javascript", content: string) {
+		const pos = content.includes("|") ? content.indexOf("|") : content.length;
+		content = content.replace("|", "");
+		const view = createAndTrack({ language, initialContent: content, templateVariables: [{ name: "rating", type: "number" }] });
+		view.dispatch({ selection: { anchor: pos } });
+		startCompletion(view);
+		await vi.waitFor(() => expect(completionStatus(view.state)).not.toBe("pending"));
+		return currentCompletions(view.state);
+	}
+	it.each([
+		["html", "<di", "div", "type"],
+		["html", "<input ty", "type", "property"],
+		["html", '<input type="', "checkbox", "constant"],
+		["css", ".card { dis", "display", "property"],
+		["css", ".card { display: f", "flex", "keyword"],
+		["javascript", "const movieTitle = 'Test';\nmov", "movieTitle", "variable"],
+		["javascript", "document.que", "querySelector", "method"],
+		["html", "<style>.card { display: f", "flex", "keyword"],
+		["html", "<script>document.que", "querySelector", "method"],
+	] as const)("offers %s %s with the correct completion type", async (language, content, label, type) => {
+		expect(await suggestions(language, content)).toContainEqual(expect.objectContaining({ label, type }));
+	});
+	it.each(["html", "css", "javascript"] as const)("keeps typed template properties in %s", async language => {
+		const options = await suggestions(language, "{{rat");
+		expect(options).toContainEqual(expect.objectContaining({ label: "rating", type: "cv-number" }));
+		expect(options.some(option => option.label.startsWith("<"))).toBe(false);
+	});
+	it.each([
+		["html", "<!-- <di| -->"], ["css", "/* dis"], ["javascript", "// doc"],
+		["javascript", 'const text = "doc'],
+	] as const)("does not suggest language names inside %s comments or strings", async (language, content) => {
+		expect(await suggestions(language, content)).toEqual([]);
+	});
+});
+
 /**
  * Simulates the CM6 inputHandler by calling the handler function directly.
  * Returns true if the handler consumed the input.
@@ -472,10 +509,10 @@ function simulateInput(
 ): boolean {
 	// The EditorView.inputHandler facet handlers have signature:
 	// (view, from, to, text, insert) => boolean
+	view.dispatch({ selection: { anchor: from, head: to } });
 	const facetValues = view.state.facet(EditorView.inputHandler);
 	const defaultInsert = () => {
-		view.dispatch({ changes: { from, to, insert: text } });
-		return view.state.update({});
+		return view.state.update({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
 	};
 	for (const handler of facetValues) {
 		if (handler(view, from, to, text, defaultInsert)) {
