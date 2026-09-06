@@ -1,6 +1,6 @@
 {
     "name": "obsidian-custom-views",
-    "version": "0.3.2",
+    "version": "0.4.0",
     "description": "Create custom HTML views for your notes based on filter rules. Transform how your notes are displayed.",
     "main": "main.js",
     "scripts": {
