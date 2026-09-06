@@ -1,3 +1,4 @@
+import { createDetachedEl } from "./dom";
 import { TemplateDependencies, recordLinkDependency } from "./template-dependencies";
 import { App, TFile, MarkdownRenderer, Component } from "obsidian";
 import { applyFilterChain } from "./filters";
@@ -513,7 +514,7 @@ export async function renderTemplate(
 			contentEl.setAttribute(EDITABLE_PLACEHOLDER_ATTR, "true");
 			contentEl.removeAttribute("id");
 		} else {
-			const sizer = container.ownerDocument.createElement("div");
+			const sizer = createDetachedEl(container.ownerDocument, "div");
 			sizer.classList.add("markdown-preview-sizer", "markdown-preview-section");
 			contentEl.appendChild(sizer);
 
@@ -527,7 +528,7 @@ export async function renderTemplate(
 	if (viewConfig?.css) {
 		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
 		if (resolvedCss.trim()) {
-			const styleEl = container.ownerDocument.createElement("style");
+			const styleEl = createDetachedEl(container.ownerDocument, "style");
 			styleEl.textContent = resolvedCss;
 			container.prepend(styleEl);
 		}
@@ -718,7 +719,7 @@ async function readCachedSourceContent(app: App, file: TFile): Promise<string> {
 	});
 
 	while (cache.size > SOURCE_CONTENT_CACHE_LIMIT) {
-		const oldestKey = cache.keys().next().value as string | undefined;
+		const oldestKey = cache.keys().next().value;
 		if (oldestKey === undefined) break;
 		cache.delete(oldestKey);
 	}

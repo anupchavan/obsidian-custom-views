@@ -40,7 +40,6 @@ function makeMockFile(overrides: Partial<TFile> = {}): TFile {
 		stat: { size: 1234, ctime: 1000000, mtime: 2000000 },
 		vault: {},
 		...overrides,
-		// eslint-disable-next-line obsidianmd/no-tfile-tfolder-cast
 	} as unknown as TFile;
 }
 

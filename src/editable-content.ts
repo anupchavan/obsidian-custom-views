@@ -1,3 +1,4 @@
+import { createDetachedEl } from "./dom";
 import {
 	StateField,
 	RangeSet,
@@ -49,7 +50,7 @@ export function detectFrontmatterRange(
  */
 class ZeroHeightWidget extends WidgetType {
 	toDOM(): HTMLElement {
-		const el = activeDocument.createElement("div");
+		const el = createDetachedEl(activeDocument, "div");
 		el.className = "cv-frontmatter-hidden";
 		return el;
 	}

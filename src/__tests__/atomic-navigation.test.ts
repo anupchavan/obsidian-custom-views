@@ -79,7 +79,6 @@ describe("experimental atomic navigation", () => {
 	});
 	it("restores visibility after failure", async () => {
 		const s = setup(async () => { throw new Error("Read failed"); });
-		// eslint-disable-next-line obsidianmd/no-static-styles-assignment -- Fixture verifies restoration of existing inline styles.
 		s.contentEl.style.setProperty("opacity", "0.8", "important");
 		await expect(s.view.setState({}, { history: false })).rejects.toThrow("Read failed");
 		expect(s.contentEl.style.opacity).toBe("0.8");

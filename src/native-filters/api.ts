@@ -1,3 +1,4 @@
+import { createDetachedEl } from "../dom";
 import { BasesEntry, TFile, type App } from "obsidian";
 
 export type BasesFilter = string | { and: BasesFilter[] } | { or: BasesFilter[] } | { not: BasesFilter[] };
@@ -68,7 +69,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 	file.path = "__custom_views_rules__.base";
 	file.name = "__custom_views_rules__.base";
 	file.extension = "base";
-	const host = activeDocument.createElement("div");
+	const host = createDetachedEl(activeDocument, "div");
 	const seed = factory({ app, containerEl: host, sourcePath: "", linktext: "" }, file, "");
 	let Query: QueryConstructor;
 	try {
@@ -82,7 +83,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 			file,
 			controller: seed.controller,
 			requestSave() {},
-		}) as NativeQuery;
+		});
 		query.saveFn = () => {};
 		Query = query.constructor as unknown as QueryConstructor;
 		if (typeof Query.parse !== "function") throw new Error("The native Bases query parser is unavailable.");
@@ -103,7 +104,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 		},
 		createEditor(parent, filters, save) {
 			const query = parse(filters);
-			const internalHost = parent.ownerDocument.createElement("div");
+			const internalHost = createDetachedEl(parent.ownerDocument, "div");
 			const embed = factory({ app, containerEl: internalHost, sourcePath: "", linktext: "" }, file, "");
 			let builder: NativeBuilder | undefined;
 			let disposed = false;

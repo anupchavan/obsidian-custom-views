@@ -1,4 +1,4 @@
-import { moment } from "obsidian";
+import { moment, type unitOfTime } from "./host-moment";
 
 /** Split a string into lowercase words for kebab/snake/pascal casing */
 const WORD_SPLIT_RE = /[A-Z]{2,}(?=[A-Z][a-z]+[0-9]*|\b)|[A-Z]?[a-z]+[0-9]*|[A-Z]|[0-9]+/g;
@@ -141,7 +141,7 @@ const filters: Record<string, FilterFunction> = {
 	date_modify: (val: string, modification: string) => {
 		const parts = modification.trim().split(" ");
 		const amount = parseInt(parts[0]);
-		const unit = parts[1] as moment.unitOfTime.DurationConstructor;
+		const unit = parts[1] as unitOfTime.DurationConstructor;
 		const m = moment(val);
 		return m.isValid() ? m.add(amount, unit).format("YYYY-MM-DD") : val;
 	},

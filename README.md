@@ -53,6 +53,7 @@ JavaScript template execution is powered by [`@silentvoid13/rusty_engine`](https
 npm install
 npm run dev
 npm run lint
+npm run typecheck
 npm test
 npm run build
 ```

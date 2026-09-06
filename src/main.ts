@@ -1,3 +1,4 @@
+import { createDetachedEl } from "./dom";
 import { loadValidatedSettings } from "./settings-loader";
 import { RenderCoordinator } from "./render-coordinator";
 import { AtomicNavigation } from "./atomic-navigation";
@@ -551,7 +552,7 @@ export default class CustomViewsPlugin extends Plugin {
 		container.addClass(HIDE_MARKDOWN_CLASS);
 
 		const previousOverlay = container.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
-		const customEl = container.ownerDocument.createElement("div");
+		const customEl = createDetachedEl(container.ownerDocument, "div");
 		customEl.addClass(CUSTOM_VIEW_CLASS);
 		container.appendChild(customEl);
 		this.registerOverlayLinkHandlers(customEl, file.path);
@@ -746,7 +747,7 @@ export default class CustomViewsPlugin extends Plugin {
 		// reconfiguring CM6 twice per navigation forces extra layout and parsing.
 		const previousOverlay = container.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
 		const previousState = this.editableStates.get(container);
-		const customEl = container.ownerDocument.createElement("div");
+		const customEl = createDetachedEl(container.ownerDocument, "div");
 		customEl.addClass(CUSTOM_VIEW_CLASS);
 		customEl.addClass(PENDING_VIEW_CLASS);
 		container.appendChild(customEl);
@@ -892,12 +893,14 @@ export default class CustomViewsPlugin extends Plugin {
 	private applyViewDisplayOptions(container: HTMLElement, viewConfig?: ViewConfig) {
 		if (!viewConfig) return;
 		container.toggleClass("cv-hide-navigation", viewConfig.showNavigationBar === false);
+		container.parentElement?.toggleClass("cv-hide-navigation", viewConfig.showNavigationBar === false);
 		container.toggleClass("cv-hide-properties", viewConfig.showProperties === false);
 		container.toggleClass("cv-hide-inline-title", viewConfig.showInlineTitle === false);
 	}
 
 	private restoreDisplayOptions(container: HTMLElement) {
 		container.removeClass("cv-hide-navigation");
+		container.parentElement?.removeClass("cv-hide-navigation");
 		container.removeClass("cv-hide-properties");
 		container.removeClass("cv-hide-inline-title");
 	}

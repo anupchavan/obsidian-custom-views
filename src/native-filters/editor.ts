@@ -1,3 +1,4 @@
+import { createDetachedEl } from "../dom";
 import type { App } from "obsidian";
 import type { ViewConfig } from "../types";
 import { getNativeBasesApi } from "./api";
@@ -23,10 +24,10 @@ export function mountNativeFilters(app: App, host: HTMLElement, view: ViewConfig
 		}).catch(error => {
 			if (closed) return;
 			host.replaceChildren();
-			const message = host.ownerDocument.createElement("p");
+			const message = createDetachedEl(host.ownerDocument, "p");
 			message.setAttribute("role", "alert");
 			message.textContent = error instanceof Error ? error.message : "The Bases filter editor could not be loaded.";
-			const retry = host.ownerDocument.createElement("button");
+			const retry = createDetachedEl(host.ownerDocument, "button");
 			retry.type = "button";
 			retry.textContent = "Retry";
 			retry.addEventListener("click", mount);

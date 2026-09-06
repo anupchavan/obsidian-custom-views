@@ -1,3 +1,4 @@
+import { createDetachedEl } from "../dom";
 import {
 	TFile,
 	parseYaml,
@@ -358,7 +359,7 @@ function toBaseFileContent(config: Record<string, unknown>): string {
 }
 
 function createVisibleHiddenHost(ownerDocument: Document): HTMLElement {
-	const host = ownerDocument.createElement("div");
+	const host = createDetachedEl(ownerDocument, "div");
 	host.classList.add("cv-bases-collector-host");
 	ownerDocument.body.appendChild(host);
 	return host;
@@ -443,10 +444,10 @@ function createFakeBaseFile(app: App): TFile {
 function installFakeBaseFile(vault: Vault, file: TFile, content: string): () => void {
 	let patch = fakeVaultPatches.get(vault);
 	if (!patch) {
-		const originalRead = vault.read.bind(vault) as Vault["read"];
-		const originalCachedRead = vault.cachedRead.bind(vault) as Vault["cachedRead"];
-		const originalModify = vault.modify.bind(vault) as Vault["modify"];
-		const originalCreate = vault.create.bind(vault) as Vault["create"];
+		const originalRead = vault.read.bind(vault);
+		const originalCachedRead = vault.cachedRead.bind(vault);
+		const originalModify = vault.modify.bind(vault);
+		const originalCreate = vault.create.bind(vault);
 
 		patch = {
 			files: new Map(),

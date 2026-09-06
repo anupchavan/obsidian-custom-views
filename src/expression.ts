@@ -13,7 +13,8 @@ import { recordLinkDependency } from "./template-dependencies";
  * (since file reads are async).
  */
 
-import { App, TFile, moment } from "obsidian";
+import { App, TFile } from "obsidian";
+import { moment, type Moment } from "./host-moment";
 import { buildBasesCollection } from "./bases/access";
 import { stripFrontmatter } from "./frontmatter";
 
@@ -66,7 +67,7 @@ export interface ExprLink {
 /** Wrapper for a date/moment value */
 export interface ExprDate {
 	__type: "date";
-	_moment: moment.Moment;
+	_moment: Moment;
 }
 
 /** Wrapper for a regex literal */
@@ -818,7 +819,7 @@ const globalFunctions: Record<string, GlobalFn> = {
 	duration: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {
 		const input = args[0];
 		if (typeof input === "number") {
-			return { __type: "date", _moment: moment.duration(input) as unknown as moment.Moment };
+			return { __type: "date", _moment: moment.duration(input) as unknown as Moment };
 		}
 		const str = exprToString(input);
 		const dur = moment.duration(str);
@@ -1222,7 +1223,7 @@ const objectMethods: Record<string, MethodFn> = {
 	},
 	values: (_ctx, obj) => {
 		if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-			return Object.entries(obj as ExprValueRecord).filter(([k]) => k !== '__type').map(([, v]) => v);
+			return Object.entries<ExprValue>(obj as ExprValueRecord).filter(([k]) => k !== '__type').map(([, v]) => v);
 		}
 		return [] as ExprValue;
 	},

@@ -1,3 +1,4 @@
+import { createDetachedEl } from "./dom";
 import { Notice } from "obsidian";
 
 /** Keep failed autosaves visible and offer a retry of the current in-memory settings. */
@@ -7,10 +8,10 @@ export class SaveFeedback {
 	failed(error: unknown): void {
 		if (this.notice?.containerEl.isConnected) return;
 		console.error("[Custom Views] Could not save settings:", error);
-		const message = activeDocument.createDocumentFragment();
-		const text = activeDocument.createElement("div");
+		const message = activeDocument.adoptNode(createFragment());
+		const text = createDetachedEl(activeDocument, "div");
 		text.textContent = "Could not save your view settings. Your edits are still in memory; retry before reloading Obsidian.";
-		const button = activeDocument.createElement("button");
+		const button = createDetachedEl(activeDocument, "button");
 		button.textContent = "Retry saving";
 		button.type = "button";
 		button.addEventListener("click", event => {

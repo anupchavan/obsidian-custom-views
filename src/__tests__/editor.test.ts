@@ -475,11 +475,10 @@ function simulateInput(
 	const facetValues = view.state.facet(EditorView.inputHandler);
 	const defaultInsert = () => {
 		view.dispatch({ changes: { from, to, insert: text } });
-		return view.state.update({}).state;
+		return view.state.update({});
 	};
 	for (const handler of facetValues) {
-		// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-		if ((handler as (v: EditorView, f: number, t: number, txt: string, ins: unknown) => boolean)(view, from, to, text, defaultInsert)) {
+		if (handler(view, from, to, text, defaultInsert)) {
 			return true;
 		}
 	}

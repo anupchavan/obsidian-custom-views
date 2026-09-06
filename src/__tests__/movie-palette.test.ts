@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 // Test the exact user-template snippet that the migration installs.
-// eslint-disable-next-line import/no-nodejs-modules
 import { readFileSync } from "node:fs";
 
 const loader = readFileSync("templates/movie-palette-loader.js.txt", "utf8");
