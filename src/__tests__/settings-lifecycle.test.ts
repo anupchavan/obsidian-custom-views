@@ -1,5 +1,4 @@
 // Test the shipped stylesheet in the DOM; Node is used only by the test runner.
-// eslint-disable-next-line import/no-nodejs-modules
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { App, type PluginManifest } from "obsidian";
@@ -112,6 +111,24 @@ describe("settings dialog layout", () => {
 });
 
 
+describe("navigation hold styling", () => {
+	it("masks the working pane without changing inline opacity or layout", () => {
+		const style = window.document.createElement("style");
+		style.textContent = readFileSync("styles.css", "utf8"); window.document.head.appendChild(style);
+		const content = window.document.body.appendChild(window.document.createElement("div"));
+		content.className = "view-content cv-navigation-preparing";
+		content.style.setProperty("opacity", "0.8", "important");
+		try {
+			expect(window.getComputedStyle(content).filter).toBe("opacity(0)");
+			expect(window.getComputedStyle(content).display).not.toBe("none");
+			expect(content.style.opacity).toBe("0.8");
+			content.classList.remove("cv-navigation-preparing");
+			expect(window.getComputedStyle(content).filter).not.toBe("opacity(0)");
+			expect(content.style.getPropertyPriority("opacity")).toBe("important");
+		} finally { content.remove(); style.remove(); }
+	});
+});
+
 describe("custom view navigation layout", () => {
 	it.each(["obsidian-custom-view-editable", "obsidian-custom-view-hidden"])("anchors %s below the header and scopes hiding to that pane", mode => {
 		const style = window.document.createElement("style");
@@ -124,9 +141,9 @@ describe("custom view navigation layout", () => {
 		try {
 			expect(window.getComputedStyle(content).position).toBe("relative");
 			expect(window.getComputedStyle(header).display).toBe("flex");
-			content.classList.add("cv-hide-navigation");
+			pane.classList.add("cv-hide-navigation");
 			expect(window.getComputedStyle(header).display).toBe("none");
-			content.classList.remove("cv-hide-navigation");
+			pane.classList.remove("cv-hide-navigation");
 			expect(window.getComputedStyle(header).display).toBe("flex");
 		} finally { pane.remove(); style.remove(); }
 	});

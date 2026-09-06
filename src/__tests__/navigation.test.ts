@@ -91,11 +91,14 @@ describe("editable note navigation", () => {
 describe("custom view navigation bar preference", () => {
 	it("applies the same preference in live preview and reading, and restores source mode", async () => {
 		const s = setup(); s.config.showNavigationBar = false;
+		window.document.createElement("div").appendChild(s.container);
 		await s.methods._processLeaf(s.view, s.file);
 		expect(s.container.classList.contains("cv-hide-navigation")).toBe(true);
+		expect(s.container.parentElement?.classList.contains("cv-hide-navigation")).toBe(true);
 		s.view.getState = () => ({ mode: "preview", source: false });
 		await s.methods._processLeaf(s.view, s.file);
 		expect(s.container.classList.contains("cv-hide-navigation")).toBe(true);
+		expect(s.container.parentElement?.classList.contains("cv-hide-navigation")).toBe(true);
 		s.view.getState = () => ({ mode: "source", source: true });
 		await s.methods._processLeaf(s.view, s.file);
 		expect(s.container.classList.contains("cv-hide-navigation")).toBe(false);

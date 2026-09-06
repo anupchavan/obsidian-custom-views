@@ -7,11 +7,12 @@
         "dev": "node esbuild.config.mjs",
         "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
         "version": "node version-bump.mjs && git add manifest.json versions.json",
-        "lint": "eslint .",
+        "lint": "eslint . --max-warnings 0",
         "lint:fix": "eslint . --fix",
         "test": "vitest run",
         "test:watch": "vitest",
-        "test:coverage": "vitest run --coverage"
+        "test:coverage": "vitest run --coverage",
+        "typecheck": "tsc -p tsconfig.browser.json"
     },
     "keywords": [],
     "author": "Anup Chavan",
@@ -38,7 +39,7 @@
         "@vitest/coverage-v8": "^4.1.6",
         "esbuild": "^0.28.1",
         "eslint": "^9.39.4",
-        "eslint-plugin-obsidianmd": "^0.3.0",
+        "eslint-plugin-obsidianmd": "^0.4.2",
         "jsdom": "^29.1.1",
         "moment": "^2.30.1",
         "obsidian": "latest",
@@ -49,7 +50,7 @@
     },
     "dependencies": {
         "@silentvoid13/rusty_engine": "^0.4.0",
-        "nanoid": "^5.1.6"
+        "nanoid": "^5.1.16"
     },
     "overrides": {
         "@codemirror/state": "$@codemirror/state",

@@ -5,7 +5,6 @@
  * The moment import below is intentional — this file IS the obsidian mock,
  * so we must source moment directly rather than from 'obsidian' itself.
  */
-// eslint-disable-next-line no-restricted-imports
 import momentLib from "moment";
 
 export const moment = momentLib;

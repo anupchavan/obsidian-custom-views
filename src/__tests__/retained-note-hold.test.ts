@@ -25,9 +25,9 @@ describe("retained custom shell", () => {
 		expect(s.editor.parentElement).toBe(s.host);
 		s.editor.textContent = "New body";
 		expect(snapshot.querySelector(".markdown-source-view")?.textContent).toBe("Old body");
-		expect(s.host.style.opacity).toBe("0");
+		expect(s.host.classList.contains("cv-navigation-preparing")).toBe(true);
 		release();
-		expect(s.host.style.opacity).toBe("");
+		expect(s.host.classList.contains("cv-navigation-preparing")).toBe(false);
 		expect(window.document.querySelector(".cv-navigation-snapshot")).toBeNull();
 		expect(s.editor.isConnected).toBe(true);
 	});
@@ -40,9 +40,9 @@ describe("retained custom shell", () => {
 	});
 	it("keeps one held shell until the newest navigation completes", () => {
 		const s = setup(); const first = s.hold.begin(s.host); const last = s.hold.begin(s.host);
-		first(); expect(s.host.style.opacity).toBe("0");
+		first(); expect(s.host.classList.contains("cv-navigation-preparing")).toBe(true);
 		expect(window.document.querySelectorAll(".cv-navigation-snapshot")).toHaveLength(1);
-		last(); expect(s.host.style.opacity).toBe("");
+		last(); expect(s.host.classList.contains("cv-navigation-preparing")).toBe(false);
 	});
 	it("uses the painted overlay bounds when it covers the leaf header", () => {
 		const s = setup();

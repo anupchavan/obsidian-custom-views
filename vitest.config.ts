@@ -26,6 +26,7 @@ function rustyEngineWasmBytesPlugin() {
 export default defineConfig({
 	plugins: [rustyEngineWasmBytesPlugin()],
 	test: {
+		setupFiles: ["./__mocks__/dom.ts"],
 		// Use jsdom so DOMParser and other browser APIs are available
 		environment: "jsdom",
 		globals: true,

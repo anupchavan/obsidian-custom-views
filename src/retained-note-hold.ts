@@ -1,4 +1,4 @@
-interface Hold { snapshot: HTMLElement; token: number; opacity: string; priority: string; inert: boolean; observer?: MutationObserver }
+interface Hold { snapshot: HTMLElement; token: number; inert: boolean; observer?: MutationObserver }
 interface Bounds { left: number; top: number; width: number; height: number }
 
 /** Keep the old custom shell alive; copy only the editor that Obsidian is about to mutate. */
@@ -45,9 +45,8 @@ export class RetainedNoteHold {
 			const bounds = this.bounds.get(content) ?? this.measure(content);
 			const scrollTop = overlay?.scrollTop ?? content.scrollTop;
 			Object.assign(snapshot.style, {
-				position: "absolute", left: `${bounds.left}px`, top: `${bounds.top}px`,
+				left: `${bounds.left}px`, top: `${bounds.top}px`,
 				width: `${bounds.width}px`, height: `${bounds.height}px`,
-				margin: "0", boxSizing: "border-box", pointerEvents: "none", overflow: "hidden", zIndex: "10",
 			});
 			if (overlay) {
 				(overlay as HTMLElement & { __cvScopeObserver?: MutationObserver }).__cvScopeObserver?.disconnect();
@@ -85,10 +84,9 @@ export class RetainedNoteHold {
 			content.after(snapshot);
 			if (overlay) overlay.scrollTop = scrollTop;
 			else snapshot.scrollTop = scrollTop;
-			entry = { snapshot, token: 0, opacity: content.style.getPropertyValue("opacity"), priority: content.style.getPropertyPriority("opacity"), inert: content.inert, observer };
+			entry = { snapshot, token: 0, inert: content.inert, observer };
 			this.holds.set(content, entry);
-			// eslint-disable-next-line obsidianmd/no-static-styles-assignment -- Preserve layout and override/restore existing inline priority during the hold.
-			content.style.setProperty("opacity", "0", "important");
+			content.classList.add("cv-navigation-preparing");
 			content.inert = true;
 		}
 		entry.token++;
@@ -104,8 +102,7 @@ export class RetainedNoteHold {
 		if (!entry) return;
 		entry.observer?.disconnect();
 		entry.snapshot.remove();
-		if (entry.opacity) content.style.setProperty("opacity", entry.opacity, entry.priority);
-		else content.style.removeProperty("opacity");
+		content.classList.remove("cv-navigation-preparing");
 		content.inert = entry.inert;
 		this.holds.delete(content);
 		this.observe(content);

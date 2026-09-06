@@ -230,8 +230,8 @@
     position: relative;
 }
 
-.workspace-leaf-content:has(> .view-content.cv-hide-navigation) > .view-header {
-    display: none !important;
+.workspace-leaf-content.cv-hide-navigation > .view-header {
+    display: none;
 }
 
 .obsidian-custom-view-render .markdown-rendered-content {
@@ -400,12 +400,26 @@ body .cv-clear-button-hidden {
 
 /* Experimental branch: hold the last painted note, with no crossfade. */
 :root[data-cv-navigation-held] {
-    view-transition-name: none !important;
+    view-transition-name: none;
 }
 :root[data-cv-navigation-held]::view-transition-group(cv-note),
 :root[data-cv-navigation-held]::view-transition-image-pair(cv-note),
 :root[data-cv-navigation-held]::view-transition-old(cv-note),
 :root[data-cv-navigation-held]::view-transition-new(cv-note) {
-    animation: none !important;
+    animation: none;
     mix-blend-mode: normal;
+}
+
+/* Preserve layout while masking the working pane, including inline opacity values. */
+.view-content.cv-navigation-preparing {
+    filter: opacity(0);
+    pointer-events: none;
+}
+.cv-navigation-snapshot {
+    position: absolute;
+    margin: 0;
+    box-sizing: border-box;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 10;
 }
