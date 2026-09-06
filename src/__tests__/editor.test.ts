@@ -462,9 +462,7 @@ describe("htmlLanguage", () => {
 // ---------------------------------------------------------------------------
 
 describe("syntax-aware suggestions", () => {
-	async function suggestions(language: "html" | "css" | "javascript", content: string) {
-		const pos = content.includes("|") ? content.indexOf("|") : content.length;
-		content = content.replace("|", "");
+	async function suggestions(language: "html" | "css" | "javascript", content: string, pos = content.length) {
 		const view = createAndTrack({ language, initialContent: content, templateVariables: [{ name: "rating", type: "number" }] });
 		view.dispatch({ selection: { anchor: pos } });
 		startCompletion(view);
@@ -490,10 +488,10 @@ describe("syntax-aware suggestions", () => {
 		expect(options.some(option => option.label.startsWith("<"))).toBe(false);
 	});
 	it.each([
-		["html", "<!-- <di| -->"], ["css", "/* dis"], ["javascript", "// doc"],
+		["html", "<!-- <di -->", 8], ["css", "/* dis"], ["javascript", "// doc"],
 		["javascript", 'const text = "doc'],
-	] as const)("does not suggest language names inside %s comments or strings", async (language, content) => {
-		expect(await suggestions(language, content)).toEqual([]);
+	] as const)("does not suggest language names inside %s comments or strings", async (language, content, pos?: number) => {
+		expect(await suggestions(language, content, pos)).toEqual([]);
 	});
 });
 
