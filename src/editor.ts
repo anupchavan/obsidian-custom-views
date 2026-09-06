@@ -3,7 +3,7 @@
  *
  * Provides a rich code editor with:
  *   - Line numbers
- *   - HTML syntax highlighting (without bundling JS/CSS parsers)
+ *   - HTML, CSS, and JavaScript syntax highlighting
  *   - Auto-close HTML tags (typing ">" inserts "</tag>")
  *   - HTML tag/attribute autocompletion
  *   - Obsidian-themed colors via CSS variables
@@ -23,7 +23,6 @@ import {
 import type { KeyBinding } from "@codemirror/view";
 import { Extension, EditorState, Transaction } from "@codemirror/state";
 import {
-	LRLanguage,
 	LanguageSupport,
 	indentOnInput,
 	indentUnit,
@@ -31,9 +30,6 @@ import {
 	syntaxHighlighting,
 	defaultHighlightStyle,
 	HighlightStyle,
-	indentNodeProp,
-	foldNodeProp,
-	foldInside,
 } from "@codemirror/language";
 import {
 	defaultKeymap,
@@ -47,269 +43,21 @@ import {
 	autocompletion,
 	CompletionContext,
 	CompletionResult,
+	CompletionSource,
+	Completion,
+	completeFromList,
 } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { lintKeymap } from "@codemirror/lint";
 import { tags as t } from "@lezer/highlight";
-import { parser as htmlParser } from "@lezer/html";
-import { parser as cssParser } from "@lezer/css";
-import { parser as jsParser } from "@lezer/javascript";
+import { html, autoCloseTags as autoCloseHTMLTags } from "@codemirror/lang-html";
+import { css } from "@codemirror/lang-css";
+import { javascript, javascriptLanguage, scopeCompletionSource } from "@codemirror/lang-javascript";
 
-// ---------------------------------------------------------------------------
-// HTML Language (without JS/CSS sub-parsers — keeps bundle ~14KB vs ~120KB)
-// ---------------------------------------------------------------------------
-
-const htmlLang = LRLanguage.define({
-	name: "html",
-	parser: htmlParser.configure({
-		props: [
-			indentNodeProp.add({
-				Element(context) {
-					const after = /^(\s*)(<\/)?/.exec(context.textAfter);
-					if (after && after[2]) return context.baseIndent;
-					return context.baseIndent + context.unit;
-				},
-			}),
-			foldNodeProp.add({
-				Element: foldInside,
-			}),
-		],
-	}),
-	languageData: {
-		commentTokens: { block: { open: "<!--", close: "-->" } },
-		indentOnInput: /^\s*<\/\w+\W$/,
-	},
-});
-
-// ---------------------------------------------------------------------------
-// Auto-close HTML tags: typing ">" after <tagName inserts </tagName>
-// ---------------------------------------------------------------------------
-
-/** Tags that should not be auto-closed (void/self-closing elements). */
-const VOID_ELEMENTS = new Set([
-	"area", "base", "br", "col", "embed", "hr", "img", "input",
-	"link", "meta", "param", "source", "track", "wbr",
-]);
-
-export const autoCloseHTMLTags = EditorView.inputHandler.of(
-	(view, from, to, text) => {
-		if (text !== ">") return false;
-
-		const { state } = view;
-		const before = state.sliceDoc(Math.max(0, from - 128), from);
-
-		// Match an opening tag name: <tagName or <tagName attr="val"
-		const match = before.match(/<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?\s*$/);
-		if (!match) return false;
-
-		const tagName = match[1].toLowerCase();
-		if (VOID_ELEMENTS.has(tagName)) return false;
-
-		// Check it's not a self-closing tag like <br/
-		if (before.trimEnd().endsWith("/")) return false;
-
-		const closing = `></${match[1]}>`;
-		view.dispatch({
-			changes: { from, to, insert: closing },
-			selection: { anchor: from + 1 }, // cursor between > and </
-			annotations: Transaction.userEvent.of("input.autoclosetag"),
-		});
-		return true;
-	}
-);
-
-// ---------------------------------------------------------------------------
-// HTML Autocompletion: common tags and attributes
-// ---------------------------------------------------------------------------
-
-const COMMON_TAGS = [
-	"a", "abbr", "article", "aside", "b", "blockquote", "body", "br",
-	"button", "canvas", "code", "details", "div", "dl", "dt", "dd", "em",
-	"fieldset", "figure", "figcaption", "footer", "form", "h1", "h2",
-	"h3", "h4", "h5", "h6", "head", "header", "hr", "html", "i", "iframe",
-	"img", "input", "label", "legend", "li", "link", "main", "meta",
-	"nav", "ol", "option", "p", "pre", "script", "section", "select",
-	"small", "span", "strong", "style", "sub", "summary", "sup", "table",
-	"tbody", "td", "textarea", "tfoot", "th", "thead", "time", "title",
-	"tr", "ul", "video",
-];
-
-const COMMON_ATTRS = [
-	"class", "id", "style", "href", "src", "alt", "title", "type",
-	"name", "value", "placeholder", "disabled", "hidden", "target",
-	"rel", "width", "height", "data-", "aria-",
-];
-
-function htmlCompletionSource(context: CompletionContext): CompletionResult | null {
-	// Tag name completion: triggered after "<"
-	const tagMatch = context.matchBefore(/<[a-zA-Z0-9-]*$/);
-	if (tagMatch) {
-		return {
-			from: tagMatch.from + 1, // after the "<"
-			options: COMMON_TAGS.map(tag => ({
-				label: tag,
-			})),
-		};
-	}
-
-	// Attribute completion: triggered inside a tag after space
-	const attrMatch = context.matchBefore(/\s[a-zA-Z-]*$/);
-	if (attrMatch) {
-		// Verify we're inside a tag (look back for unclosed "<")
-		const line = context.state.sliceDoc(
-			Math.max(0, attrMatch.from - 256),
-			attrMatch.from
-		);
-		const lastOpen = line.lastIndexOf("<");
-		const lastClose = line.lastIndexOf(">");
-		if (lastOpen > lastClose) {
-			return {
-				from: attrMatch.from + 1, // after the space
-				options: COMMON_ATTRS.map(attr => ({
-					label: attr,
-				})),
-			};
-		}
-	}
-
-	return null;
-}
-
-export const htmlLanguage = new LanguageSupport(htmlLang, [
-	autoCloseHTMLTags,
-]);
-
-// ---------------------------------------------------------------------------
-// CSS Language + Autocompletion
-// ---------------------------------------------------------------------------
-
-const cssLang = LRLanguage.define({
-	name: "css",
-	parser: cssParser.configure({
-		props: [
-			indentNodeProp.add({
-				Block(context) {
-					return context.baseIndent + context.unit;
-				},
-			}),
-			foldNodeProp.add({
-				Block: foldInside,
-			}),
-		],
-	}),
-	languageData: {
-		commentTokens: { block: { open: "/*", close: "*/" } },
-	},
-});
-
-const COMMON_CSS_PROPERTIES = [
-	"align-items", "align-content", "align-self",
-	"background", "background-color", "background-image", "background-position", "background-size",
-	"border", "border-bottom", "border-color", "border-left", "border-radius", "border-right", "border-top", "border-width",
-	"bottom", "box-shadow", "box-sizing",
-	"color", "content", "cursor",
-	"display",
-	"flex", "flex-direction", "flex-grow", "flex-shrink", "flex-wrap", "float", "font", "font-family", "font-size", "font-weight",
-	"gap", "grid", "grid-template-columns", "grid-template-rows",
-	"height",
-	"justify-content", "justify-items",
-	"left", "letter-spacing", "line-height", "list-style",
-	"margin", "margin-bottom", "margin-left", "margin-right", "margin-top", "max-height", "max-width", "min-height", "min-width",
-	"opacity", "outline", "overflow", "overflow-x", "overflow-y",
-	"padding", "padding-bottom", "padding-left", "padding-right", "padding-top", "position",
-	"right",
-	"text-align", "text-decoration", "text-overflow", "text-transform", "top", "transform", "transition",
-	"visibility",
-	"white-space", "width", "word-break", "word-wrap",
-	"z-index",
-];
-
-function cssCompletionSource(context: CompletionContext): CompletionResult | null {
-	// CSS property completion: triggered at start of line or after ; or { (inside a rule)
-	const propMatch = context.matchBefore(/[\s;{][a-zA-Z-]*$/);
-	if (propMatch) {
-		return {
-			from: propMatch.from + 1,
-			options: COMMON_CSS_PROPERTIES.map(prop => ({
-				label: prop,
-			})),
-		};
-	}
-
-	// Also match at the very start of input
-	const startMatch = context.matchBefore(/^[a-zA-Z-]*$/);
-	if (startMatch && context.pos === startMatch.to) {
-		return {
-			from: startMatch.from,
-			options: COMMON_CSS_PROPERTIES.map(prop => ({
-				label: prop,
-			})),
-		};
-	}
-
-	return null;
-}
-
-export const cssLanguage = new LanguageSupport(cssLang);
-
-// ---------------------------------------------------------------------------
-// JavaScript Language + Autocompletion
-// ---------------------------------------------------------------------------
-
-const jsLang = LRLanguage.define({
-	name: "javascript",
-	parser: jsParser.configure({
-		props: [
-			indentNodeProp.add({
-				Block(context) {
-					return context.baseIndent + context.unit;
-				},
-			}),
-			foldNodeProp.add({
-				Block: foldInside,
-			}),
-		],
-	}),
-	languageData: {
-		commentTokens: { line: "//", block: { open: "/*", close: "*/" } },
-	},
-});
-
-const JS_KEYWORDS = [
-	"async", "await", "break", "case", "catch", "class", "const", "continue",
-	"debugger", "default", "delete", "do", "else", "export", "extends",
-	"false", "finally", "for", "function", "if", "import", "in", "instanceof",
-	"let", "new", "null", "of", "return", "static", "super", "switch",
-	"this", "throw", "true", "try", "typeof", "undefined", "var", "void",
-	"while", "yield",
-];
-
-const JS_GLOBALS = [
-	"console", "document", "window", "Array", "Object", "String", "Number",
-	"Math", "JSON", "Date", "Promise", "Map", "Set", "RegExp",
-	"setTimeout", "setInterval", "clearTimeout", "clearInterval",
-	"parseInt", "parseFloat", "encodeURIComponent", "decodeURIComponent",
-	"querySelector", "querySelectorAll", "getElementById",
-	"addEventListener", "removeEventListener",
-	"fetch", "alert", "confirm",
-];
-
-function jsCompletionSource(context: CompletionContext): CompletionResult | null {
-	const word = context.matchBefore(/[a-zA-Z_$][a-zA-Z0-9_$]*$/);
-	if (!word) return null;
-	// Don't trigger for very short prefixes unless explicitly requested
-	if (word.to - word.from < 2 && !context.explicit) return null;
-
-	return {
-		from: word.from,
-		options: [
-			...JS_KEYWORDS.map(kw => ({ label: kw })),
-			...JS_GLOBALS.map(g => ({ label: g })),
-		],
-	};
-}
-
-export const jsLanguage = new LanguageSupport(jsLang);
+export { autoCloseHTMLTags };
+export const htmlLanguage = html({ selfClosingTags: true });
+export const cssLanguage = css();
+export const jsLanguage = javascript();
 
 // ---------------------------------------------------------------------------
 // Template Syntax: auto-close {{ and autocompletion
@@ -1108,7 +856,7 @@ export const obsidianTheme = EditorView.theme(
 			width: "1em",
 			opacity: "0.7",
 		},
-		".cm-completionIcon::after": {
+		".cm-completionIcon-function::after, .cm-completionIcon-method::after, [class*=cm-completionIcon-cv-]::after": {
 			content: "' '",
 			display: "inline-block",
 			width: "1em",
@@ -1121,7 +869,7 @@ export const obsidianTheme = EditorView.theme(
 			WebkitMaskRepeat: "no-repeat",
 		},
 		// Function / method icon — Lucide square-function
-		".cm-completionIcon-function::after": {
+		".cm-completionIcon-function::after, .cm-completionIcon-method::after": {
 			maskImage: `url("${ICON_FUNCTION}")`,
 			WebkitMaskImage: `url("${ICON_FUNCTION}")`,
 		},
@@ -1233,31 +981,27 @@ function getLanguageExtension(lang: EditorLanguage): LanguageSupport {
 	}
 }
 
-type CompletionSourceFn = (context: CompletionContext) => CompletionResult | null;
-
-function getLanguageCompletionSource(lang: EditorLanguage): CompletionSourceFn {
-	switch (lang) {
-		case "css": return cssCompletionSource;
-		case "javascript": return jsCompletionSource;
-		case "html":
-		default: return htmlCompletionSource;
-	}
-}
-
 export function buildEditorExtensions(lang: EditorLanguage = "html", extraTemplateVars: TemplateVariable[] = []): Extension[] {
+	const templateSource = templateCompletionSource(extraTemplateVars);
 	return [
 		lineNumbers(),
 		highlightSpecialChars(),
 		history(),
 		getLanguageExtension(lang),
 		autoCloseTemplateBraces,
-		autocompletion({
-			override: [
-				templateCompletionSource(extraTemplateVars),
-				getLanguageCompletionSource(lang),
-			],
-			defaultKeymap: true,
-		}),
+		autocompletion({ override: [context => {
+			const template = templateSource(context);
+			if (template) return template;
+			const sources = context.state.languageDataAt<CompletionSource | readonly Completion[]>("autocomplete", context.pos);
+			return Promise.all(sources.map(async source =>
+				(typeof source === "function" ? source : completeFromList(source))(context)
+			)).then(results => {
+				const first = results.find(result => result !== null);
+				return first ? { from: first.from, to: first.to, options: results.flatMap(result =>
+					result?.from === first.from && result.to === first.to ? result.options : []) } : null;
+			});
+		}] }),
+		javascriptLanguage.data.of({ autocomplete: scopeCompletionSource(window) }),
 		drawSelection(),
 		dropCursor(),
 		EditorState.allowMultipleSelections.of(true),
