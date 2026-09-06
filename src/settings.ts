@@ -5,6 +5,7 @@ import { App, PluginSettingTab, Setting, TextComponent, Modal, ExtraButtonCompon
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup } from "./types";
 import { createTemplateEditor } from "./editor";
+import { mountNoteContentControl } from "./note-content-control";
 import type { EditorView } from "@codemirror/view";
 import { EditorState, StateEffect } from "@codemirror/state";
 
@@ -381,6 +382,7 @@ export class EditViewModal extends Modal {
 		contentEl.createEl("h3", { text: "Template" });
 
 		contentEl.createEl("h4", { text: "HTML" });
+		const updateNoteContentControl = mountNoteContentControl(contentEl, () => this.templateEditor);
 		const templateContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
 		this.templateEditor = createTemplateEditor({
 			initialContent: this.view.template,
@@ -389,10 +391,12 @@ export class EditViewModal extends Modal {
 			root: templateContainer.ownerDocument,
 			onChange: (content: string) => {
 				this.view.template = content;
+				updateNoteContentControl();
 				autoSave();
 			},
 		});
 		templateContainer.appendChild(this.templateEditor.dom);
+		updateNoteContentControl();
 
 		contentEl.createEl("h4", { text: "CSS" });
 		const cssContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
