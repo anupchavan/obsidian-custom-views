@@ -18,7 +18,10 @@ jobs:
                   node-version: "20.x"
             - name: Build plugin
               run: |
-                  npm install
+                  npm ci
+                  npm run lint
+                  npm run typecheck
+                  npm test
                   npm run build
             - name: Generate artifact attestation
               uses: actions/attest-build-provenance@v2
@@ -32,7 +35,11 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   tag="${GITHUB_REF#refs/tags/}"
+                  node -e 'const m = require("./manifest.json"); if (m.version !== process.env.GITHUB_REF_NAME || require("./package.json").version !== m.version || require("./versions.json")[m.version] !== m.minAppVersion) process.exit(1)'
+                  test -s "docs/releases/$tag.md"
                   gh release create "$tag" \
                     --title="$tag" \
                     --draft \
+                    --verify-tag \
+                    --notes-file="docs/releases/$tag.md" \
                     main.js manifest.json styles.css
