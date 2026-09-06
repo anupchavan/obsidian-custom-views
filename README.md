@@ -22,6 +22,8 @@ Custom Views lets structured notes render as purpose-built pages while keeping t
 4. Add an HTML template, then optional CSS and JavaScript.
 5. Open a matching note in reading mode or live preview.
 
+A custom view replaces the normal note display. To show the note body alongside your HTML, select **Add note content** above the template editor. This inserts `{{file.content}}` at the end of the template; you can move it wherever the body belongs. The body renders as Markdown in reading mode and stays editable in live preview when **Editable content** is enabled. Source mode always shows the original note.
+
 The first matching view is used, so place more specific views above broader ones. Changes save automatically. If a save fails, a persistent notice offers a retry while your edits remain in memory.
 
 The Rules editor uses Obsidian’s internal Bases controls, including property pickers, nested groups, and advanced formulas. See [native filter integration](docs/NATIVE-FILTERS.md) for requirements and legacy-rule behavior.
