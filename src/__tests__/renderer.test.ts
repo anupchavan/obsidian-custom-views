@@ -68,6 +68,18 @@ describe("templateHasEditableContent", () => {
 		expect(container.querySelector("main [data-cv-editable-placeholder]")).not.toBeNull();
 	});
 
+	it.each([false, true])("renders repeated note bodies without duplicate IDs (editable: %s)", async editable => {
+		const app = { metadataCache: { getFileCache: () => null }, vault: {} } as unknown as App;
+		const file = new TFile(); file.path = "Repeated body regression.md";
+		const container = window.document.createElement("div");
+		await renderTemplate(app, "<main>{{content}}</main><aside>{{file.content}}</aside>", file, container, new Component(), editable, undefined, undefined, false, "Sample body");
+		expect(container.querySelector("aside")?.textContent).toBe("Sample body");
+		expect(container.querySelectorAll("[data-cv-editable-placeholder]")).toHaveLength(editable ? 1 : 0);
+		if (!editable) expect(container.querySelector("main")?.textContent).toBe("Sample body");
+		expect(container.querySelectorAll("[id]")).toHaveLength(0);
+		expect(getTemplateDependencies(container)?.has(file)).toBe(true);
+	});
+
 	it("returns true for {{file.content}}", () => {
 		expect(templateHasEditableContent("<div>{{file.content}}</div>")).toBe(true);
 	});
