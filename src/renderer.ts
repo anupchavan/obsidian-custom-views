@@ -496,7 +496,6 @@ export async function renderTemplate(
 	}));
 
 	signal?.throwIfAborted();
-	applyNativeInternalLinkState(app, container, file.path);
 
 	const contentElements = container.querySelectorAll<HTMLElement>(`#${contentPlaceholderId}`);
 	for (const [index, contentEl] of contentElements.entries()) {
@@ -517,6 +516,7 @@ export async function renderTemplate(
 	}
 
 	signal?.throwIfAborted();
+	applyNativeInternalLinkState(app, container, file.path);
 	// Inject CSS from the separate CSS field (with template resolution)
 	if (viewConfig?.css) {
 		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases, exprCtx.dependencies);

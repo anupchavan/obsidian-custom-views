@@ -629,6 +629,24 @@ describe("renderTemplate source content", () => {
 		} finally { render.mockRestore(); }
 	});
 
+	it.each([false, true])("normalizes links in every rendered body copy (editable: %s)", async editable => {
+		const file = new TFile(); file.path = "Books/Test.md";
+		const app = { metadataCache: { getFileCache: () => null, getFirstLinkpathDest: (path: string) => path === "Movies" ? file : null }, vault: {} } as unknown as App;
+		const render = vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (_app, text, element) => {
+			element.replaceChildren(...renderTestWikilinks(text));
+			// A renderer's provisional flags must be corrected against the current vault.
+			element.querySelector('[data-href="Movies#Cast"]')?.classList.add("is-unresolved");
+		});
+		const container = window.document.createElement("div");
+		try {
+			await renderTemplate(app, "<main>{{content}}</main><aside>{{file.content}}</aside>", file, container, new Component(), editable, undefined, undefined, false, "[[Movies#Cast]] [[Missing]]");
+			const existing = container.querySelectorAll('[data-href="Movies#Cast"]');
+			expect(existing).toHaveLength(editable ? 1 : 2);
+			for (const link of existing) expect(link.classList.contains("is-unresolved")).toBe(false);
+			for (const link of container.querySelectorAll('[data-href="Missing"]')) expect(link.classList.contains("is-unresolved")).toBe(true);
+		} finally { render.mockRestore(); }
+	});
+
 	it("marks unresolved state on rendered internal links", async () => {
 		const cachedRead = vi.fn(async () => "Body");
 		const renderedMarkdown: string[] = [];

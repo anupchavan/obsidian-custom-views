@@ -60,3 +60,10 @@ The resumed branch starts from `a687c2c`. The native Bases filter UI is already 
 - Fixed repeated unfiltered body placeholders leaving later copies blank and retaining duplicate IDs. Both reading and editable modes now render all copies; only the first slot hosts the live editor. Read-only copies register a body dependency so edits refresh them. Both new regressions failed on the previous code. Full suite after the fix: 1,201 tests passed; lint, browser typecheck, and production build passed.
 
 These fixes are local branch commits. No push or release was requested for the resumed audit. Popout/theme/mobile coverage and broader native-filter equivalence remain open; this continuation does not claim the audit is complete.
+
+
+### Link rendering follow-up
+
+- Verified in the running Obsidian vault that `getFirstLinkpathDest` resolves a note path but returns no file when the heading fragment is included. The renderer now resolves the file portion of heading/block links and uses the current note for fragment-only links; navigation attributes stay unchanged. Three regressions failed before the fix. Full suite afterward: 1,204 tests; lint, browser typecheck, and build passed.
+- Moved link-state normalization after note-body rendering so all rendered body copies receive correct resolved/missing styling. Two regressions failed before the fix; reading mode and the read-only body copies in editable mode now pass. Full suite afterward: 1,206 tests; lint, browser typecheck, and build passed.
+- Rechecked the native Bases editor in the running app with a temporary `file.ext == "md"` filter: actual native filter and filter-group controls mounted, initialization emitted no save callback, and disposal removed every host child. No vault files or saved view configuration were changed by the probe.
