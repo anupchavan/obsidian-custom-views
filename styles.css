@@ -296,6 +296,9 @@ body .cv-suggestion-container.modal {
 }
 
 .cv-context-popover > .obsidian-custom-view-render {
+    position: relative;
+    height: auto;
+    max-height: var(--popover-height, 400px);
     padding: 16px;
 }
 
@@ -441,5 +444,11 @@ body .cv-clear-button-hidden {
 }
 
 .cv-context-embed.obsidian-custom-view-hidden > .markdown-embed-content {
+    display: none;
+}
+
+/* Only the custom template contributes height in a hover preview. */
+.cv-context-popover.obsidian-custom-view-hidden > .markdown-embed-content,
+.cv-context-popover.obsidian-custom-view-editable > .markdown-embed-content {
     display: none;
 }

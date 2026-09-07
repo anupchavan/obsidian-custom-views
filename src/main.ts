@@ -857,7 +857,7 @@ export default class CustomViewsPlugin extends Plugin {
 		this.applyViewDisplayOptions(container, viewConfig);
 
 		// Store state for cleanup
-		const restoreIframeLayout = fitIframeEditor(editorEl, viewConfig);
+		const restoreIframeLayout = fitIframeEditor(editorEl, viewConfig, () => cmView.requestMeasure());
 		this.editableStates.set(container, {
 			restoreIframeLayout,
 			originalParent,
