@@ -56,6 +56,18 @@ function renderTestWikilinks(markdown: string): Node[] {
 // ---------------------------------------------------------------------------
 
 describe("templateHasEditableContent", () => {
+	it.each(["{{content}}", "{{ file.content }}"])("keeps %s editable after a filtered body value", async placeholder => {
+		const template = `<aside>{{file.content | upper}}</aside><main>${placeholder}</main>`;
+		const editable = templateHasEditableContent(template);
+		expect(editable).toBe(true);
+		const app = { metadataCache: { getFileCache: () => null }, vault: {} } as unknown as App;
+		const file = new TFile(); file.path = "Editable body regression.md";
+		const container = window.document.createElement("div");
+		await renderTemplate(app, template, file, container, new Component(), editable, undefined, undefined, false, "Sample body");
+		expect(container.querySelector("aside")?.textContent).toBe("SAMPLE BODY");
+		expect(container.querySelector("main [data-cv-editable-placeholder]")).not.toBeNull();
+	});
+
 	it("returns true for {{file.content}}", () => {
 		expect(templateHasEditableContent("<div>{{file.content}}</div>")).toBe(true);
 	});
