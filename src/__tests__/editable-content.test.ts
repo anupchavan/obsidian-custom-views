@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { detectFrontmatterRange } from "../editable-content";
+import { EditorState } from "@codemirror/state";
+import { createEditableContentExtensions, frontmatterHideField, detectFrontmatterRange } from "../editable-content";
 import { templateHasEditableContent } from "../renderer";
 
 // ---------------------------------------------------------------------------
@@ -152,4 +153,12 @@ describe("editableContent setting", () => {
 		const { DEFAULT_SETTINGS } = await import("../settings");
 		expect(DEFAULT_SETTINGS.editableContent).toBe(true);
 	});
+});
+
+ it("does not overlap Obsidian's existing frontmatter replacement", () => {
+	const doc = "---\nname: Contact\n---\nBody";
+	const native = EditorState.create({ doc, extensions: createEditableContentExtensions(true) });
+	expect(native.field(frontmatterHideField, false)).toBeUndefined();
+	const sourceProperties = EditorState.create({ doc, extensions: createEditableContentExtensions(false) });
+	expect(sourceProperties.field(frontmatterHideField).size).toBe(1);
 });

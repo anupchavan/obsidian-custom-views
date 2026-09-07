@@ -129,10 +129,9 @@ export const editableContentTheme = EditorView.theme({
 /**
  * Returns the full set of CM6 extensions needed for editable content mode.
  */
-export function createEditableContentExtensions(): Extension[] {
+export function createEditableContentExtensions(nativeFrontmatterHidden = false): Extension[] {
 	return [
-		frontmatterHideField,
-		frontmatterAtomicRanges,
+		...(nativeFrontmatterHidden ? [] : [frontmatterHideField, frontmatterAtomicRanges]),
 		editableContentTheme,
 	];
 }

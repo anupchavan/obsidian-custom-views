@@ -1,3 +1,4 @@
+import { settingsGroup } from "./settings-layout";
 import { Setting, type ToggleComponent } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { Compartment, EditorState, StateEffect } from "@codemirror/state";
@@ -9,13 +10,13 @@ import type { ViewConfig, ViewContext } from "./types";
 export function mountContextTemplateEditors(host: HTMLElement, view: ViewConfig, variables: TemplateVariable[], allowJS: boolean, save: () => void) {
 	let context: ViewContext = "note";
 	let switching = false;
-	new Setting(host).setName("Template for").setDesc("Other contexts inherit the main template. Override only the languages you need.")
+	new Setting(settingsGroup(host, "Template")).setName("Template for").setDesc("Other contexts inherit the main template. Override only the languages you need.")
 		.addDropdown(dropdown => dropdown.addOptions({ note: "Main note", popover: "Popover preview", canvas: "Canvas", embed: "Embedded note" })
 			.onChange(value => { context = value as ViewContext; refresh(); }));
 	const fields = ([['template', 'HTML', 'html'], ['css', 'CSS', 'css'], ['js', 'JavaScript', 'javascript']] as const).map(([key, label, language]) => {
-		host.createEl("h4", { text: label });
+		const group = settingsGroup(host, label);
 		let toggle!: ToggleComponent;
-		const inheritance = new Setting(host).setName(`Use main ${label}`).addToggle(control => {
+		const inheritance = new Setting(group).setName(`Use main ${label}`).addToggle(control => {
 			toggle = control;
 			control.onChange(inherit => {
 				if (switching || context === "note") return;
@@ -26,7 +27,7 @@ export function mountContextTemplateEditors(host: HTMLElement, view: ViewConfig,
 				refresh(); save();
 			});
 		});
-		const container = host.createDiv({ cls: "cv-codemirror-container" });
+		const container = group.createDiv({ cls: "cv-codemirror-container" });
 		const readOnly = new Compartment();
 		const options: TemplateEditorOptions = { initialContent: view[key] ?? "", language, templateVariables: variables, root: host.ownerDocument,
 			onChange(value) {
@@ -47,12 +48,12 @@ export function mountContextTemplateEditors(host: HTMLElement, view: ViewConfig,
 			const effective = resolveViewContext(view, context);
 			for (const { key, inheritance, toggle, editor, readOnly, options } of fields) {
 				const inherited = context !== "note" && view.contexts?.[context]?.[key] === undefined;
-				inheritance.settingEl.toggleVisibility(context !== "note");
+				inheritance.settingEl.toggle(context !== "note");
 				toggle.setValue(inherited);
 				editor.setState(createTemplateEditorState({ ...options, initialContent: effective[key] ?? "" }));
 				editor.dispatch({ effects: StateEffect.appendConfig.of(readOnly.of([])) });
 				const locked = inherited || (key === "js" && !allowJS);
-			editor.dispatch({ effects: readOnly.reconfigure([EditorState.readOnly.of(locked), EditorView.editable.of(!locked)]) });
+				editor.dispatch({ effects: readOnly.reconfigure([EditorState.readOnly.of(locked), EditorView.editable.of(!locked)]) });
 			}
 		} finally { switching = false; }
 	}

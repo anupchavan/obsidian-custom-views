@@ -58,6 +58,15 @@ describe("native embedded view lifecycle", () => {
 		expect(s.render).toHaveBeenCalledTimes(2);
 		s.manager.dispose(); expect(s.registry.md).toBe(s.original);
 	});
+	it("does not recreate an editor already in live preview", async () => {
+		const s = setup(); await vi.waitFor(() => expect(s.render).toHaveBeenCalledOnce());
+		s.embed.showEditor();
+		await vi.waitFor(() => expect(s.render).toHaveBeenCalledTimes(2));
+		const calls = s.reset.mock.calls.length;
+		s.embed.showEditor(); s.embed.showEditor();
+		expect(s.reset).toHaveBeenCalledTimes(calls);
+		expect(s.render).toHaveBeenCalledTimes(2);
+	});
 	it("leaves excerpts and embeds inside custom templates native", async () => {
 		const s = setup(); s.embed.subpath = "#Heading";
 		await Promise.resolve(); expect(s.render).not.toHaveBeenCalled();
