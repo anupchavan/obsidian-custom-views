@@ -789,7 +789,8 @@ function applyNativeInternalLinkState(app: App, container: HTMLElement, sourcePa
 		const target = getInternalLinkTarget(link);
 		if (!target) continue;
 
-		const resolved = metadataCache.getFirstLinkpathDest(target, sourcePath);
+		const linkpath = target.split("#", 1)[0] || sourcePath;
+		const resolved = metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
 		link.classList.toggle("is-unresolved", !resolved);
 	}
 }

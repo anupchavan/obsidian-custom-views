@@ -612,6 +612,23 @@ describe("renderTemplate source content", () => {
 		expect(container.querySelector(".raw-image")?.getAttribute("src")).toBe("test 1.png");
 	});
 
+	it.each([
+		["Movies#Cast", "Movies"], ["Movies#^cast", "Movies"], ["#Notes", "Books/Test.md"],
+	])("resolves the file behind %s without changing the link destination", async (target, linkpath) => {
+		const file = new TFile(); file.path = "Books/Test.md";
+		const lookup = vi.fn((path: string) => path === linkpath ? file : null);
+		const app = { metadataCache: { getFileCache: () => ({ frontmatter: { link: `[[${target}]]` } }), getFirstLinkpathDest: lookup }, vault: {} } as unknown as App;
+		const render = vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (_app, text, element) => { element.replaceChildren(...renderTestWikilinks(text)); });
+		const container = window.document.createElement("div");
+		try {
+			await renderTemplate(app, "{{link}}", file, container, new Component(), false, undefined, undefined, false, "Body");
+			const link = container.querySelector(".internal-link")!;
+			expect(link.classList.contains("is-unresolved")).toBe(false);
+			expect(link.getAttribute("data-href")).toBe(target);
+			expect(lookup).toHaveBeenCalledWith(linkpath, file.path);
+		} finally { render.mockRestore(); }
+	});
+
 	it("marks unresolved state on rendered internal links", async () => {
 		const cachedRead = vi.fn(async () => "Body");
 		const renderedMarkdown: string[] = [];
