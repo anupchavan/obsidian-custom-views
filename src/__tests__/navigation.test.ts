@@ -50,7 +50,7 @@ function setup() {
 		toggleClass(name: string, value: boolean) { (this as HTMLElement).classList.toggle(name, value); },
 	});
 	const metadata = { frontmatter: { title: "First" } };
-	plugin.app = { metadataCache: { getFileCache: () => metadata }, workspace: {
+	plugin.app = { vault: { getConfig: () => "visible" }, metadataCache: { getFileCache: () => metadata }, workspace: {
 		iterateAllLeaves: (callback: (leaf: { view: MarkdownView }) => void) => callback({ view }),
 	} } as unknown as App;
 	plugin.settings.views = [config];

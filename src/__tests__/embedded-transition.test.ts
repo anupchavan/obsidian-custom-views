@@ -1,0 +1,20 @@
+import { afterEach, expect, it } from "vitest";
+import { holdEmbeddedView } from "../embedded-transition";
+afterEach(() => window.document.body.replaceChildren());
+it("retains the editor image and display options while the native mode changes", () => {
+	const root = window.document.body.appendChild(window.document.createElement("div"));
+	root.className = "obsidian-custom-view-editable cv-hide-properties";
+	const overlay = root.appendChild(window.document.createElement("div"));
+	overlay.className = "obsidian-custom-view-render";
+	const frame = overlay.appendChild(window.document.createElement("iframe"));
+	frame.contentDocument!.body.innerHTML = '<div class="markdown-source-view">Visible body</div>';
+	const release = holdEmbeddedView(root);
+	overlay.remove(); root.classList.remove("cv-hide-properties");
+	const snapshot = root.querySelector<HTMLElement>(".cv-embedded-transition")!;
+	expect(snapshot.textContent).toBe("Visible body");
+	expect(snapshot.classList.contains("cv-hide-properties")).toBe(true);
+	expect(snapshot.querySelector("iframe")).toBeNull();
+	release();
+	expect(root.children.length).toBe(0);
+	expect(root.classList.contains("cv-embedded-switching")).toBe(false);
+});

@@ -4,6 +4,7 @@ import { mountNativeFilters } from "./native-filters/editor";
 import { App, PluginSettingTab, Setting, TextComponent, Modal, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup } from "./types";
+import { settingsGroup } from "./settings-layout";
 import { mountContextTemplateEditors } from "./context-template-editor";
 import type { EditorView } from "@codemirror/view";
 
@@ -329,7 +330,7 @@ export class EditViewModal extends Modal {
 		const templateVariables = getVaultTemplateProperties(this.app);
 		const autoSave = this.saveChanges;
 
-		new Setting(contentEl)
+		new Setting(settingsGroup(contentEl))
 			.setName("View name")
 			.setDesc("The name of the view will be displayed in the view selector.")
 			.addText(text => {
@@ -342,8 +343,8 @@ export class EditViewModal extends Modal {
 				this.selectFocusedName(text.inputEl);
 			});
 
-		contentEl.createEl("h3", { text: "Display options" });
-		new Setting(contentEl)
+		const displayOptions = settingsGroup(contentEl, "Display options");
+		new Setting(displayOptions)
 			.setName("Show navigation bar")
 			.setDesc("Show back/forward buttons and the note path in reading view and live preview.")
 			.addToggle(toggle => toggle
@@ -360,7 +361,7 @@ export class EditViewModal extends Modal {
 			}).getConfig("showInlineTitle") as boolean;
 
 
-			new Setting(contentEl)
+			new Setting(displayOptions)
 				.setName("Show properties in editing view")
 				.setDesc("Show the properties/metadata section in live preview. Properties are always hidden in reading view.")
 				.addToggle(toggle => toggle
@@ -371,7 +372,7 @@ export class EditViewModal extends Modal {
 					}));
 
 			if (obsidianShowInlineTitle) {
-				new Setting(contentEl)
+				new Setting(displayOptions)
 					.setName("Show inline title in editing view")
 					.setDesc("Show the inline title in live preview. The inline title is always hidden in reading view.")
 					.addToggle(toggle => toggle
@@ -383,12 +384,10 @@ export class EditViewModal extends Modal {
 			}
 		}
 
-		contentEl.createEl("h3", { text: "Rules" });
-		const rulesContainer = contentEl.createDiv({ cls: "cv-native-filter-host" });
+		const rulesContainer = settingsGroup(contentEl, "Rules").createDiv({ cls: "cv-native-filter-host" });
 
 		this.disposeFilters = mountNativeFilters(this.app, rulesContainer, this.view, autoSave);
 
-		contentEl.createEl("h3", { text: "Template" });
 
 		if (!this.plugin.settings.allowJavaScript) contentEl.createEl("p", { text: "JavaScript execution is disabled in the plugin settings." });
 		Object.assign(this, mountContextTemplateEditors(contentEl, this.view, templateVariables, this.plugin.settings.allowJavaScript, autoSave));

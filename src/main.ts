@@ -838,7 +838,11 @@ export default class CustomViewsPlugin extends Plugin {
 		// Configure with our extensions
 		if (!previousState || previousState.cmView !== cmView) {
 			cmView.dispatch({
-				effects: compartment.reconfigure(createEditableContentExtensions())
+				// Obsidian already replaces YAML in its visible/hidden properties modes.
+				// Overlapping that replacement corrupts CM's block height map.
+				effects: compartment.reconfigure(createEditableContentExtensions(
+					(this.app.vault as unknown as { getConfig?: (key: string) => unknown }).getConfig?.("propertiesInDocument") !== "source"
+				))
 			});
 		}
 
@@ -857,7 +861,7 @@ export default class CustomViewsPlugin extends Plugin {
 		this.applyViewDisplayOptions(container, viewConfig);
 
 		// Store state for cleanup
-		const restoreIframeLayout = fitIframeEditor(editorEl, viewConfig, () => cmView.requestMeasure());
+		const restoreIframeLayout = fitIframeEditor(editorEl, viewConfig, () => cmView.requestMeasure(), () => cmView.contentHeight);
 		this.editableStates.set(container, {
 			restoreIframeLayout,
 			originalParent,

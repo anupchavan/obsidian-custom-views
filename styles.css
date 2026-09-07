@@ -158,16 +158,6 @@
     overflow-y: auto;
 }
 
-.cv-edit-view-modal h2 {
-    margin-top: 0;
-    margin-bottom: var(--size-4-4);
-}
-
-.cv-edit-view-modal h3 {
-    margin-top: var(--size-4-4);
-    margin-bottom: var(--size-4-2);
-}
-
 .cv-modal-button-container {
     display: flex;
     justify-content: flex-end;
@@ -451,4 +441,16 @@ body .cv-clear-button-hidden {
 .cv-context-popover.obsidian-custom-view-hidden > .markdown-embed-content,
 .cv-context-popover.obsidian-custom-view-editable > .markdown-embed-content {
     display: none;
+}
+
+.cv-embedded-switching {
+    min-height: var(--cv-transition-height);
+}
+.cv-embedded-transition {
+    position: absolute;
+    inset: 0;
+    height: var(--cv-transition-height);
+    z-index: 11;
+    pointer-events: none;
+    overflow: hidden;
 }

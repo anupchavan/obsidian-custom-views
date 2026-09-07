@@ -5,9 +5,10 @@ import type { ViewConfig } from "../types";
 const controls = vi.hoisted(() => ({ dropdown: undefined as undefined | ((value: string) => void), toggles: [] as Array<(value: boolean) => void> }));
 vi.mock("obsidian", async importOriginal => ({
 	...await importOriginal<typeof import("obsidian")>(),
+	SettingGroup: undefined,
 	Setting: class {
-		settingEl = { toggleVisibility() {} };
-		setName() { return this; } setDesc() { return this; }
+		settingEl = { toggle() {} };
+		setHeading() { return this; } setName() { return this; } setDesc() { return this; }
 		addDropdown(callback: (control: unknown) => void) {
 			const control = { addOptions: () => control, onChange(fn: (value: string) => void) { controls.dropdown = fn; return control; } };
 			callback(control); return this;
