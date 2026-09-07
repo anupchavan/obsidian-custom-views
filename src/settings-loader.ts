@@ -34,6 +34,9 @@ function nativeFilter(value: unknown, depth = 0): boolean {
 
 function validView(value: unknown): value is ViewConfig {
 	if (!record(value)) return false;
+	if (value.contexts !== undefined && (!record(value.contexts) || !Object.entries(value.contexts).every(([context, fields]) =>
+		["popover", "canvas", "embed"].includes(context) && record(fields) && Object.entries(fields).every(([key, field]) =>
+			["template", "css", "js"].includes(key) && typeof field === "string")))) return false;
 	return typeof value.id === "string" && value.id.length > 0 && typeof value.name === "string" &&
 		typeof value.template === "string" && record(value.rules) && value.rules.type === "group" && legacyRule(value.rules) &&
 		(value.basesFilters == null || nativeFilter(value.basesFilters)) &&
@@ -48,7 +51,7 @@ export function loadValidatedSettings(data: unknown): { settings: CustomViewsSet
 	const source = record(data) ? data : {};
 	let recovered = !record(data);
 	const settings: CustomViewsSettings = { ...source, ...defaults };
-	for (const key of ["enabled", "workInLivePreview", "workInCanvas", "editableContent", "allowJavaScript"] as const) {
+	for (const key of ["enabled", "workInLivePreview", "workInCanvas", "workInPopover", "workInEmbeds", "editableContent", "allowJavaScript"] as const) {
 		if (typeof source[key] === "boolean") settings[key] = source[key];
 		else if (source[key] !== undefined) {
 			settings[key] = false;

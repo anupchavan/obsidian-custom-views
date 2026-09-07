@@ -1057,6 +1057,11 @@ export interface TemplateEditorOptions {
 export function createTemplateEditor(
 	options: TemplateEditorOptions
 ): EditorView {
+	return new EditorView({ root: options.root, state: createTemplateEditorState(options) });
+}
+
+/** A fresh state keeps undo history isolated when an editor switches templates. */
+export function createTemplateEditorState(options: TemplateEditorOptions): EditorState {
 	const language = options.language ?? "html";
 	const labels: Record<EditorLanguage, string> = { html: "HTML template", css: "CSS styles", javascript: "JavaScript code" };
 	const extensions: Extension[] = [
@@ -1075,18 +1080,7 @@ export function createTemplateEditor(
 		extensions.push(changeListener);
 	}
 
-	const view = new EditorView({
-		// `root` makes CodeMirror mount its styles into the correct document — vital
-		// when settings open in a separate window (Obsidian 1.13+); otherwise the
-		// editor renders unstyled there.
-		root: options.root,
-		state: EditorState.create({
-			doc: options.initialContent,
-			extensions,
-		}),
-	});
-
-	return view;
+	return EditorState.create({ doc: options.initialContent, extensions });
 }
 
 /**

@@ -4,9 +4,8 @@ import { mountNativeFilters } from "./native-filters/editor";
 import { App, PluginSettingTab, Setting, TextComponent, Modal, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup } from "./types";
-import { createTemplateEditor } from "./editor";
+import { mountContextTemplateEditors } from "./context-template-editor";
 import type { EditorView } from "@codemirror/view";
-import { EditorState, StateEffect } from "@codemirror/state";
 
 
 const DEFAULT_RULES: FilterGroup = {
@@ -22,6 +21,8 @@ export interface CustomViewsSettings {
 	enabled: boolean;
 	workInLivePreview: boolean;
 	workInCanvas: boolean;
+	workInPopover: boolean;
+	workInEmbeds: boolean;
 	editableContent: boolean;
 	allowJavaScript: boolean;
 	views: ViewConfig[];
@@ -31,6 +32,8 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 	enabled: true,
 	workInLivePreview: true,
 	workInCanvas: false,
+	workInPopover: false,
+	workInEmbeds: false,
 	editableContent: true,
 	allowJavaScript: true,
 	views: [
@@ -62,7 +65,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			} else {
 				this.renderLegacySettings();
 			}
-		} else if (key === 'workInCanvas' || key === 'editableContent' || key === 'allowJavaScript') {
+		} else if (key === 'workInCanvas' || key === 'workInPopover' || key === 'workInEmbeds' || key === 'editableContent' || key === 'allowJavaScript') {
 			this.plugin.refreshAllViews();
 		}
 		await this.plugin.saveSettings();
@@ -87,6 +90,8 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 						visible: () => this.plugin.settings.workInLivePreview,
 						control: { type: "toggle", key: "editableContent" },
 					},
+					{ name: "Work in popover preview", desc: "Apply custom views to full-note hover previews in reading and live preview modes.", control: { type: "toggle", key: "workInPopover" } },
+					{ name: "Work in embedded notes", desc: "Apply custom views to full-note embeds. Heading and block embeds keep their native content.", control: { type: "toggle", key: "workInEmbeds" } },
 					{
 						name: "Work in canvas (experimental)",
 						control: { type: "toggle", key: "workInCanvas" },
@@ -206,6 +211,11 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.workInLivePreview)
 					.onChange(value => this.setControlValue("workInLivePreview", value).catch(() => {})));
 		});
+
+		for (const [key, name] of [["workInPopover", "Work in popover preview"], ["workInEmbeds", "Work in embedded notes"]] as const) {
+			generalSettings.addSetting(setting => { setting.setName(name).setDesc("Full notes use the shared template or their context override. Heading and block previews remain native.")
+				.addToggle(toggle => toggle.setValue(this.plugin.settings[key]).onChange(value => { void this.setControlValue(key, value).catch(() => {}); })); });
+		}
 
 		if (this.plugin.settings.workInLivePreview) {
 			generalSettings.addSetting((setting) => {
@@ -380,60 +390,8 @@ export class EditViewModal extends Modal {
 
 		contentEl.createEl("h3", { text: "Template" });
 
-		contentEl.createEl("h4", { text: "HTML" });
-		const templateContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
-		this.templateEditor = createTemplateEditor({
-			initialContent: this.view.template,
-			language: "html",
-			templateVariables,
-			root: templateContainer.ownerDocument,
-			onChange: (content: string) => {
-				this.view.template = content;
-				autoSave();
-			},
-		});
-		templateContainer.appendChild(this.templateEditor.dom);
-
-		contentEl.createEl("h4", { text: "CSS" });
-		const cssContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
-		this.cssEditor = createTemplateEditor({
-			initialContent: this.view.css ?? "",
-			language: "css",
-			templateVariables,
-			root: cssContainer.ownerDocument,
-			onChange: (content: string) => {
-				this.view.css = content;
-				autoSave();
-			},
-		});
-		cssContainer.appendChild(this.cssEditor.dom);
-
-		contentEl.createEl("h4", { text: "JavaScript" });
-		const jsDisabled = !this.plugin.settings.allowJavaScript;
-		if (jsDisabled) {
-			contentEl.createEl("p", {
-				text: "JavaScript execution is disabled. Enable it in the plugin settings to use this feature.",
-				cls: "cv-js-disabled-notice",
-			});
-		}
-		const jsContainer = contentEl.createDiv({ cls: "cv-codemirror-container" });
-		this.jsEditor = createTemplateEditor({
-			initialContent: this.view.js ?? "",
-			language: "javascript",
-			templateVariables,
-			root: jsContainer.ownerDocument,
-			onChange: (content: string) => {
-				this.view.js = content;
-				autoSave();
-			},
-		});
-		jsContainer.appendChild(this.jsEditor.dom);
-		if (jsDisabled) {
-			jsContainer.addClass("cv-editor-disabled");
-			this.jsEditor.dispatch({
-				effects: StateEffect.appendConfig.of(EditorState.readOnly.of(true)),
-			});
-		}
+		if (!this.plugin.settings.allowJavaScript) contentEl.createEl("p", { text: "JavaScript execution is disabled in the plugin settings." });
+		Object.assign(this, mountContextTemplateEditors(contentEl, this.view, templateVariables, this.plugin.settings.allowJavaScript, autoSave));
 	}
 
 	private selectFocusedName(input: HTMLInputElement) {

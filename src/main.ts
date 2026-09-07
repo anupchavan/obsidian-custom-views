@@ -1,3 +1,7 @@
+import { fitIframeEditor } from "./iframe-editor-layout";
+import { EmbeddedViews } from "./embedded-views";
+import { resolveViewContext } from "./view-context";
+import type { ViewContext } from "./types";
 import { createDetachedEl } from "./dom";
 import { loadValidatedSettings } from "./settings-loader";
 import { RenderCoordinator } from "./render-coordinator";
@@ -20,11 +24,19 @@ const HIDE_MARKDOWN_CLASS = "obsidian-custom-view-hidden";
 const EDITABLE_MODE_CLASS = "obsidian-custom-view-editable";
 const PENDING_VIEW_CLASS = "obsidian-custom-view-pending";
 
+/** Preserve embedded editor iframes when moving them into/out of a custom layout. */
+function moveEditorElement(parent: HTMLElement, element: HTMLElement, before: Node | null = null) {
+	const movable = parent as HTMLElement & { moveBefore?: (node: Node, child: Node | null) => void };
+	if (movable.moveBefore && parent.isConnected && element.isConnected) movable.moveBefore(element, before);
+	else parent.insertBefore(element, before);
+}
+
 /**
  * Interface for canvas node structure
  * CanvasView and CanvasNode types are not exported from Obsidian, so we define minimal interfaces
  */
 interface CanvasNode {
+	child?: unknown;
 	file?: TFile;
 	nodeEl?: HTMLElement;
 }
@@ -65,6 +77,7 @@ function getCM6EditorView(view: MarkdownView): EditorView | null {
 
 /** Tracks the editable content state for a single view */
 interface EditableState {
+	restoreIframeLayout?: () => void;
 	/** The original parent of the editor element, for restoration */
 	originalParent: HTMLElement;
 	/** The original next sibling, to restore position precisely */
@@ -122,6 +135,8 @@ export default class CustomViewsPlugin extends Plugin {
 	private unloaded = false;
 	private lifetime = new AbortController();
 	get unloadSignal(): AbortSignal { return this.lifetime.signal; }
+	private embeddedViews?: EmbeddedViews;
+	private viewContexts = new WeakMap<MarkdownView, ViewContext>();
 	private canvasRenders = new RenderCoordinator<CanvasNode>();
 	private noteRefreshTimers = new Map<TFile, number>();
 	private contentVersions = new WeakMap<MarkdownView, number>();
@@ -140,7 +155,7 @@ export default class CustomViewsPlugin extends Plugin {
 				if (!(leaf.view instanceof MarkdownView) || !leaf.view.file) return;
 				const view = leaf.view;
 				const target = view.file!;
-				const overlay = view.contentEl.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
+				const overlay = view.contentEl.querySelector<HTMLElement>(`:scope > .${CUSTOM_VIEW_CLASS}`);
 				const dependencyChanged = target !== file && !!overlay && !!getTemplateDependencies(overlay)?.has(file);
 				if ((dependenciesOnly || target !== file) && !dependencyChanged) return;
 				const rendered = this.renderedMetadata.get(view);
@@ -169,6 +184,15 @@ export default class CustomViewsPlugin extends Plugin {
 		this.unloaded = false;
 		this.lifetime = new AbortController();
 		await this.loadSettings();
+		this.embeddedViews = new EmbeddedViews(this.app, context => this.settings.enabled &&
+			(context === "popover" ? this.settings.workInPopover : context === "canvas" ? this.settings.workInCanvas : this.settings.workInEmbeds),
+			async (view, context, changed) => {
+				this.viewContexts.set(view, context);
+				if (changed) this.clearAppliedState(view.contentEl);
+				await this._processLeaf(view, view.file!);
+			}, view => {
+				this.renders.cancel(view); this.restoreEditableView(view); this.restoreDefaultView(view);
+			});
 		this.nativeRules = new NativeRuleEngine(this.app, () => {
 			if (!this.unloaded) this.refreshAllViews();
 		});
@@ -265,13 +289,14 @@ export default class CustomViewsPlugin extends Plugin {
 
 		// Also process canvas nodes periodically to catch updates
 		this.registerInterval(window.setInterval(() => {
+			this.embeddedViews?.refresh();
 			if (this.settings.enabled && this.settings.workInCanvas) {
 				void this.processAllCanvasNodes();
 			}
 		}, 1000));
 		this.experimentalNavigation = new AtomicNavigation(this.app, (view, state) => {
 			if (this.unloaded || !this.settings.enabled) return false;
-			if (view.contentEl.querySelector(`.${CUSTOM_VIEW_CLASS}`)) return true;
+			if (view.contentEl.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`)) return true;
 			const file = typeof state.file === "string" ? this.app.vault.getAbstractFileByPath(state.file) : view.file;
 			if (!(file instanceof TFile)) return false;
 			const mode = { ...view.getState(), ...state };
@@ -293,6 +318,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 	onunload() {
 		this.unloaded = true;
+		this.embeddedViews?.dispose();
 		this.experimentalNavigation?.dispose();
 		this.lifetime.abort();
 		this.saveFeedback.clear();
@@ -329,7 +355,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 	private hideStaleOverlay(view: MarkdownView, file: TFile) {
 		const container = view.contentEl;
-		const customEl = container.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
+		const customEl = container.querySelector<HTMLElement>(`:scope > .${CUSTOM_VIEW_CLASS}`);
 		if (!customEl || this.containerIsRenderedForFile(container, file)) return;
 
 		customEl.addClass(PENDING_VIEW_CLASS);
@@ -486,7 +512,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 		// Skip if nothing changed — prevents DOM churn and event cascades
 		if (stateKey === appliedKey) {
-			const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
+			const customEl = container.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`);
 			const appliedDomIsValid = shouldRenderCustomView ? !!customEl : !customEl;
 			if (appliedDomIsValid) {
 				customEl?.removeClass(PENDING_VIEW_CLASS);
@@ -500,6 +526,7 @@ export default class CustomViewsPlugin extends Plugin {
 			return;
 		}
 
+		matchedConfig = resolveViewContext(matchedConfig, this.viewContexts.get(view) ?? "note");
 		const matchedTemplate = matchedConfig.template;
 
 		if (isTrueSourceMode) {
@@ -551,7 +578,7 @@ export default class CustomViewsPlugin extends Plugin {
 		// one (found via iterateAllLeaves in processActiveView), so this is safe.
 		container.addClass(HIDE_MARKDOWN_CLASS);
 
-		const previousOverlay = container.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
+		const previousOverlay = container.querySelector<HTMLElement>(`:scope > .${CUSTOM_VIEW_CLASS}`);
 		const customEl = createDetachedEl(container.ownerDocument, "div");
 		customEl.addClass(CUSTOM_VIEW_CLASS);
 		container.appendChild(customEl);
@@ -604,7 +631,7 @@ export default class CustomViewsPlugin extends Plugin {
 		container.removeAttribute("data-cv-id");
 		this.clearAppliedState(container);
 
-		const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
+		const customEl = container.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`);
 		if (customEl) {
 			customEl.remove();
 		}
@@ -736,7 +763,7 @@ export default class CustomViewsPlugin extends Plugin {
 		}
 
 		// Find the editor element (.markdown-source-view)
-		const editorEl = container.querySelector(".markdown-source-view") as HTMLElement;
+		const editorEl = (view as MarkdownView & { cvEditorEl?: HTMLElement }).cvEditorEl ?? container.querySelector<HTMLElement>(".markdown-source-view");
 		if (!editorEl) {
 			this.restoreEditableView(view);
 			await this.injectCustomView(container, file, template, viewConfig, sourceContent, signal);
@@ -745,7 +772,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 		// Keep the editor in place while preparing the next shell. Restoring and
 		// reconfiguring CM6 twice per navigation forces extra layout and parsing.
-		const previousOverlay = container.querySelector<HTMLElement>(`.${CUSTOM_VIEW_CLASS}`);
+		const previousOverlay = container.querySelector<HTMLElement>(`:scope > .${CUSTOM_VIEW_CLASS}`);
 		const previousState = this.editableStates.get(container);
 		const customEl = createDetachedEl(container.ownerDocument, "div");
 		customEl.addClass(CUSTOM_VIEW_CLASS);
@@ -816,7 +843,8 @@ export default class CustomViewsPlugin extends Plugin {
 		}
 
 		// Reparent the editor into the placeholder
-		placeholder.appendChild(editorEl);
+		previousState?.restoreIframeLayout?.();
+		moveEditorElement(placeholder, editorEl);
 		previousOverlay?.remove();
 		customEl.removeClass(PENDING_VIEW_CLASS);
 		container.removeClass(HIDE_MARKDOWN_CLASS);
@@ -829,7 +857,9 @@ export default class CustomViewsPlugin extends Plugin {
 		this.applyViewDisplayOptions(container, viewConfig);
 
 		// Store state for cleanup
+		const restoreIframeLayout = fitIframeEditor(editorEl, viewConfig);
 		this.editableStates.set(container, {
+			restoreIframeLayout,
 			originalParent,
 			originalNextSibling,
 			editorEl,
@@ -854,11 +884,13 @@ export default class CustomViewsPlugin extends Plugin {
 			// Editor may have been destroyed already
 		}
 
+		state.restoreIframeLayout?.();
+
 		// Move the editor back to its original position
 		if (state.originalNextSibling && state.originalParent.contains(state.originalNextSibling)) {
-			state.originalParent.insertBefore(state.editorEl, state.originalNextSibling);
+			moveEditorElement(state.originalParent, state.editorEl, state.originalNextSibling);
 		} else {
-			state.originalParent.appendChild(state.editorEl);
+			moveEditorElement(state.originalParent, state.editorEl);
 		}
 
 		// Recalculate layout in original position
@@ -873,7 +905,7 @@ export default class CustomViewsPlugin extends Plugin {
 		// Remove editable mode class and overlay
 		container.removeClass(EDITABLE_MODE_CLASS);
 
-		const customEl = container.querySelector(`.${CUSTOM_VIEW_CLASS}`);
+		const customEl = container.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`);
 		if (customEl) customEl.remove();
 
 		// Clean up state
@@ -936,6 +968,7 @@ export default class CustomViewsPlugin extends Plugin {
 				void this._processLeaf(leaf.view, leaf.view.file);
 			}
 		});
+		this.embeddedViews?.refresh(true);
 		this.processAllCanvasNodes();
 	}
 
@@ -974,6 +1007,7 @@ export default class CustomViewsPlugin extends Plugin {
 			this.restoreCanvasNode(node);
 			return;
 		}
+		if (node.child && this.embeddedViews?.track(node.child)) { this.embeddedViews.refresh(); return; }
 		const file = node.file;
 		if (!(file instanceof TFile) || file.extension !== "md") {
 			this.restoreCanvasNode(node);
@@ -1003,11 +1037,14 @@ export default class CustomViewsPlugin extends Plugin {
 		const previewContainer = nodeEl.querySelector(".markdown-preview-view") as HTMLElement;
 		if (!previewContainer) return;
 
-		const config = matchedConfig;
-		const key = JSON.stringify([file.path, file.stat.mtime, config.id, this.settingsVersion]);
-		await this.canvasRenders.run(node, key, signal =>
-			this.injectCustomView(previewContainer, file, config.template, config, undefined, signal)
-		).catch(error => {
+		const config = resolveViewContext(matchedConfig, "canvas");
+		const key = JSON.stringify([file.path, file.stat.mtime, file.stat.size, cache?.frontmatter, config, this.settingsVersion]);
+		if (previewContainer.getAttribute("data-cv-canvas-state") === key &&
+			previewContainer.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}:not(.${PENDING_VIEW_CLASS})`)) return;
+		await this.canvasRenders.run(node, key, async signal => {
+			await this.injectCustomView(previewContainer, file, config.template, config, undefined, signal);
+			if (!signal.aborted) previewContainer.setAttribute("data-cv-canvas-state", key);
+		}).catch(error => {
 			this.restoreCanvasNode(node);
 			console.error("[Custom Views] Failed to render a canvas node:", error);
 		});
@@ -1024,12 +1061,13 @@ export default class CustomViewsPlugin extends Plugin {
 		const previewContainer = nodeEl.querySelector(".markdown-preview-view") as HTMLElement;
 		if (!previewContainer) return;
 
+		previewContainer.removeAttribute("data-cv-canvas-state");
 		this.restoreDisplayOptions(previewContainer);
 
 		previewContainer.removeClass(HIDE_MARKDOWN_CLASS);
 		previewContainer.removeAttribute("data-cv-id");
 
-		const customEl = previewContainer.querySelector(`.${CUSTOM_VIEW_CLASS}`);
+		const customEl = previewContainer.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`);
 		if (customEl) {
 			customEl.remove();
 		}
