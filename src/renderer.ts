@@ -319,18 +319,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Checks whether a template contains an unfiltered {{file.content}} or {{content}}
  * placeholder, making it eligible for editable content mode.
- * Returns false if the content placeholder has a filter pipe (e.g. {{file.content | uppercase}})
- * or if there is no content placeholder at all.
+ * Filtered body values may coexist with the unfiltered editable placeholder.
  */
 export function templateHasEditableContent(template: string): boolean {
-	// Match {{ file.content }} or {{ content }} with optional filter, allowing whitespace
-	const contentRegex = /\{\{\s*(?:file\.)?content\s*(?:\|.*?)?\}\}/g;
-	let match;
-	while ((match = contentRegex.exec(template)) !== null) {
-		if (match[0].includes("|")) return false;
-		return true;
-	}
-	return false;
+	return /\{\{\s*(?:file\.)?content\s*\}\}/.test(template);
 }
 
 /** Attribute added to the content placeholder div when in editable mode */
