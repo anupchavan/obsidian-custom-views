@@ -498,14 +498,15 @@ export async function renderTemplate(
 	signal?.throwIfAborted();
 	applyNativeInternalLinkState(app, container, file.path);
 
-	const contentEl = container.querySelector(`#${contentPlaceholderId}`) as HTMLElement;
-	if (contentEl) {
-		if (editableMode) {
+	const contentElements = container.querySelectorAll<HTMLElement>(`#${contentPlaceholderId}`);
+	for (const [index, contentEl] of contentElements.entries()) {
+		if (editableMode && index === 0) {
 			// In editable mode, leave the placeholder empty — the caller will
 			// reparent the real CM6 editor into it.
 			contentEl.setAttribute(EDITABLE_PLACEHOLDER_ATTR, "true");
 			contentEl.removeAttribute("id");
 		} else {
+			dependencies.add(file);
 			const sizer = createDetachedEl(container.ownerDocument, "div");
 			sizer.classList.add("markdown-preview-sizer", "markdown-preview-section");
 			contentEl.appendChild(sizer);

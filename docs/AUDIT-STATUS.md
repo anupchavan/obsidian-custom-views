@@ -1,12 +1,12 @@
 # Custom Views audit status
 
-Status as of 2026-09-05: paused at the user’s request. The checks below describe completed work and remaining verification, not a claim that every possible plugin issue has been eliminated.
+Status as of 2026-09-07: resumed on `fix/refinement-audit-2026-09-07`. The checks below describe completed work and remaining verification, not a claim that every possible plugin issue has been eliminated.
 
 ## Branches
 
 All completed refinement work and the atomic navigation experiment are merged into `main`. The source branches (`fix/native-filters-and-ux`, `experiment/atomic-note-navigation`, and the earlier render/Bases experiments) are retained in history. The flicker protection remains enabled with the retained-shell strategy. Obsidian's application binary has not been modified.
 
-This merge does not bump the version, create a tag, or publish a release. The outstanding work below is paused; new feature work awaits the user's selection.
+This merge does not bump the version, create a tag, or publish a release. The following sections record the previous audit; the September 7 continuation is recorded below.
 
 ## Evidence reviewed
 
@@ -50,3 +50,13 @@ Native filter load errors now provide an accessible alert and a Retry button. In
 Deferred view-name selection now runs only while the input remains connected and focused. Closing the dialog cancels it; input-window scheduling supports separate documents. Five regressions cover focused/moved/closed/detached inputs and an iframe-owned input.
 
 On 2026-09-06, the requested lint cleanup updated the Obsidian ESLint plugin to 0.4.2 and nanoid to 5.1.16. Source lint uses a browser-only TypeScript project with explicit ES2022 libraries and no ambient Node types; the Moment adapter preserves callable host typings with interop enabled. The navigation hold now uses a CSS class, header visibility uses a direct pane class, and the stylesheet has no `:has` or `!important`. Validation: 1,181 tests, zero-warning lint, browser typecheck, build, and 12 live navigation checks with zero exposed intermediate frames. The broader refinement audit remains paused.
+
+
+## September 7 continuation
+
+The resumed branch starts from `a687c2c`. The native Bases filter UI is already implemented; it remains in scope for further compatibility and lifecycle checks.
+
+- Fixed live editing being disabled when a filtered body expression precedes an unfiltered content placeholder. Regression tests check both content aliases, the filtered output, and the editable slot. Full suite after the fix: 1,199 tests passed; lint and production build passed.
+- Fixed repeated unfiltered body placeholders leaving later copies blank and retaining duplicate IDs. Both reading and editable modes now render all copies; only the first slot hosts the live editor. Read-only copies register a body dependency so edits refresh them. Both new regressions failed on the previous code. Full suite after the fix: 1,201 tests passed; lint, browser typecheck, and production build passed.
+
+These fixes are local branch commits. No push or release was requested for the resumed audit. Popout/theme/mobile coverage and broader native-filter equivalence remain open; this continuation does not claim the audit is complete.
