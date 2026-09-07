@@ -276,17 +276,27 @@ body .cv-suggestion-container.modal {
     display: block;
 }
 
-/* The template overlay in editable mode uses same layout as readonly */
-.obsidian-custom-view-editable .obsidian-custom-view-render {
-    padding: 30px;
-    height: 100%;
-    overflow-y: auto;
-    width: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    background-color: var(--background-primary);
-    z-index: 10;
+/* The placeholder inherits Obsidian's preview class, but must not become
+   a second scroll container inside the template. */
+.obsidian-custom-view-render [data-cv-editable-placeholder].markdown-preview-view {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+}
+
+.obsidian-custom-view-render [data-cv-editable-placeholder] > .markdown-embed-content {
+    height: auto;
+    overflow: visible;
+}
+
+.obsidian-custom-view-render [data-cv-editable-placeholder] > .markdown-embed-content > iframe {
+    height: var(--cv-editor-height, auto);
+    min-height: 0;
+    flex: none;
+}
+
+.cv-context-popover > .obsidian-custom-view-render {
+    padding: 16px;
 }
 
 /* The editor embedded in the content placeholder should flow naturally */
@@ -422,4 +432,14 @@ body .cv-clear-button-hidden {
     pointer-events: none;
     overflow: hidden;
     z-index: 10;
+}
+
+/* Inline note embeds participate in their parent note's layout. */
+.cv-context-embed > .obsidian-custom-view-render {
+    position: relative;
+    height: auto;
+}
+
+.cv-context-embed.obsidian-custom-view-hidden > .markdown-embed-content {
+    display: none;
 }

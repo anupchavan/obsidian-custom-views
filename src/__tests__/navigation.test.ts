@@ -62,6 +62,15 @@ function setup() {
 }
 
 describe("editable note navigation", () => {
+	it("preserves a nested embed's custom view when restoring the parent note", () => {
+		const s = setup();
+		const embed = s.view.contentEl.appendChild(document.createElement("div"));
+		const card = embed.appendChild(document.createElement("div"));
+		card.className = "obsidian-custom-view-render";
+		s.plugin.restoreDefaultView(s.view);
+		expect(embed.contains(card)).toBe(true);
+	});
+
 	it("moves the existing editor directly between shells and restores its original parent", async () => {
 		const s = setup();
 		await s.methods.injectEditableView(s.view, s.file, s.config);
@@ -230,6 +239,17 @@ describe("canvas rendering lifetime", () => {
 		s.plugin.app.workspace.iterateAllLeaves = callback => callback({ view: { canvas: { nodes: [node] } } } as unknown as WorkspaceLeaf);
 		return { ...s, node, preview };
 	}
+	it("retains completed canvas cards across polling and rebuilds a removed card", async () => {
+		const s = canvasSetup();
+		await s.plugin.processCanvasNode(s.node);
+		const card = s.preview.querySelector(".obsidian-custom-view-render");
+		await s.plugin.processCanvasNode(s.node);
+		expect(s.preview.querySelector(".obsidian-custom-view-render")).toBe(card);
+		expect(renderTemplate).toHaveBeenCalledOnce();
+		card?.remove();
+		await s.plugin.processCanvasNode(s.node);
+		expect(renderTemplate).toHaveBeenCalledTimes(2);
+	});
 	it.each(["cleared", "image"])("cancels pending Markdown rendering after the node becomes %s", async kind => {
 		const s = canvasSetup(); let finish!: () => void;
 		vi.mocked(renderTemplate).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));

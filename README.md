@@ -26,6 +26,14 @@ The first matching view is used, so place more specific views above broader ones
 
 The Rules editor uses Obsidian’s internal Bases controls, including property pickers, nested groups, and advanced formulas. See [native filter integration](docs/NATIVE-FILTERS.md) for requirements and legacy-rule behavior.
 
+## Previews, Canvas, and embedded notes
+
+Enable **Work in popover preview**, **Work in canvas**, or **Work in embedded notes** in settings to use matching views outside the main note. Popovers and Canvas preserve Obsidian's reading/live preview controls. With **Editable content in live preview** enabled, `{{file.content}}` contains the native editor; source mode stays native. Full-note previews are supported; heading and block excerpts keep their original content.
+
+In a view's editor, **Template for** selects **Main note**, **Popover preview**, **Canvas**, or **Embedded note** without adding more editor panels. Each context inherits the main HTML, CSS, and JavaScript independently. Turn off **Use main CSS**, for example, to make a compact popover while sharing the same HTML and JavaScript. Overrides replace that language's main value; an empty override intentionally supplies nothing. Turn inheritance back on to discard the override and follow future main-template changes.
+
+Canvas cards keep their rendered view between background checks. Editable note bodies share the template's scrollbar, including Canvas iframe editors. Embeds created inside a custom template stay native to prevent recursive rendering. Older hosts without support for moving iframes without reloading them keep the native Canvas editor. These surfaces use Obsidian's internal Markdown embed integration and may need updates when Obsidian changes it.
+
 ## Documentation
 
 The detailed documentation lives in the GitHub Wiki:

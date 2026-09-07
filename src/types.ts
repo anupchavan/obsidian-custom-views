@@ -32,7 +32,12 @@ export interface FilterGroup {
 	conditions: (Filter | FilterGroup)[];
 }
 
+export type ViewContext = "note" | "popover" | "canvas" | "embed";
+export type TemplateOverride = { template?: string; css?: string; js?: string };
+
 export interface ViewConfig {
+	/** Missing fields inherit the main template; empty strings intentionally clear a field. */
+	contexts?: Partial<Record<Exclude<ViewContext, "note">, TemplateOverride>>;
 	id: string;
 	name: string;
 	rules: FilterGroup;
