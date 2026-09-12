@@ -1,0 +1,368 @@
+{
+  "from": "source",
+  "frames": [
+    {
+      "mode": "source",
+      "t": 1.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617,
+      "iframeHeight": 307,
+      "contentHeight": 274.15625,
+      "contentText": 310
+    },
+    {
+      "mode": "preview",
+      "t": 35.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 36.3,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 37.6,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 46,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 54.3,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 62.6,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 70.9,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 79.3,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 87.5,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 95.9,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 104.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 112.6,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 121.5,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 130.1,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 137.7,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 147,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 154.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 163.3,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 171,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 179.3,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 187.6,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 197,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 204.5,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 212.9,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 221.1,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 231.9,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 237.6,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 246.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 254.5,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 262.9,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 271.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 279.6,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 287.8,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 296.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 304.5,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 313.7,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 321.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 330.5,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 338,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 346.3,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 354.5,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 362.8,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 371.2,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    },
+    {
+      "mode": "preview",
+      "t": 379.7,
+      "overlay": true,
+      "pending": false,
+      "hold": false,
+      "height": 617
+    }
+  ]
+}

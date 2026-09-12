@@ -1387,3 +1387,12 @@ describe("current file content expressions", () => {
 		expect(read).not.toHaveBeenCalled();
 	});
 });
+
+
+describe("expression syntax cache", () => {
+	it("evaluates reused syntax against the current note and variables", async () => {
+		const expression = 'rating + bonus';
+		expect(await evaluate(parseExpression(expression), makeContext({ frontmatter: { rating: 2 }, variables: { bonus: 3 } }))).toBe(5);
+		expect(await evaluate(parseExpression(expression), makeContext({ frontmatter: { rating: 8 }, variables: { bonus: 1 } }))).toBe(9);
+	});
+});

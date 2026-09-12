@@ -42,6 +42,14 @@ export class MarkdownView { }
 export class PluginSettingTab { }
 export class Setting { }
 export class Modal { }
+export class Scope {
+	keys: { modifiers: string[] | null; key: string | null; func: () => unknown }[] = [];
+	register(modifiers: string[] | null, key: string | null, func: () => unknown) {
+		const handler = { modifiers, key, func };
+		this.keys.push(handler);
+		return handler;
+	}
+}
 export class Notice { }
 export class FuzzySuggestModal { }
 export class AbstractInputSuggest {

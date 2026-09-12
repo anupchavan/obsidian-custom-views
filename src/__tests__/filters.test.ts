@@ -325,3 +325,15 @@ describe("filter chaining", () => {
 		expect(apply("foo|bar", 'replace:"|","-"')).toBe("foo-bar");
 	});
 });
+
+describe("Knap integration", () => {
+	it("supports Knap filters alongside legacy typed filters", () => {
+		expect(apply(["b", "a"], 'sort | join:", "')).toBe("a, b");
+	});
+	it("does not split a regex alternation into separate filters", () => {
+		expect(apply("cat dog", 'replace:/cat|dog/g,"pet" | upper')).toBe("PET PET");
+	});
+	it("keeps encoded HTML encoded when removing tags", () => {
+		expect(apply("&lt;img src=x onerror=alert(1)&gt;", "strip_tags")).toBe("&lt;img src=x onerror=alert(1)&gt;");
+	});
+});

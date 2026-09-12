@@ -1,6 +1,8 @@
 // Test the shipped stylesheet in the DOM; Node is used only by the test runner.
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
+import * as completion from "@codemirror/autocomplete";
+import * as search from "@codemirror/search";
 import { App, type PluginManifest } from "obsidian";
 import CustomViewsPlugin from "../main";
 import { DEFAULT_SETTINGS, EditViewModal } from "../settings";
@@ -26,6 +28,22 @@ function setup() {
 	return { plugin, modal, save, done, saveChanges, cleanups: [filterCleanup, htmlCleanup, cssCleanup, jsCleanup] };
 }
 describe("settings dialog lifetime", () => {
+	it("dismisses editor completions before closing the dialog on Escape", () => {
+		const s = setup();
+		Object.assign(Reflect.get(s.modal, "templateEditor") as object, { hasFocus: true });
+		const closeCompletion = vi.spyOn(completion, "closeCompletion").mockReturnValue(true);
+		const closeSearch = vi.spyOn(search, "closeSearchPanel").mockReturnValue(false);
+		const handlers = Reflect.get(s.modal.scope, "keys") as { key: string; func: () => unknown }[];
+		const escape = handlers.find(handler => handler.key === "Escape")!.func;
+		try {
+			expect(escape()).toBe(false);
+			expect(s.done).not.toHaveBeenCalled();
+			closeCompletion.mockReturnValue(false);
+			expect(escape()).toBe(false);
+			expect(s.done).toHaveBeenCalledOnce();
+		} finally { closeCompletion.mockRestore(); closeSearch.mockRestore(); s.modal.onClose(); }
+	});
+
 	it("closes and cleans up every editor when the plugin unloads", () => {
 		const s = setup();
 		s.plugin.onunload();

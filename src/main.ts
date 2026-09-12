@@ -150,6 +150,8 @@ export default class CustomViewsPlugin extends Plugin {
 		this.noteRefreshTimers.set(file, window.setTimeout(() => {
 			this.noteRefreshTimers.delete(file);
 			if (this.unloaded) return;
+			this.embeddedViews?.refreshFile(file);
+			this.processAllCanvasNodes();
 			const metadata = JSON.stringify(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {});
 			this.app.workspace.iterateAllLeaves(leaf => {
 				if (!(leaf.view instanceof MarkdownView) || !leaf.view.file) return;
@@ -188,7 +190,10 @@ export default class CustomViewsPlugin extends Plugin {
 			(context === "popover" ? this.settings.workInPopover : context === "canvas" ? this.settings.workInCanvas : this.settings.workInEmbeds),
 			async (view, context, changed) => {
 				this.viewContexts.set(view, context);
-				if (changed) this.clearAppliedState(view.contentEl);
+				if (changed) {
+					this.contentVersions.set(view, (this.contentVersions.get(view) ?? 0) + 1);
+					this.clearAppliedState(view.contentEl);
+				}
 				await this._processLeaf(view, view.file!);
 			}, view => {
 				this.renders.cancel(view); this.restoreEditableView(view); this.restoreDefaultView(view);
@@ -287,13 +292,13 @@ export default class CustomViewsPlugin extends Plugin {
 			})
 		);
 
-		// Also process canvas nodes periodically to catch updates
-		this.registerInterval(window.setInterval(() => {
-			this.embeddedViews?.refresh();
-			if (this.settings.enabled && this.settings.workInCanvas) {
-				void this.processAllCanvasNodes();
-			}
-		}, 1000));
+		// Older hosts without an embed factory still need a discovery fallback.
+		// Current hosts notify us through embed, layout, and metadata events.
+		if (!this.embeddedViews.observesEmbeds) {
+			this.registerInterval(window.setInterval(() => {
+				if (this.settings.enabled && this.settings.workInCanvas) this.processAllCanvasNodes();
+			}, 1000));
+		}
 		this.experimentalNavigation = new AtomicNavigation(this.app, (view, state) => {
 			if (this.unloaded || !this.settings.enabled) return false;
 			if (view.contentEl.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`)) return true;
@@ -1011,7 +1016,7 @@ export default class CustomViewsPlugin extends Plugin {
 			this.restoreCanvasNode(node);
 			return;
 		}
-		if (node.child && this.embeddedViews?.track(node.child)) { this.embeddedViews.refresh(); return; }
+		if (node.child && this.embeddedViews?.track(node.child)) return;
 		const file = node.file;
 		if (!(file instanceof TFile) || file.extension !== "md") {
 			this.restoreCanvasNode(node);

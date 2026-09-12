@@ -1,12 +1,14 @@
 import { nanoid } from "nanoid";
 import { getVaultTemplateProperties } from "./template-properties";
 import { mountNativeFilters } from "./native-filters/editor";
-import { App, PluginSettingTab, Setting, TextComponent, Modal, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
+import { App, PluginSettingTab, Setting, TextComponent, Modal, Scope, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup } from "./types";
 import { settingsGroup } from "./settings-layout";
 import { mountContextTemplateEditors } from "./context-template-editor";
 import type { EditorView } from "@codemirror/view";
+import { closeCompletion } from "@codemirror/autocomplete";
+import { closeSearchPanel } from "@codemirror/search";
 
 
 const DEFAULT_RULES: FilterGroup = {
@@ -318,6 +320,14 @@ export class EditViewModal extends Modal {
 		this.view = view; // Edit the original directly — changes auto-save
 		this.onClose_cb = onClose_cb;
 		this.setTitle('Edit view');
+		// Give editor popups first refusal before the parent modal's Escape handler.
+		this.scope = new Scope(this.scope);
+		(this.scope as Scope & { setTabFocusContainerEl?: (el: HTMLElement) => void }).setTabFocusContainerEl?.(this.modalEl);
+		this.scope.register([], "Escape", () => {
+			const editor = [this.templateEditor, this.cssEditor, this.jsEditor].find(editor => editor?.hasFocus);
+			if (!editor || (!closeCompletion(editor) && !closeSearchPanel(editor))) this.close();
+			return false;
+		});
 		this.plugin.unloadSignal.addEventListener("abort", this.closeOnUnload, { once: true });
 	}
 
@@ -326,6 +336,7 @@ export class EditViewModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("cv-edit-view-modal");
+		this.modalEl.addClass("cv-template-modal");
 
 		const templateVariables = getVaultTemplateProperties(this.app);
 		const autoSave = this.saveChanges;

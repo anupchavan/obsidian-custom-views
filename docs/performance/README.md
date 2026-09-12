@@ -49,12 +49,6 @@ The current build was measured again after the render-coordination changes, with
 
 These are synthetic clicks on actual sidebar elements sampled at animation frames. They include Obsidian's opening work and are not a hardware click-to-photon measurement. Timing varies with system load; the original and current runs are separate sessions.
 
-The installed movie customization is in ignored `data.json`. Its focused migration and tested replacement loader are tracked so the change can be reproduced without storing the rest of the user's settings or service credentials:
-
-```sh
-obsidian vault=obsidian-custom-views plugin:disable id=custom-views
-node scripts/optimize-movie-view.cjs
-obsidian vault=obsidian-custom-views plugin:enable id=custom-views
-```
+The palette results above describe the development vault’s movie customization, stored in ignored `data.json`. The one-off migration, loader, and fixture tests were removed from the plugin repository during the 0.4.1 cleanup; they are not part of the general rendering engine.
 
 Validation: 956 tests, TypeScript/production build, and ESLint pass. Live checks cover rapid navigation, reading/source/live-preview transitions, return to an ordinary note, exactly one editor/overlay, and persisted colors at first paint. Remote poster loading remains subject to network latency on a genuinely new image.

@@ -1,6 +1,6 @@
 {
     "name": "obsidian-custom-views",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "description": "Create custom HTML views for your notes based on filter rules. Transform how your notes are displayed.",
     "main": "main.js",
     "scripts": {
@@ -39,7 +39,7 @@
         "@typescript-eslint/eslint-plugin": "^8.51.0",
         "@typescript-eslint/parser": "^8.51.0",
         "@typescript-eslint/utils": "^8.51.0",
-        "@vitest/coverage-v8": "^4.1.6",
+        "@vitest/coverage-v8": "^4.1.11",
         "esbuild": "^0.28.1",
         "eslint": "^9.39.4",
         "eslint-plugin-obsidianmd": "^0.4.2",
@@ -49,10 +49,11 @@
         "tslib": "2.4.0",
         "typescript": "^5.9.3",
         "typescript-eslint": "^8.51.0",
-        "vitest": "^4.1.6"
+        "vitest": "^4.1.11"
     },
     "dependencies": {
         "@silentvoid13/rusty_engine": "^0.4.0",
+        "knap": "^0.4.2",
         "nanoid": "^5.1.16"
     },
     "overrides": {
