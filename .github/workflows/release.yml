@@ -36,10 +36,10 @@ jobs:
               run: |
                   tag="${GITHUB_REF#refs/tags/}"
                   node -e 'const m = require("./manifest.json"); if (m.version !== process.env.GITHUB_REF_NAME || require("./package.json").version !== m.version || require("./versions.json")[m.version] !== m.minAppVersion) process.exit(1)'
-                  test -s "docs/releases/$tag.md"
+                  test -s ".github/release-notes/$tag.md"
                   gh release create "$tag" \
                     --title="$tag" \
                     --draft \
                     --verify-tag \
-                    --notes-file="docs/releases/$tag.md" \
+                    --notes-file=".github/release-notes/$tag.md" \
                     main.js manifest.json styles.css
