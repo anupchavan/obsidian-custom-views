@@ -52,7 +52,6 @@
         "vitest": "^4.1.11"
     },
     "dependencies": {
-        "@silentvoid13/rusty_engine": "^0.4.0",
         "knap": "^0.4.2",
         "nanoid": "^5.1.16"
     },
