@@ -7,7 +7,15 @@ vi.mock("obsidian", async importOriginal => ({
 	...await importOriginal<typeof import("obsidian")>(),
 	SettingGroup: undefined,
 	Setting: class {
-		settingEl = { toggle() {} };
+		settingEl: HTMLElement;
+		infoEl: HTMLElement;
+		controlEl: HTMLElement;
+		constructor(host: HTMLElement) {
+			this.settingEl = host.appendChild(document.createElement("div"));
+			this.infoEl = this.settingEl.appendChild(document.createElement("div"));
+			this.controlEl = this.settingEl.appendChild(document.createElement("div"));
+			this.controlEl.addClass = (...classes) => this.controlEl.classList.add(...classes);
+		}
 		setHeading() { return this; } setName() { return this; } setDesc() { return this; }
 		addDropdown(callback: (control: unknown) => void) {
 			const control = { addOptions: () => control, onChange(fn: (value: string) => void) { controls.dropdown = fn; return control; } };

@@ -41,7 +41,7 @@ function validView(value: unknown): value is ViewConfig {
 		typeof value.template === "string" && record(value.rules) && value.rules.type === "group" && legacyRule(value.rules) &&
 		(value.basesFilters == null || nativeFilter(value.basesFilters)) &&
 		["css", "js"].every(key => value[key] === undefined || typeof value[key] === "string") &&
-		["showProperties", "showInlineTitle", "showNavigationBar"].every(key => value[key] === undefined || typeof value[key] === "boolean");
+		["enabled", "showProperties", "showInlineTitle", "showNavigationBar"].every(key => value[key] === undefined || typeof value[key] === "boolean");
 }
 
 /** Invalid entries are kept in recovery data, never converted into match-all views. */

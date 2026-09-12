@@ -17,6 +17,7 @@ export class NativeRuleEngine {
 		}).finally(() => { this.recovering = false; });
 	}
 	matches(view: ViewConfig, file: TFile, frontmatter?: FrontMatterCache): boolean {
+		if (view.enabled === false) return false;
 		if (view.basesFilters === undefined) return checkRules(this.app, view.rules, file, frontmatter);
 		if (view.basesFilters === null) return true;
 		if (!this.api) { this.recover(); return false; }

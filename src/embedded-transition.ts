@@ -8,7 +8,11 @@ export async function settleEmbeddedView(root: HTMLElement, current: () => boole
 	let stable = 0;
 	// Bound the hold for a broken/hidden editor; never leave an inert snapshot stuck.
 	for (let attempt = 0; attempt < 30 && current() && root.isConnected; attempt++) {
-		await new Promise<void>(resolve => win.requestAnimationFrame(() => resolve()));
+		await new Promise<void>(resolve => {
+			const frame = win.requestAnimationFrame(() => { win.clearTimeout(timer); resolve(); });
+			// Hidden windows may suspend animation frames indefinitely.
+			const timer = win.setTimeout(() => { win.cancelAnimationFrame(frame); resolve(); }, 100);
+		});
 		if (!current()) return;
 		const overlay = root.querySelector<HTMLElement>(":scope > .obsidian-custom-view-render:not(.obsidian-custom-view-pending)");
 		if (!overlay) { stable = 0; continue; }
@@ -29,6 +33,10 @@ export function holdEmbeddedView(root: HTMLElement): () => void {
 	if (!overlay) return () => {};
 	const holder = createDetachedEl(root.ownerDocument, "div");
 	holder.className = "cv-embedded-transition";
+	// Resetting the live view removes/replaces its scope. The retained frame
+	// must keep the old scope or its cloned stylesheet stops matching mid-switch.
+	const scopeId = root.getAttribute("data-cv-id");
+	if (scopeId) holder.setAttribute("data-cv-id", scopeId);
 	for (const cls of ["obsidian-custom-view-editable", "cv-hide-properties", "cv-hide-inline-title", "cv-context-popover", "cv-context-canvas", "cv-context-embed"]) {
 		if (root.classList.contains(cls)) holder.classList.add(cls);
 	}

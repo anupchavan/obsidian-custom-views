@@ -160,7 +160,7 @@ describe("ViewConfig optional fields", () => {
 describe("view priority changes", () => {
 	function setup() {
 		const views = ["first", "second", "third"].map(id => ({ ...DEFAULT_SETTINGS.views[0], id }));
-		const plugin = { settings: { views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
+		const plugin = { unloadSignal: new AbortController().signal, settings: { views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
 		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
 		const update = vi.fn(); Object.assign(tab, { update });
 		return { plugin, tab, update, reorder: (from: number, to: number) => (tab as unknown as { reorderViews(a: number, b: number): Promise<void> }).reorderViews(from, to) };
@@ -211,13 +211,13 @@ describe("stable settings row identity", () => {
 	it("uses unique IDs for views created in the same millisecond", () => {
 		const now = vi.spyOn(Date, "now").mockReturnValue(1234);
 		try {
-			const tab = new CustomViewsSettingTab({} as import("obsidian").App, {} as CustomViewsPlugin);
+			const tab = new CustomViewsSettingTab({} as import("obsidian").App, { unloadSignal: new AbortController().signal } as CustomViewsPlugin);
 			const create = () => (tab as unknown as { createNewView(): ViewConfig }).createNewView();
 			expect(create().id).not.toBe(create().id);
 		} finally { now.mockRestore(); }
 	});
 	it("keeps duplicate view names distinct when settings are reconciled", () => {
-		const plugin = { settings: { ...DEFAULT_SETTINGS, views: [
+		const plugin = { unloadSignal: new AbortController().signal, settings: { ...DEFAULT_SETTINGS, views: [
 			{ ...DEFAULT_SETTINGS.views[0], id: "one", name: "New View" },
 			{ ...DEFAULT_SETTINGS.views[0], id: "two", name: "New View" },
 		] } } as CustomViewsPlugin;
@@ -231,7 +231,7 @@ describe("stable settings row identity", () => {
 describe("view deletion", () => {
 	function setup() {
 		const views = ["first", "second", "third"].map(id => ({ ...DEFAULT_SETTINGS.views[0], id }));
-		const plugin = { settings: { ...DEFAULT_SETTINGS, views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
+		const plugin = { unloadSignal: new AbortController().signal, settings: { ...DEFAULT_SETTINGS, views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
 		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
 		const update = vi.fn(); Object.assign(tab, { update });
 		const definition = tab.getSettingDefinitions().find(item => "type" in item && item.type === "list") as unknown as { onDelete(index: number): void };
@@ -294,7 +294,7 @@ describe("fresh settings defaults", () => {
 
 describe("adding a view", () => {
 	function setup() {
-		const plugin = { settings: { ...DEFAULT_SETTINGS, views: [] as ViewConfig[] }, saveSettings: vi.fn(async () => {}) };
+		const plugin = { unloadSignal: new AbortController().signal, settings: { ...DEFAULT_SETTINGS, views: [] as ViewConfig[] }, saveSettings: vi.fn(async () => {}) };
 		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
 		const update = vi.fn(); const open = vi.fn();
 		Object.assign(tab, { update, openEditModal: open });
@@ -323,7 +323,7 @@ describe("adding a view", () => {
 
 describe("display setting changes", () => {
 	function setup() {
-		const plugin = { settings: { ...DEFAULT_SETTINGS }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
+		const plugin = { unloadSignal: new AbortController().signal, settings: { ...DEFAULT_SETTINGS }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
 		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
 		const refreshDomState = vi.fn(); Object.assign(tab, { refreshDomState });
 		return { plugin, tab, refreshDomState };

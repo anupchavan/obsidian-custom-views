@@ -1,3 +1,4 @@
+import { createDetachedEl } from "./dom";
 import { settingsGroup } from "./settings-layout";
 import { Setting, type ToggleComponent } from "obsidian";
 import { EditorView } from "@codemirror/view";
@@ -27,7 +28,12 @@ export function mountContextTemplateEditors(host: HTMLElement, view: ViewConfig,
 				refresh(); save();
 			});
 		});
-		const container = group.createDiv({ cls: "cv-codemirror-container" });
+		const editorRow = new Setting(group);
+		editorRow.infoEl.remove();
+		editorRow.controlEl.addClass("cv-code-setting-control");
+		const container = createDetachedEl(host.ownerDocument, "div");
+		container.className = "cv-codemirror-container";
+		editorRow.controlEl.appendChild(container);
 		const readOnly = new Compartment();
 		const options: TemplateEditorOptions = { initialContent: view[key] ?? "", language, templateVariables: variables, root: host.ownerDocument,
 			onChange(value) {
@@ -40,15 +46,16 @@ export function mountContextTemplateEditors(host: HTMLElement, view: ViewConfig,
 		const editor = createTemplateEditor(options);
 		editor.dispatch({ effects: StateEffect.appendConfig.of(readOnly.of([])) });
 		container.appendChild(editor.dom);
-		return { key, inheritance, toggle, readOnly, editor, options };
+		return { key, group, inheritance, toggle, readOnly, editor, options };
 	});
 	function refresh() {
 		switching = true;
 		try {
 			const effective = resolveViewContext(view, context);
-			for (const { key, inheritance, toggle, editor, readOnly, options } of fields) {
+			for (const { key, group, inheritance, toggle, editor, readOnly, options } of fields) {
 				const inherited = context !== "note" && view.contexts?.[context]?.[key] === undefined;
-				inheritance.settingEl.toggle(context !== "note");
+				if (context === "note") inheritance.settingEl.remove();
+				else group.prepend(inheritance.settingEl);
 				toggle.setValue(inherited);
 				editor.setState(createTemplateEditorState({ ...options, initialContent: effective[key] ?? "" }));
 				editor.dispatch({ effects: StateEffect.appendConfig.of(readOnly.of([])) });

@@ -36,6 +36,7 @@ function setup() {
 		restoreEditableView(view: MarkdownView): void;
 		_processLeaf(view: MarkdownView, file: TFile): Promise<void>;
 		queueNoteRefresh(file: TFile): void;
+		getViewSourceContent(view: MarkdownView, file: TFile): string | undefined;
 	};
 	const config = { id: "test", template: "{{content}}" } as ViewConfig;
 	vi.mocked(renderTemplate).mockImplementation(async (_app, _template, _file, el) => {
@@ -62,6 +63,16 @@ function setup() {
 }
 
 describe("editable note navigation", () => {
+	it("does not reuse the previous editor text when the file changes before native loading finishes", () => {
+		const s = setup();
+		s.container.setAttribute("data-cv-file-path", s.file.path);
+		expect(s.methods.getViewSourceContent(s.view, s.file)).toBe("Note body");
+		const next = new TFile(); next.path = "Books/Dune.md";
+		s.view.file = next;
+		// Native file identity has changed, but getViewData still returns the old text.
+		expect(s.methods.getViewSourceContent(s.view, next)).toBeUndefined();
+	});
+
 	it("preserves a nested embed's custom view when restoring the parent note", () => {
 		const s = setup();
 		const embed = s.view.contentEl.appendChild(document.createElement("div"));
@@ -83,6 +94,22 @@ describe("editable note navigation", () => {
 		s.methods.restoreEditableView(s.view);
 		expect(s.editorEl.parentElement).toBe(s.originalParent);
 		expect(s.container.querySelector(".obsidian-custom-view-render")).toBeNull();
+	});
+	it("uses the current editor when an old source element remains in the shell", async () => {
+		const s = setup();
+		await s.methods._processLeaf(s.view, s.file);
+		const nextParent = s.container.appendChild(document.createElement("div"));
+		const nextEl = nextParent.appendChild(document.createElement("div"));
+		nextEl.className = "markdown-source-view";
+		const next = new EditorView({ state: EditorState.create({ doc: "Dune body" }), parent: nextEl });
+		editors.push(next);
+		Object.assign(s.view, { editor: { cm: next }, getViewData: () => "Dune body" });
+		await s.methods._processLeaf(s.view, s.file);
+		const placeholder = s.container.querySelector(`[${EDITABLE_PLACEHOLDER_ATTR}]`)!;
+		expect(placeholder.contains(next.dom)).toBe(true);
+		expect(placeholder.contains(s.cm.dom)).toBe(false);
+		s.methods.restoreEditableView(s.view);
+		expect(nextEl.parentElement).toBe(nextParent);
 	});
 	it("discards a shell if navigation changes files while rendering", async () => {
 		const s = setup();

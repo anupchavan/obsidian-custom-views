@@ -36,6 +36,8 @@ export type ViewContext = "note" | "popover" | "canvas" | "embed";
 export type TemplateOverride = { template?: string; css?: string; js?: string };
 
 export interface ViewConfig {
+	/** Existing views are enabled unless explicitly disabled. */
+	enabled?: boolean;
 	/** Missing fields inherit the main template; empty strings intentionally clear a field. */
 	contexts?: Partial<Record<Exclude<ViewContext, "note">, TemplateOverride>>;
 	id: string;

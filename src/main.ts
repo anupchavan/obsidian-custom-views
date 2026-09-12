@@ -101,7 +101,7 @@ interface CompartmentEntry {
 export default class CustomViewsPlugin extends Plugin {
 	settings: CustomViewsSettings;
 	nativeRules: NativeRuleEngine;
-	experimentalNavigation?: AtomicNavigation;
+	navigation?: AtomicNavigation;
 	private get settingsWriter() { return getSharedSettingsWriter<CustomViewsSettings>(this.app, settings => this.saveData(settings)); }
 	private saveFeedback = new SaveFeedback(() => this.saveSettings());
 
@@ -163,7 +163,7 @@ export default class CustomViewsPlugin extends Plugin {
 				const rendered = this.renderedMetadata.get(view);
 				const state = view.getState();
 				if (!dependencyChanged && !(overlay && getTemplateDependencies(overlay)?.has(file)) && state.mode === "source" && state.source === false &&
-					this.editableStates.has(view.contentEl) &&
+					this.editableStates.get(view.contentEl)?.cmView === getCM6EditorView(view) &&
 					rendered?.path === file.path && rendered.value === metadata) return;
 				this.contentVersions.set(view, (this.contentVersions.get(view) ?? 0) + 1);
 				this.clearAppliedState(view.contentEl);
@@ -299,7 +299,7 @@ export default class CustomViewsPlugin extends Plugin {
 				if (this.settings.enabled && this.settings.workInCanvas) this.processAllCanvasNodes();
 			}, 1000));
 		}
-		this.experimentalNavigation = new AtomicNavigation(this.app, (view, state) => {
+		this.navigation = new AtomicNavigation(this.app, (view, state) => {
 			if (this.unloaded || !this.settings.enabled) return false;
 			if (view.contentEl.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`)) return true;
 			const file = typeof state.file === "string" ? this.app.vault.getAbstractFileByPath(state.file) : view.file;
@@ -311,7 +311,7 @@ export default class CustomViewsPlugin extends Plugin {
 		}, async view => {
 			if (view.file) await this._processLeaf(view, view.file);
 		});
-		this.register(() => this.experimentalNavigation?.dispose());
+		this.register(() => this.navigation?.dispose());
 	}
 
 	async setPluginState(enabled: boolean) {
@@ -324,7 +324,7 @@ export default class CustomViewsPlugin extends Plugin {
 	onunload() {
 		this.unloaded = true;
 		this.embeddedViews?.dispose();
-		this.experimentalNavigation?.dispose();
+		this.navigation?.dispose();
 		this.lifetime.abort();
 		this.saveFeedback.clear();
 		for (const timer of this.noteRefreshTimers.values()) window.clearTimeout(timer);
@@ -390,7 +390,10 @@ export default class CustomViewsPlugin extends Plugin {
 			return undefined;
 		}
 
-		if (view.file !== file) {
+		// Native navigation changes view.file before replacing the editor document.
+		// Only reuse live text after this view has rendered the same file; initial
+		// navigation reads the target file through Obsidian's vault cache instead.
+		if (view.file !== file || view.contentEl.getAttribute("data-cv-file-path") !== file.path) {
 			return undefined;
 		}
 
@@ -475,7 +478,7 @@ export default class CustomViewsPlugin extends Plugin {
 			await this.renderLeaf(view, file, signal);
 			if (!signal.aborted && view.file === file) {
 				this.renderedMetadata.set(view, { path: file.path, value: metadata });
-				this.experimentalNavigation?.observe(view.contentEl);
+				this.navigation?.observe(view.contentEl);
 			}
 		}).catch(error => {
 			this.restoreEditableView(view);
@@ -518,7 +521,10 @@ export default class CustomViewsPlugin extends Plugin {
 		// Skip if nothing changed — prevents DOM churn and event cascades
 		if (stateKey === appliedKey) {
 			const customEl = container.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`);
-			const appliedDomIsValid = shouldRenderCustomView ? !!customEl : !customEl;
+			const editable = this.editableStates.get(container);
+			const editorIsCurrent = !editable || (editable.cmView === getCM6EditorView(view) &&
+				!!customEl?.contains(editable.cmView.dom));
+			const appliedDomIsValid = shouldRenderCustomView ? !!customEl && editorIsCurrent : !customEl;
 			if (appliedDomIsValid) {
 				customEl?.removeClass(PENDING_VIEW_CLASS);
 				return;
@@ -768,12 +774,19 @@ export default class CustomViewsPlugin extends Plugin {
 		}
 
 		// Find the editor element (.markdown-source-view)
-		const editorEl = (view as MarkdownView & { cvEditorEl?: HTMLElement }).cvEditorEl ?? container.querySelector<HTMLElement>(".markdown-source-view");
+		const suppliedEditor = (view as MarkdownView & { cvEditorEl?: HTMLElement }).cvEditorEl;
+		const editorEl = suppliedEditor?.contains(cmView.dom)
+			? suppliedEditor : cmView.dom.closest<HTMLElement>(".markdown-source-view");
 		if (!editorEl) {
 			this.restoreEditableView(view);
 			await this.injectCustomView(container, file, template, viewConfig, sourceContent, signal);
 			return;
 		}
+
+		// A replacement editor has its own restoration parent and extensions.
+		// The old shell can still contain the retired editor during native reloads.
+		const existingState = this.editableStates.get(container);
+		if (existingState && existingState.cmView !== cmView) this.restoreEditableView(view);
 
 		// Keep the editor in place while preparing the next shell. Restoring and
 		// reconfiguring CM6 twice per navigation forces extra layout and parsing.
