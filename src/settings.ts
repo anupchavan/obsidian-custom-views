@@ -1,7 +1,8 @@
 import { nanoid } from "nanoid";
+import { copyViewName, renameViewInline } from "./view-name";
 import { getVaultTemplateProperties } from "./template-properties";
 import { mountNativeFilters } from "./native-filters/editor";
-import { App, PluginSettingTab, Setting, TextComponent, Modal, Scope, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
+import { App, PluginSettingTab, Setting, Modal, Scope, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup } from "./types";
 import { settingsGroup } from "./settings-layout";
@@ -10,6 +11,22 @@ import type { EditorView } from "@codemirror/view";
 import { closeCompletion } from "@codemirror/autocomplete";
 import { closeSearchPanel } from "@codemirror/search";
 
+
+function editableContentDescription(): DocumentFragment {
+	return createFragment(fragment => {
+		fragment.appendText("When enabled, the ");
+		fragment.createEl("code", { text: "{{file.content}}" });
+		fragment.appendText(" area becomes an editable live editor instead of a read-only render.");
+	});
+}
+
+function javaScriptDescription(): DocumentFragment {
+	return createFragment(fragment => {
+		fragment.appendText("When enabled, inline ");
+		fragment.createEl("code", { text: "<script>" });
+		fragment.appendText(" tags and per-view JS fields are executed. Disable if you only use HTML/CSS templates and want to prevent dynamic code execution.");
+	});
+}
 
 const DEFAULT_RULES: FilterGroup = {
 	type: "group",
@@ -51,10 +68,14 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 
 export class CustomViewsSettingTab extends PluginSettingTab {
 	plugin: CustomViewsPlugin;
+	private nameRows = new Map<string, Setting>();
+	private cancelRename?: ReturnType<typeof renameViewInline>;
+	private renameAfterRender?: string;
 
 	constructor(app: App, plugin: CustomViewsPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+		plugin.unloadSignal.addEventListener("abort", () => this.cancelRename?.(), { once: true });
 	}
 
 
@@ -89,19 +110,20 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Editable content in live preview",
-						desc: "When enabled, the {{file.content}} area becomes an editable live editor instead of a read-only render.",
+						desc: editableContentDescription(),
 						visible: () => this.plugin.settings.workInLivePreview,
 						control: { type: "toggle", key: "editableContent" },
 					},
 					{ name: "Work in popover preview", desc: "Apply custom views to full-note hover previews in reading and live preview modes.", control: { type: "toggle", key: "workInPopover" } },
 					{ name: "Work in embedded notes", desc: "Apply custom views to full-note embeds. Heading and block embeds keep their native content.", control: { type: "toggle", key: "workInEmbeds" } },
 					{
-						name: "Work in canvas (experimental)",
+						name: "Work in canvas",
+						desc: "Apply custom views to note cards in canvas, in reading view and live preview.",
 						control: { type: "toggle", key: "workInCanvas" },
 					},
 					{
 						name: "Allow JavaScript execution",
-						desc: "When enabled, inline <script> tags and per-view JS fields are executed. Disable if you only use HTML/CSS templates and want to prevent dynamic code execution.",
+						desc: javaScriptDescription(),
 						control: { type: "toggle", key: "allowJavaScript" },
 					},
 				],
@@ -127,12 +149,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					name: view.name,
 					searchable: true,
 					render: (setting: Setting) => {
-						setting.addExtraButton((btn) =>
-							btn
-								.setIcon("square-pen")
-								.setTooltip("Edit " + view.name)
-								.onClick(() => this.openEditModal(view))
-						);
+						this.addViewActions(setting, view);
 					},
 				})),
 			}
@@ -140,6 +157,62 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 	}
 
 	// ─── Reusable helpers ─────────────────────────────────────────────────────
+
+	hide(): void {
+		this.cancelRename?.();
+		this.cancelRename = undefined;
+		this.nameRows.clear();
+		super.hide();
+	}
+
+	private beginRename(setting: Setting, view: ViewConfig) {
+		if (setting.nameEl.hasAttribute("contenteditable")) {
+			this.cancelRename?.commit();
+			return;
+		}
+		this.cancelRename?.();
+		this.cancelRename = renameViewInline(this.app, setting, view, this.plugin.settings.views,
+			id => this.nameRows.get(id)?.nameEl, () => {
+				this.plugin.refreshAllViews();
+				void this.plugin.saveSettings().catch(() => {});
+			});
+	}
+
+	private addViewActions(setting: Setting, view: ViewConfig) {
+		this.nameRows.set(view.id, setting);
+		setting.addToggle(toggle => toggle.setValue(view.enabled !== false)
+			.setTooltip("Enable view")
+			.onChange(enabled => {
+				view.enabled = enabled;
+				this.plugin.refreshAllViews();
+				void this.plugin.saveSettings().catch(() => {});
+			}));
+		setting.addExtraButton(button => button.setIcon("square-pen").setTooltip("Edit view")
+			.onClick(() => this.openEditModal(view)));
+		setting.addExtraButton(button => {
+			button.setIcon("text-cursor-input").setTooltip("Rename view").onClick(() => this.beginRename(setting, view));
+			button.extraSettingsEl.setAttribute("aria-pressed", "false");
+		});
+		setting.addExtraButton(button => button.setIcon("copy").setTooltip("Duplicate view")
+			.onClick(() => { void this.duplicateView(view).catch(() => {}); }));
+		if (this.renameAfterRender === view.id) {
+			this.renameAfterRender = undefined;
+			queueMicrotask(() => {
+				if (setting.settingEl.isConnected) this.beginRename(setting, view);
+			});
+		}
+	}
+
+	private async duplicateView(view: ViewConfig) {
+		const views = this.plugin.settings.views;
+		const index = views.indexOf(view);
+		if (index < 0) return;
+		const duplicate = { ...structuredClone(view), id: nanoid(), name: copyViewName(views, view.name) };
+		views.splice(index + 1, 0, duplicate);
+		this.renameAfterRender = duplicate.id;
+		this.refreshSettingsTab();
+		await this.plugin.saveSettings();
+	}
 
 	private createNewView(): ViewConfig {
 		return {
@@ -162,6 +235,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		const index = this.plugin.settings.views.indexOf(view);
 		if (index < 0) return;
 		this.plugin.settings.views.splice(index, 1);
+		this.nameRows.delete(view.id);
 		this.refreshSettingsTab();
 		this.plugin.refreshAllViews();
 		await this.plugin.saveSettings();
@@ -190,6 +264,8 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 	}
 
 	private refreshSettingsTab() {
+		this.cancelRename?.();
+		this.cancelRename = undefined;
 		if (requireApiVersion("1.13.0")) {
 			this.update();
 		} else {
@@ -202,6 +278,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 	}
 
 	private renderLegacySettings(): void {
+		this.cancelRename?.();
+		this.cancelRename = undefined;
+		this.nameRows.clear();
 		const { containerEl } = this;
 		containerEl.empty();
 
@@ -215,24 +294,32 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 					.onChange(value => this.setControlValue("workInLivePreview", value).catch(() => {})));
 		});
 
-		for (const [key, name] of [["workInPopover", "Work in popover preview"], ["workInEmbeds", "Work in embedded notes"]] as const) {
-			generalSettings.addSetting(setting => { setting.setName(name).setDesc("Full notes use the shared template or their context override. Heading and block previews remain native.")
-				.addToggle(toggle => toggle.setValue(this.plugin.settings[key]).onChange(value => { void this.setControlValue(key, value).catch(() => {}); })); });
-		}
 
 		if (this.plugin.settings.workInLivePreview) {
 			generalSettings.addSetting((setting) => {
 				setting
 					.setName("Editable content in live preview")
-					.setDesc("When enabled, the {{file.content}} area becomes an editable live editor instead of a read-only render.")
+					.setDesc(editableContentDescription())
 					.addToggle(toggle => toggle
 						.setValue(this.plugin.settings.editableContent)
 						.onChange(value => this.setControlValue("editableContent", value).catch(() => {})));
 			});
 		}
 
+		for (const [key, name, description] of [
+			["workInPopover", "Work in popover preview", "Apply custom views to full-note hover previews in reading and live preview modes."],
+			["workInEmbeds", "Work in embedded notes", "Apply custom views to full-note embeds. Heading and block embeds keep their native content."],
+		] as const) {
+			generalSettings.addSetting(setting => {
+				setting.setName(name).setDesc(description)
+					.addToggle(toggle => toggle.setValue(this.plugin.settings[key])
+						.onChange(value => { void this.setControlValue(key, value).catch(() => {}); }));
+			});
+		}
+
 		generalSettings.addSetting((setting: Setting) => {
-			setting.setName("Work in canvas (experimental)")
+			setting.setName("Work in canvas")
+				.setDesc("Apply custom views to note cards in canvas, in reading view and live preview.")
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.workInCanvas)
 					.onChange(value => this.setControlValue("workInCanvas", value).catch(() => {})));
@@ -241,7 +328,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		generalSettings.addSetting((setting: Setting) => {
 			setting
 				.setName("Allow JavaScript execution")
-				.setDesc("When enabled, inline <script> tags and per-view JS fields are executed. Disable if you only use HTML/CSS templates and want to prevent dynamic code execution.")
+				.setDesc(javaScriptDescription())
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.allowJavaScript)
 					.onChange(value => this.setControlValue("allowJavaScript", value).catch(() => {})));
@@ -263,35 +350,16 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 		const listedViews = [...this.plugin.settings.views];
 		listedViews.forEach((view, index) => {
-			viewsList.addSetting((setting) => {
-				setting
-					.setName(view.name)
-					.addExtraButton((cb: ExtraButtonComponent) => {
-						cb.setIcon("chevron-up")
-							.setTooltip("Move up")
-							.onClick(async () => {
-								await this.reorderViews(index, index - 1, listedViews).catch(() => {});
-							});
-					})
-					.addExtraButton((cb: ExtraButtonComponent) => {
-						cb.setIcon("chevron-down")
-							.setTooltip("Move down")
-							.onClick(async () => {
-								await this.reorderViews(index, index + 1, listedViews).catch(() => {});
-							});
-					})
-					.addExtraButton((cb: ExtraButtonComponent) => {
-						cb.setIcon("square-pen")
-							.setTooltip("Edit " + view.name)
-							.onClick(() => this.openEditModal(view));
-					})
-					.addExtraButton((cb: ExtraButtonComponent) => {
-						cb.setIcon("trash")
-							.setTooltip("Delete " + view.name)
-							.onClick(async () => {
-								await this.deleteView(view).catch(() => {});
-							});
-					});
+			viewsList.addSetting(setting => {
+				setting.setName(view.name);
+				this.addViewActions(setting, view);
+				setting.addExtraButton(button => button.setIcon("trash").setTooltip("Delete view")
+					.onClick(() => { void this.deleteView(view).catch(() => {}); }));
+				for (const [icon, label, target] of [["chevron-up", "Move up", index - 1], ["chevron-down", "Move down", index + 1]] as const) {
+					setting.addExtraButton(button => button.setIcon(icon).setTooltip(label)
+						.setDisabled(target < 0 || target >= listedViews.length)
+						.onClick(() => { void this.reorderViews(index, target, listedViews).catch(() => {}); }));
+				}
 			});
 		});
 	}
@@ -303,7 +371,6 @@ export class EditViewModal extends Modal {
 	view: ViewConfig;
 	onClose_cb: () => void;
 	private disposeFilters: (() => void) | undefined;
-	private nameTextComponent: TextComponent | null = null;
 	private cancelNameSelection: (() => void) | undefined;
 	private templateEditor: EditorView | null = null;
 	private cssEditor: EditorView | null = null;
@@ -336,16 +403,24 @@ export class EditViewModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("cv-edit-view-modal");
-		this.modalEl.addClass("cv-template-modal");
+		if (requireApiVersion("1.13.0")) this.modalEl.addClass("cv-template-modal");
 
 		const templateVariables = getVaultTemplateProperties(this.app);
 		const autoSave = this.saveChanges;
 
-		new Setting(settingsGroup(contentEl))
+		const identity = settingsGroup(contentEl);
+		new Setting(identity)
+			.setName("Enable view")
+			.setDesc("Apply this view to matching notes. Turn off to keep its templates without applying them.")
+			.addToggle(toggle => toggle.setValue(this.view.enabled !== false).onChange(enabled => {
+				this.view.enabled = enabled;
+				this.plugin.refreshAllViews();
+				autoSave();
+			}));
+		new Setting(identity)
 			.setName("View name")
 			.setDesc("The name of the view will be displayed in the view selector.")
 			.addText(text => {
-				this.nameTextComponent = text;
 				text.setValue(this.view.name)
 					.onChange((value) => {
 						this.view.name = value;
@@ -421,7 +496,6 @@ export class EditViewModal extends Modal {
 		this.closed = true;
 		this.cancelNameSelection?.();
 		this.cancelNameSelection = undefined;
-		this.nameTextComponent = null;
 		this.plugin.unloadSignal.removeEventListener("abort", this.closeOnUnload);
 		const cleanups = [
 			this.disposeFilters,

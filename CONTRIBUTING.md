@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18 or later
+- [Node.js](https://nodejs.org/) 22.13 or later in the Node.js 22 release line, or Node.js 24 or later
 - npm (comes with Node.js)
 - An [Obsidian](https://obsidian.md/) vault for testing
 
@@ -60,7 +60,7 @@ src/
   editable-content.ts   # CM6 extensions for editable content mode
   suggests.ts           # Autocomplete suggest providers (files, folders, tags)
   types.ts              # TypeScript interfaces and types
-  __tests__/            # Vitest test files (788 tests)
+  __tests__/            # Vitest test files
 ```
 
 Key root files:
@@ -90,7 +90,7 @@ Use the **Feature request** template to propose new functionality. Explain the u
 
 1. Fork the repo and create a branch from `main`.
 2. Make your changes in `src/`.
-3. Add or update tests for any changed behavior — run `npm test` to confirm all 788+ tests pass.
+3. Add or update tests for any changed behavior — run `npm test` to confirm all tests pass.
 4. Run `npm run build` and `npm run lint` to verify the build is clean.
 5. Open a PR with a clear description of what changed and why.
 

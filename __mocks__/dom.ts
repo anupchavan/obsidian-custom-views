@@ -14,6 +14,18 @@ globalThis.createEl = (tag, options, callback) => {
 
 globalThis.createFragment = callback => {
 	const fragment = window.document.createDocumentFragment();
+	fragment.appendText = text => { fragment.append(text); };
+	fragment.createEl = (tag, options, callback) => {
+		const element = createEl(tag, options, callback);
+		fragment.append(element);
+		return element;
+	};
 	callback?.(fragment);
 	return fragment;
+};
+
+HTMLElement.prototype.createSpan = function(this: HTMLElement, options, callback) {
+	const span = this.ownerDocument.adoptNode(createEl("span", options, callback));
+	this.appendChild(span);
+	return span;
 };

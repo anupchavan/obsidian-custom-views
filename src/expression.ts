@@ -1022,7 +1022,7 @@ const listMethods: Record<string, MethodFn> = {
 		const targets = Array.isArray(args[0]) ? args[0] : args;
 		return targets.some(t => obj.some(item => exprToString(item) === exprToString(t)));
 	},
-	filter: async (ctx, obj, args) => {
+	filter: async (_ctx, obj, args) => {
 		if (!Array.isArray(obj)) return obj;
 		if (args.length === 0) return obj.filter(v => isTruthy(v));
 		// args[0] should be an expression AST evaluated per-item

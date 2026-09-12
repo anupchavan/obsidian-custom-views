@@ -6,6 +6,12 @@ import { loadValidatedSettings } from "../settings-loader";
 
 const view = () => structuredClone(DEFAULT_SETTINGS.views[0]);
 describe("malformed settings recovery", () => {
+	it("preserves a disabled view across settings reloads", () => {
+		const config = { ...view(), enabled: false };
+		const loaded = loadValidatedSettings({ views: [config] });
+		expect(loaded.recovered).toBe(false);
+		expect(loaded.settings.views).toEqual([config]);
+	});
 	it("preserves valid configurations, unknown fields, and intentional empty view lists", () => {
 		const data = { ...structuredClone(DEFAULT_SETTINGS), views: [], futureOption: "keep" };
 		expect(loadValidatedSettings(data)).toEqual({ settings: data, recovered: false });
@@ -33,7 +39,7 @@ describe("malformed settings recovery", () => {
 		{ ...view(), rules: { type: "group", operator: "unknown", conditions: [] } },
 		{ ...view(), rules: { type: "group", operator: "AND", conditions: [{ type: "filter", field: "x", operator: "unknown" }] } },
 		{ ...view(), basesFilters: { and: null } },
-		{ ...view(), css: 5 }, { ...view(), js: {} },
+		{ ...view(), enabled: "false" }, { ...view(), css: 5 }, { ...view(), js: {} },
 	])("quarantines invalid entries without losing good templates: %j", bad => {
 		const good = { ...view(), id: "good", template: "User HTML", js: "User JS" };
 		const data = { views: [bad, good] };

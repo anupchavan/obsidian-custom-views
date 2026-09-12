@@ -421,6 +421,18 @@ describe("renderTemplate source content", () => {
 		expect(container.textContent).toBe("CACHED BODY");
 	});
 
+	it("does not cache an old read under a changed file version", async () => {
+		let finish!: (text: string) => void;
+		const cachedRead = vi.fn().mockImplementationOnce(() => new Promise<string>(resolve => { finish = resolve; })).mockResolvedValue("New body");
+		const app = { metadataCache: { getFileCache: () => null }, vault: { cachedRead } } as unknown as App;
+		const file = new TFile(); file.path = "Changing.md"; file.stat = { ctime: 0, mtime: 1, size: 8 };
+		const render = () => renderTemplate(app, "<p>Body</p>", file, document.createElement("div"), new Component(), false, undefined, undefined, false);
+		const pending = render();
+		file.stat.mtime = 2;
+		finish("Old body"); await pending;
+		await render();
+		expect(cachedRead).toHaveBeenCalledTimes(2);
+	});
 	it("reuses cached source content while the file stat is unchanged", async () => {
 		const cachedRead = vi.fn(async () => "Cached body");
 		const app = {

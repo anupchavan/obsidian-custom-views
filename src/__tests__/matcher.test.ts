@@ -99,6 +99,17 @@ function filter(field: string, operator: Filter["operator"], value?: string): Fi
 	return { type: "filter", field, operator, value };
 }
 
+it("skips later metadata lookups after a group's result is known", () => {
+	const app = mockApp();
+	const read = vi.spyOn(app.metadataCache, "getFileCache");
+	const file = mockFile();
+	const expensive = filter("file.tags", "contains", "books");
+	expect(checkRules(app, andGroup(filter("file.name", "is", "other.md"), expensive), file)).toBe(false);
+	expect(checkRules(app, orGroup(filter("file.name", "is", "note.md"), expensive), file)).toBe(true);
+	expect(checkRules(app, norGroup(filter("file.name", "is", "note.md"), expensive), file)).toBe(false);
+	expect(read).not.toHaveBeenCalled();
+});
+
 // ---------------------------------------------------------------------------
 // Empty group
 // ---------------------------------------------------------------------------

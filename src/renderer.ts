@@ -704,10 +704,14 @@ async function readCachedSourceContent(app: App, file: TFile): Promise<string> {
 		return cached.content;
 	}
 
+	const path = file.path;
+	const { mtime, size } = stat;
 	const content = await app.vault.cachedRead(file);
-	cache.set(file.path, {
-		mtime: stat.mtime,
-		size: stat.size,
+	// A save or rename may finish while this older read is still pending.
+	if (file.path !== path || file.stat.mtime !== mtime || file.stat.size !== size) return content;
+	cache.set(path, {
+		mtime,
+		size,
 		content,
 	});
 

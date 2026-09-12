@@ -49,24 +49,14 @@ function getFileTags(app: App, file: TFile, frontmatter?: FrontMatterCache): str
 export function checkRules(app: App, group: FilterGroup, file: TFile, frontmatter?: FrontMatterCache): boolean {
 	if (!group || !group.conditions || group.conditions.length === 0) return true;
 
-	// Evaluate all conditions in this group
-	const results = group.conditions.map(condition => {
-		if (condition.type === "group") {
-			return checkRules(app, condition, file, frontmatter);
-		} else {
-			return evaluateFilter(app, condition, file, frontmatter);
-		}
-	});
+	const matches = (condition: Filter | FilterGroup): boolean => condition.type === "group"
+		? checkRules(app, condition, file, frontmatter)
+		: evaluateFilter(app, condition, file, frontmatter);
 
-	// Combine results based on AND (every) / OR (some) / NOR (none)
-	if (group.operator === "AND") {
-		return results.every(r => r === true);
-	} else if (group.operator === "OR") {
-		return results.some(r => r === true);
-	} else if (group.operator === "NOR") {
-		// NOR: None of the following are true (all must be false)
-		return results.every(r => r === false);
-	}
+	// Stop once the result is known, including within nested groups.
+	if (group.operator === "AND") return group.conditions.every(matches);
+	if (group.operator === "OR") return group.conditions.some(matches);
+	if (group.operator === "NOR") return !group.conditions.some(matches);
 	return true;
 }
 

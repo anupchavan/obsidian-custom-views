@@ -190,6 +190,16 @@ describe("native Bases integration", () => {
 		registry.base = s.factorySpy;
 		await expect(getNativeBasesApi(s.app)).resolves.toBeDefined();
 	});
+	it.each([undefined, null, "rating > 3"])("skips disabled views and restores matching on enable (%s)", async filters => {
+		const s = setup(); const engine = new NativeRuleEngine(s.app); await engine.prepare();
+		const file = new TFile(); file.path = "match.md";
+		const config = { ...view(null), basesFilters: filters, enabled: false };
+		expect(engine.matches(config, file)).toBe(false);
+		config.enabled = true;
+		expect(engine.matches(config, file)).toBe(true);
+		delete (config as ViewConfig).enabled;
+		expect(engine.matches(config, file)).toBe(true);
+	});
 	it("evaluates native rules on fresh file entries and rejects invalid formulas", async () => {
 		const s = setup(); const engine = new NativeRuleEngine(s.app); await engine.prepare();
 		const yes = new TFile(); yes.path = "match.md"; const no = new TFile(); no.path = "other.md";

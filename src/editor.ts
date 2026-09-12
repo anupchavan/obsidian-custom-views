@@ -11,6 +11,7 @@
  */
 
 import { filterNames } from "./filters";
+import { completionAppearance } from "./editor-completions";
 
 import {
 	keymap,
@@ -138,37 +139,9 @@ export interface TemplateVariable {
 	type: "text" | "number" | "date" | "datetime" | "list" | "checkbox" | "file" | "unknown";
 }
 
-// ---------------------------------------------------------------------------
-// Lucide SVG data URIs for completion icons
-// ---------------------------------------------------------------------------
-
-/** square-function — for functions and methods */
-const ICON_FUNCTION = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2'/%3E%3Cpath d='M9 17c2 0 2.8-1 2.8-2.8V10c0-2 1-3.3 3.2-3'/%3E%3Cpath d='M9 11.2h5.7'/%3E%3C/svg%3E";
-
-/** text (align-left) — for text properties */
-const ICON_TEXT = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 6H3'/%3E%3Cpath d='M21 12H3'/%3E%3Cpath d='M15 18H3'/%3E%3C/svg%3E";
-
-/** binary — for number properties */
-const ICON_NUMBER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='14' y='14' width='4' height='6' rx='2'/%3E%3Crect x='6' y='4' width='4' height='6' rx='2'/%3E%3Cpath d='M6 20h4'/%3E%3Cpath d='M14 10h4'/%3E%3Cpath d='M6 14h2v6'/%3E%3Cpath d='M14 4h2v6'/%3E%3C/svg%3E";
-
-/** calendar — for date properties */
-const ICON_DATE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2v4'/%3E%3Cpath d='M16 2v4'/%3E%3Crect width='18' height='18' x='3' y='4' rx='2'/%3E%3Cpath d='M3 10h18'/%3E%3C/svg%3E";
-
-/** clock — for datetime properties */
-const ICON_CLOCK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='12 6 12 12 16 14'/%3E%3C/svg%3E";
-
-/** list — for list/array properties */
-const ICON_LIST = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='8' x2='21' y1='6' y2='6'/%3E%3Cline x1='8' x2='21' y1='12' y2='12'/%3E%3Cline x1='8' x2='21' y1='18' y2='18'/%3E%3Cline x1='3' x2='3.01' y1='6' y2='6'/%3E%3Cline x1='3' x2='3.01' y1='12' y2='12'/%3E%3Cline x1='3' x2='3.01' y1='18' y2='18'/%3E%3C/svg%3E";
-
-/** check-square — for checkbox properties */
-const ICON_CHECKBOX = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E";
-
-/** file — for file properties */
-const ICON_FILE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E";
-
 /**
  * Maps TemplateVariable type to a CM completion type string.
- * Each maps to a CSS class like `.cm-completionIcon-cv-number`.
+ * The appearance adapter maps these types to Obsidian's built-in icons.
  */
 function propertyCompletionType(propType: string): string {
 	switch (propType) {
@@ -847,71 +820,7 @@ export const obsidianTheme = EditorView.theme(
 			backgroundColor: themeConfig.dropdownBackground,
 			color: themeConfig.foreground,
 		},
-		".cm-tooltip.cm-tooltip-autocomplete": {
-			"& > ul > li[aria-selected]": {
-				background: themeConfig.selection,
-				color: themeConfig.foreground,
-			},
-		},
-		// Completion icons — use Lucide SVGs via CSS mask-image
-		".cm-completionIcon": {
-			padding: "0",
-			marginRight: "4px",
-			width: "1em",
-			opacity: "0.7",
-		},
-		".cm-completionIcon-function::after, .cm-completionIcon-method::after, [class*=cm-completionIcon-cv-]::after": {
-			content: "' '",
-			display: "inline-block",
-			width: "1em",
-			height: "1em",
-			verticalAlign: "-2px",
-			background: "currentColor",
-			maskSize: "contain",
-			maskRepeat: "no-repeat",
-			WebkitMaskSize: "contain",
-			WebkitMaskRepeat: "no-repeat",
-		},
-		// Function / method icon — Lucide square-function
-		".cm-completionIcon-function::after, .cm-completionIcon-method::after": {
-			maskImage: `url("${ICON_FUNCTION}")`,
-			WebkitMaskImage: `url("${ICON_FUNCTION}")`,
-		},
-		// Text property icon — Lucide align-left/text
-		".cm-completionIcon-cv-text::after": {
-			maskImage: `url("${ICON_TEXT}")`,
-			WebkitMaskImage: `url("${ICON_TEXT}")`,
-		},
-		// Number property icon — Lucide binary
-		".cm-completionIcon-cv-number::after": {
-			maskImage: `url("${ICON_NUMBER}")`,
-			WebkitMaskImage: `url("${ICON_NUMBER}")`,
-		},
-		// Date property icon — Lucide calendar
-		".cm-completionIcon-cv-date::after": {
-			maskImage: `url("${ICON_DATE}")`,
-			WebkitMaskImage: `url("${ICON_DATE}")`,
-		},
-		// Datetime property icon — Lucide clock
-		".cm-completionIcon-cv-datetime::after": {
-			maskImage: `url("${ICON_CLOCK}")`,
-			WebkitMaskImage: `url("${ICON_CLOCK}")`,
-		},
-		// List property icon — Lucide list
-		".cm-completionIcon-cv-list::after": {
-			maskImage: `url("${ICON_LIST}")`,
-			WebkitMaskImage: `url("${ICON_LIST}")`,
-		},
-		// Checkbox property icon — Lucide check-square
-		".cm-completionIcon-cv-checkbox::after": {
-			maskImage: `url("${ICON_CHECKBOX}")`,
-			WebkitMaskImage: `url("${ICON_CHECKBOX}")`,
-		},
-		// File property icon — Lucide file
-		".cm-completionIcon-cv-file::after": {
-			maskImage: `url("${ICON_FILE}")`,
-			WebkitMaskImage: `url("${ICON_FILE}")`,
-		},
+
 	},
 	{ dark: themeConfig.dark }
 );
@@ -993,7 +902,7 @@ export function buildEditorExtensions(lang: EditorLanguage = "html", extraTempla
 		history(),
 		getLanguageExtension(lang),
 		autoCloseTemplateBraces,
-		autocompletion({ override: [context => {
+		autocompletion({ ...completionAppearance, override: [context => {
 			const template = templateSource(context);
 			if (template) return template;
 			const sources = context.state.languageDataAt<CompletionSource | readonly Completion[]>("autocomplete", context.pos);

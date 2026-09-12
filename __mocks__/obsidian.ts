@@ -159,3 +159,9 @@ export function parseYaml(yaml: string): unknown {
 }
 
 export function requireApiVersion() { return true; }
+
+/** Minimal host parser fixture; production uses Obsidian's getFrontMatterInfo. */
+export function getFrontMatterInfo(content: string) {
+    const match = /^---\r?\n([\s\S]*?)^---(?:\r?\n|$)/m.exec(content);
+    return { exists: match?.index === 0, contentStart: match?.[0].length ?? 0 };
+}
