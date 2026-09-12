@@ -41,7 +41,17 @@ export const MarkdownRenderer = {
 export class MarkdownView { }
 export class PluginSettingTab { }
 export class Setting { }
-export class Modal { }
+export class Modal {
+	contentEl = Object.assign(document.createElement("div"), { empty(this: HTMLElement) { this.replaceChildren(); } });
+	modalEl = Object.assign(document.createElement("div"), { addClass(this: HTMLElement, ...names: string[]) { this.classList.add(...names); } });
+	setTitle() { return this; }
+	open() {}
+	onClose() {}
+	close() { this.onClose(); }
+}
+export class ConfirmationModal extends Modal {
+	addCancelButton() { return this; }
+}
 export class Scope {
 	keys: { modifiers: string[] | null; key: string | null; func: () => unknown }[] = [];
 	register(modifiers: string[] | null, key: string | null, func: () => unknown) {
@@ -165,3 +175,5 @@ export function getFrontMatterInfo(content: string) {
     const match = /^---\r?\n([\s\S]*?)^---(?:\r?\n|$)/m.exec(content);
     return { exists: match?.index === 0, contentStart: match?.[0].length ?? 0 };
 }
+
+export const Platform = { get isMobile() { return false; } };

@@ -1,8 +1,9 @@
+import { confirmDelete } from "./confirm-delete";
 import { nanoid } from "nanoid";
-import { copyViewName, renameViewInline } from "./view-name";
+import { copyViewName, conflictingView } from "./view-name";
 import { getVaultTemplateProperties } from "./template-properties";
 import { mountNativeFilters } from "./native-filters/editor";
-import { App, PluginSettingTab, Setting, Modal, Scope, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
+import { App, PluginSettingTab, Setting, Modal, ConfirmationModal, ButtonComponent, TextComponent, Menu, SearchComponent, Scope, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup } from "./types";
 import { settingsGroup } from "./settings-layout";
@@ -68,14 +69,16 @@ export const DEFAULT_SETTINGS: CustomViewsSettings = {
 
 export class CustomViewsSettingTab extends PluginSettingTab {
 	plugin: CustomViewsPlugin;
+	private deleteConfirmation?: Modal;
+	private viewSearch = "";
 	private nameRows = new Map<string, Setting>();
-	private cancelRename?: ReturnType<typeof renameViewInline>;
+	private cancelRename?: () => void;
 	private renameAfterRender?: string;
 
 	constructor(app: App, plugin: CustomViewsPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
-		plugin.unloadSignal.addEventListener("abort", () => this.cancelRename?.(), { once: true });
+		plugin.unloadSignal.addEventListener("abort", () => { this.cancelRename?.(); this.deleteConfirmation?.close(); }, { once: true });
 	}
 
 
@@ -131,6 +134,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			{
 				type: "list" as const,
 				heading: "Views",
+				search: this.viewListSearch(),
 				emptyState: "No views added yet.",
 				addItem: {
 					name: "Add view",
@@ -138,10 +142,6 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				},
 				onReorder: (oldIndex: number, newIndex: number) => {
 					void this.reorderViews(oldIndex, newIndex, listedViews).catch(() => {});
-				},
-				onDelete: (index: number) => {
-					const view = listedViews[index];
-					if (view) void this.deleteView(view).catch(() => {});
 				},
 				items: listedViews.map((view) => ({
 					// Obsidian's reconciler accepts an explicit id independently of the label.
@@ -165,21 +165,90 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		super.hide();
 	}
 
-	private beginRename(setting: Setting, view: ViewConfig) {
-		if (setting.nameEl.hasAttribute("contenteditable")) {
-			this.cancelRename?.commit();
-			return;
-		}
+	private beginRename(_setting: Setting, view: ViewConfig) {
 		this.cancelRename?.();
-		this.cancelRename = renameViewInline(this.app, setting, view, this.plugin.settings.views,
-			id => this.nameRows.get(id)?.nameEl, () => {
+		const modal = requireApiVersion("1.13.0") ? this.createRenameModal() : new Modal(this.app);
+		modal.setTitle("Rename view");
+		modal.modalEl.addClass("mod-lg", "mod-form");
+		const field = modal.contentEl.createDiv("form-field");
+		const input = new TextComponent(field).setValue(view.name);
+		input.inputEl.setAttribute("aria-label", "View name");
+		const error = field.createDiv("form-field-error");
+		error.setAttribute("role", "alert");
+		const submit = () => {
+			const name = input.getValue().trim();
+			const message = !name ? "Enter a view name." : conflictingView(this.plugin.settings.views, name, view) ? "A view with this name already exists." : "";
+			error.setText(message);
+			field.toggleClass("is-invalid", !!message);
+			input.inputEl.setAttribute("aria-invalid", String(!!message));
+			if (message) return true;
+			modal.close();
+			if (view.name !== name) {
+				view.name = name;
+				this.refreshSettingsTab();
 				this.plugin.refreshAllViews();
 				void this.plugin.saveSettings().catch(() => {});
-			});
+			}
+			return false;
+		};
+		if (requireApiVersion("1.13.0") && modal instanceof ConfirmationModal) {
+			modal.addButton(button => button.setButtonText("Rename").setCta().onClick(submit));
+			modal.addCancelButton();
+		} else {
+			const buttons = modal.contentEl.createDiv("modal-button-container");
+			new ButtonComponent(buttons).setButtonText("Rename").setCta().onClick(submit);
+			new ButtonComponent(buttons).setButtonText("Cancel").onClick(() => modal.close());
+		}
+		modal.scope.register([], "Enter", event => {
+			if (event.isComposing || event.target !== input.inputEl) return;
+			submit(); return false;
+		});
+		const cancel = () => modal.close();
+		this.cancelRename = cancel;
+		modal.onClose = () => { if (this.cancelRename === cancel) this.cancelRename = undefined; };
+		modal.open();
+		input.inputEl.focus();
+		input.inputEl.select();
+	}
+
+	private createRenameModal(): Modal {
+		if (requireApiVersion("1.13.0")) return new ConfirmationModal(this.app);
+		return new Modal(this.app);
+	}
+
+	private viewListSearch() {
+		// Older hosts take a component callback; newer hosts read placeholder/match.
+		return Object.assign((search: SearchComponent) => this.configureViewSearch(search), {
+			placeholder: "Search views...",
+			match: (item: { name?: string }, query: string) => {
+				this.viewSearch = query;
+				return query.trim().toLowerCase().split(/\s+/).every(word => (item.name ?? "").toLowerCase().includes(word));
+			},
+		});
+	}
+
+	private configureViewSearch(search: SearchComponent) {
+		search.setPlaceholder("Search views...").setValue(this.viewSearch).onChange(query => {
+			this.viewSearch = query;
+			const words = query.trim().toLowerCase().split(/\s+/);
+			for (const view of this.plugin.settings.views) {
+				this.nameRows.get(view.id)?.settingEl.toggle(words.every(word => view.name.toLowerCase().includes(word)));
+			}
+		});
 	}
 
 	private addViewActions(setting: Setting, view: ViewConfig) {
 		this.nameRows.set(view.id, setting);
+		setting.addExtraButton(button => button.setIcon("ellipsis").setTooltip("View actions").onClick(() => {
+			const menu = new Menu();
+			menu.addItem(item => item.setTitle("Edit view").setIcon("settings").onClick(() => this.openEditModal(view)));
+			menu.addItem(item => item.setTitle("Rename view").setIcon("text-cursor-input").onClick(() => this.beginRename(setting, view)));
+			menu.addItem(item => item.setTitle("Duplicate view").setIcon("copy").onClick(() => { void this.duplicateView(view).catch(() => {}); }));
+			menu.addSeparator();
+			menu.addItem(item => item.setTitle("Delete view").setIcon("trash").setWarning(true).onClick(() => this.confirmDeleteView(view)));
+			const rect = button.extraSettingsEl.getBoundingClientRect();
+			menu.showAtPosition({ x: rect.right, y: rect.bottom });
+		}));
 		setting.addToggle(toggle => toggle.setValue(view.enabled !== false)
 			.setTooltip("Enable view")
 			.onChange(enabled => {
@@ -187,14 +256,13 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 				this.plugin.refreshAllViews();
 				void this.plugin.saveSettings().catch(() => {});
 			}));
-		setting.addExtraButton(button => button.setIcon("square-pen").setTooltip("Edit view")
-			.onClick(() => this.openEditModal(view)));
-		setting.addExtraButton(button => {
-			button.setIcon("text-cursor-input").setTooltip("Rename view").onClick(() => this.beginRename(setting, view));
-			button.extraSettingsEl.setAttribute("aria-pressed", "false");
+		const remove = () => this.confirmDeleteView(view);
+		setting.settingEl.addEventListener("keydown", event => {
+			if (event.target !== setting.settingEl || event.isComposing || event.defaultPrevented
+				|| (event.key !== "Delete" && event.key !== "Backspace")) return;
+			event.preventDefault();
+			remove();
 		});
-		setting.addExtraButton(button => button.setIcon("copy").setTooltip("Duplicate view")
-			.onClick(() => { void this.duplicateView(view).catch(() => {}); }));
 		if (this.renameAfterRender === view.id) {
 			this.renameAfterRender = undefined;
 			queueMicrotask(() => {
@@ -229,6 +297,20 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		this.refreshSettingsTab();
 		this.openEditModal(newView);
 		await this.plugin.saveSettings();
+	}
+
+	private confirmDeleteView(view: ViewConfig) {
+		if (this.deleteConfirmation || !this.plugin.settings.views.includes(view)) return;
+		const modal = confirmDelete(this.app, view.name, () => {
+			void this.deleteView(view).catch(() => {});
+		});
+		this.deleteConfirmation = modal;
+		const onClose = modal.onClose.bind(modal);
+		modal.onClose = () => {
+			onClose();
+			this.deleteConfirmation = undefined;
+		};
+		modal.open();
 	}
 
 	private async deleteView(view: ViewConfig) {
@@ -335,6 +417,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		});
 
 		const viewsList = new SettingGroup(containerEl);
+		viewsList.addSearch(search => this.configureViewSearch(search));
 		viewsList.setHeading("Views")
 			.addExtraButton((cb: ExtraButtonComponent) => {
 				cb.setIcon("plus")
@@ -353,8 +436,6 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			viewsList.addSetting(setting => {
 				setting.setName(view.name);
 				this.addViewActions(setting, view);
-				setting.addExtraButton(button => button.setIcon("trash").setTooltip("Delete view")
-					.onClick(() => { void this.deleteView(view).catch(() => {}); }));
 				for (const [icon, label, target] of [["chevron-up", "Move up", index - 1], ["chevron-down", "Move down", index + 1]] as const) {
 					setting.addExtraButton(button => button.setIcon(icon).setTooltip(label)
 						.setDisabled(target < 0 || target >= listedViews.length)

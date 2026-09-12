@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { App, TFile } from "obsidian";
+import { App, TFile, Platform } from "obsidian";
 import { getNativeBasesApi, type BasesFilter } from "../native-filters/api";
 import { toBasesFilter } from "../native-filters/convert";
 import { mountNativeFilters } from "../native-filters/editor";
@@ -36,7 +36,7 @@ function setup() {
 		const editor = { destroy: vi.fn() };
 		const builder = { innerContainerEl, root: { children: [{ advancedInputEditor: editor, leftInputEl: { close: vi.fn() }, operatorComponent: { close: vi.fn() } }] }, updateQuery: vi.fn<(...args: unknown[]) => void>() };
 		const embed = {
-			controller: { filterMenu: { globalFilterBuilder: builder, toolbarItem: { setOpen: vi.fn() } }, buildBasesContext: vi.fn(() => ({})) },
+			controller: { filterMenu: { globalFilterBuilder: builder, toolbarItem: { setOpen: vi.fn(), scrollEl: document.createElement("div"), button: { containerEl: document.createElement("div") } } }, buildBasesContext: vi.fn(() => ({})) },
 			loadQuery: vi.fn(async function (this: { app: { vault: { read(): Promise<string> } } }) {
 				expect(await this.app.vault.read()).toBe("");
 				return new Query();
@@ -81,6 +81,24 @@ describe("native Bases integration", () => {
 		expect(builder.root.children[0].operatorComponent.close).toHaveBeenCalledOnce();
 		expect(parent.children).toHaveLength(0); expect(destroy).toHaveBeenCalledOnce();
 		expect(s.entries[1].unload).toHaveBeenCalledOnce();
+	});
+	it("keeps the mobile builder in the native toolbar sheet and disposes both", async () => {
+		const mobile = vi.spyOn(Platform, "isMobile", "get").mockReturnValue(true);
+		try {
+			const s = setup(); const api = await getNativeBasesApi(s.app);
+			const parent = document.createElement("div"); const save = vi.fn();
+			const dispose = api.createEditor(parent, "true", save);
+			const { globalFilterBuilder: builder, toolbarItem: toolbar } = s.entries[1].controller.filterMenu;
+			expect(parent.firstChild).toBe(toolbar.button.containerEl);
+			expect(toolbar.scrollEl.firstChild).toBe(builder.innerContainerEl);
+			const change = builder.updateQuery.mock.calls[0][0] as (filter: BasesFilter | null) => void;
+			change({ and: ["rating > 3"] });
+			expect(save).toHaveBeenCalledWith({ and: ["rating > 3"] });
+			dispose();
+			expect(toolbar.setOpen).toHaveBeenCalledWith(false);
+			expect(parent.children).toHaveLength(0);
+			expect(toolbar.scrollEl.children).toHaveLength(0);
+		} finally { mobile.mockRestore(); }
 	});
 	it.each(["toolbar", "property", "operator", "formula", "embed"])("cleans up remaining native resources when %s cleanup throws", async failing => {
 		const s = setup(); const api = await getNativeBasesApi(s.app);

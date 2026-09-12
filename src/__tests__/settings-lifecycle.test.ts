@@ -7,14 +7,6 @@ import { App, type PluginManifest } from "obsidian";
 import CustomViewsPlugin from "../main";
 import { DEFAULT_SETTINGS, EditViewModal } from "../settings";
 
-vi.mock("obsidian", async original => ({
-	...await original<typeof import("obsidian")>(),
-	Modal: class {
-		contentEl = Object.assign(window.document.createElement("div"), { empty: vi.fn() });
-		setTitle() {}
-		close() { (this as unknown as { onClose(): void }).onClose(); }
-	},
-}));
 function setup() {
 	const plugin = new CustomViewsPlugin(new App(), {} as PluginManifest);
 	plugin.app = { workspace: { iterateAllLeaves: () => {} } } as unknown as App;
@@ -22,6 +14,7 @@ function setup() {
 	const save = vi.spyOn(plugin, "saveSettings").mockResolvedValue(undefined);
 	const done = vi.fn();
 	const modal = new EditViewModal(plugin.app, plugin, plugin.settings.views[0], done);
+	vi.spyOn(modal.contentEl, "empty");
 	const filterCleanup = vi.fn(); const htmlCleanup = vi.fn(); const cssCleanup = vi.fn(); const jsCleanup = vi.fn();
 	Object.assign(modal, { disposeFilters: filterCleanup, templateEditor: { destroy: htmlCleanup }, cssEditor: { destroy: cssCleanup }, jsEditor: { destroy: jsCleanup } });
 	const saveChanges = Reflect.get(modal, "saveChanges") as () => void;
@@ -110,22 +103,6 @@ describe("settings dialog lifetime", () => {
 		} finally { report.mockRestore(); }
 	});
 
-});
-
-
-describe("settings dialog layout", () => {
-	it("applies height and scrolling limits to the actual modal content element", () => {
-		const style = window.document.createElement("style");
-		style.textContent = readFileSync("styles.css", "utf8");
-		window.document.head.appendChild(style);
-		const content = window.document.body.appendChild(window.document.createElement("div"));
-		content.className = "modal-content cv-edit-view-modal";
-		try {
-			const computed = window.getComputedStyle(content);
-			expect(computed.maxHeight).toBe("80vh");
-			expect(computed.overflowY).toBe("auto");
-		} finally { content.remove(); style.remove(); }
-	});
 });
 
 

@@ -1,5 +1,5 @@
 import { createDetachedEl } from "../dom";
-import { BasesEntry, TFile, type App } from "obsidian";
+import { BasesEntry, TFile, Platform, type App } from "obsidian";
 
 export type BasesFilter = string | { and: BasesFilter[] } | { or: BasesFilter[] } | { not: BasesFilter[] };
 export interface ParsedFilter {
@@ -24,7 +24,7 @@ export interface NativeController {
 	query: NativeQuery;
 	viewName: string;
 	ctx: unknown;
-	filterMenu: { globalFilterBuilder: NativeBuilder; toolbarItem?: { setOpen(open: boolean): void } };
+	filterMenu: { globalFilterBuilder: NativeBuilder; toolbarItem?: { setOpen(open: boolean): void; scrollEl?: HTMLElement; button?: { containerEl: HTMLElement } } };
 	buildBasesContext(): unknown;
 	unload(): void;
 }
@@ -112,6 +112,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 				if (disposed) return;
 				disposed = true;
 				cleanup(() => embed.controller?.filterMenu?.toolbarItem?.setOpen(false));
+				cleanup(() => embed.controller?.filterMenu?.toolbarItem?.button?.containerEl.remove());
 				destroyFormulaEditors(builder?.root);
 				cleanup(() => builder?.innerContainerEl.remove());
 				cleanup(() => embed.unload());
@@ -131,7 +132,19 @@ async function discover(app: App): Promise<NativeBasesApi> {
 					controller.ctx = controller.buildBasesContext();
 					save(value);
 				}, query.getViewConfig("Rules"), query.filters);
-				parent.replaceChildren(builder.innerContainerEl);
+				if (Platform.isMobile) {
+					const toolbar = controller.filterMenu.toolbarItem;
+					if (!toolbar?.scrollEl || !toolbar.button?.containerEl) {
+						throw new Error("This Obsidian version does not expose a compatible mobile Bases filter editor.");
+					}
+					// Preserve Bases' native sheet, pickers, focus scope, and dismissal.
+					// Only global rules apply here; there is no second per-Bases-view scope.
+					toolbar.scrollEl.replaceChildren(builder.innerContainerEl);
+					parent.classList.remove("cv-native-filter-host");
+					parent.replaceChildren(toolbar.button.containerEl);
+				} else {
+					parent.replaceChildren(builder.innerContainerEl);
+				}
 			} catch (error) {
 				dispose();
 				throw error;
