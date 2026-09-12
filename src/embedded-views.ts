@@ -1,5 +1,5 @@
 import type { EditorView } from "@codemirror/view";
-import { holdEmbeddedView } from "./embedded-transition";
+import { holdEmbeddedView, settleEmbeddedView } from "./embedded-transition";
 import { MarkdownView, TFile, type App } from "obsidian";
 import { getTemplateDependencies } from "./renderer";
 import type { ViewContext } from "./types";
@@ -18,7 +18,7 @@ interface Embed {
 	[key: string]: unknown;
 }
 type Factory = (...args: unknown[]) => unknown;
-interface Entry { embed: Embed; view: MarkdownView; key?: string; restore: (() => void)[]; finishTransition?: () => void; point?: { x: number; y: number }; scrollTop?: number; generation: number }
+interface Entry { embed: Embed; view: MarkdownView; key?: string; pendingKey?: string; restore: (() => void)[]; finishTransition?: () => void; point?: { x: number; y: number }; scrollTop?: number; generation: number }
 
 /** Observe the host's own Markdown embeds, preserving their editor and mode controls. */
 export class EmbeddedViews {
@@ -41,12 +41,14 @@ export class EmbeddedViews {
 		registry.md = wrapped;
 		this.restoreFactory = () => { if (registry.md === wrapped) registry.md = original; };
 	}
+	get observesEmbeds(): boolean { return !!this.restoreFactory; }
 	track(value: unknown): boolean {
 		if (!value || typeof value !== "object") return false;
 		const embed = value as Embed;
 		if (!embed.containerEl || !(embed.file instanceof TFile) || !embed.file.path.toLowerCase().endsWith(".md") ||
 			(typeof embed.getMode !== "function" && typeof embed.loadFile !== "function")) return false;
-		if (this.entries.has(embed)) return true;
+		const existing = this.entries.get(embed);
+		if (existing) { this.refreshEntry(existing); return true; }
 		const view = Object.create(MarkdownView.prototype) as MarkdownView;
 		Object.defineProperties(view, {
 			cvEditorEl: { get: () => embed.editorEl },
@@ -58,7 +60,15 @@ export class EmbeddedViews {
 		if (!this.observers.has(doc) && doc.body) {
 			const Observer = doc.defaultView?.MutationObserver;
 			if (Observer) {
-				const observer = new Observer(() => this.refresh());
+				const observer = new Observer(records => {
+					for (const entry of this.entries.values()) {
+						const root = entry.embed.containerEl;
+						if (records.some(record => root.contains(record.target) ||
+							[...record.addedNodes].some(node => node.contains(root)))) {
+							this.refreshEntry(entry);
+						}
+					}
+				});
 				observer.observe(doc.body, { childList: true, subtree: true });
 				this.observers.set(doc, observer);
 			}
@@ -72,6 +82,11 @@ export class EmbeddedViews {
 			const wrapper: Method = (...args) => {
 				if (name === "unload") this.release(entry);
 				else if (name !== "set") {
+					// Canvas may ask an already-reading node to show its preview again.
+					// Keep the mounted custom view and let the host perform its bookkeeping.
+					if (name === "showPreview" && embed.getMode?.() === "preview") {
+						return (original as Method).apply(embed, args);
+					}
 					const overlay = embed.containerEl.querySelector<HTMLElement>(":scope > .obsidian-custom-view-render");
 					if (name === "showEditor" && overlay) {
 						const point = args[0] as { x?: unknown; y?: unknown } | undefined;
@@ -96,6 +111,15 @@ export class EmbeddedViews {
 		queueMicrotask(() => this.refreshEntry(entry));
 		return true;
 	}
+	refreshFile(file: TFile) {
+		for (const entry of this.entries.values()) {
+			const overlay = entry.embed.containerEl.querySelector<HTMLElement>(":scope > .obsidian-custom-view-render");
+			const dependencyChanged = !!overlay && !!getTemplateDependencies(overlay)?.has(file);
+			if (entry.embed.file !== file && !dependencyChanged) continue;
+			if (dependencyChanged) entry.key = undefined;
+			this.refreshEntry(entry);
+		}
+	}
 	refresh(force = false) { for (const entry of this.entries.values()) { if (force) entry.key = undefined; this.refreshEntry(entry); } }
 	private refreshEntry(entry: Entry) {
 		if (this.stopped || !this.entries.has(entry.embed)) return;
@@ -116,24 +140,29 @@ export class EmbeddedViews {
 		const key = JSON.stringify([context, embed.file.path, trackBody ? embed.file.stat.mtime : null,
 			mode, embed.editMode?.sourceMode, trackBody ? embed.text : null, this.app.metadataCache?.getFileCache(embed.file)?.frontmatter]);
 		const changed = entry.key !== key;
-		if (!changed && root.getAttribute("data-cv-state") && root.querySelector(".obsidian-custom-view-render")) return;
+		if (!changed && (entry.pendingKey === key || (root.getAttribute("data-cv-state") && root.querySelector(".obsidian-custom-view-render")))) return;
 		entry.key = key;
+		entry.pendingKey = key;
 		root.classList.remove("cv-context-popover", "cv-context-canvas", "cv-context-embed");
 		root.classList.add(`cv-context-${context}`);
-		const generation = entry.generation;
-		void this.render(view, context, changed).then(() => {
+		const generation = ++entry.generation;
+		void this.render(view, context, changed).then(async () => {
 			if (!this.entries.has(embed) || generation !== entry.generation) return;
 			const overlay = root.querySelector<HTMLElement>(":scope > .obsidian-custom-view-render");
 			if (overlay && entry.scrollTop !== undefined) overlay.scrollTop = entry.scrollTop;
 			entry.scrollTop = undefined;
 			this.placeCursor(entry);
+			if (entry.finishTransition && mode === "source") {
+				await settleEmbeddedView(root, () => this.entries.has(embed) && generation === entry.generation);
+				if (!this.entries.has(embed) || generation !== entry.generation) return;
+			}
 			entry.finishTransition?.(); entry.finishTransition = undefined;
 		}).catch(error => {
 			if (generation !== entry.generation) return;
 			entry.finishTransition?.(); entry.finishTransition = undefined;
 			entry.key = undefined; this.reset(view);
 			console.error("[Custom Views] Could not render embedded note:", error);
-		});
+		}).finally(() => { if (generation === entry.generation) entry.pendingKey = undefined; });
 	}
 	private placeCursor(entry: Entry) {
 		const editor: unknown = entry.embed.editor;

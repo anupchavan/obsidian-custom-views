@@ -625,10 +625,18 @@ class Parser {
 	}
 }
 
+// Templates reuse the same expressions across notes and loop iterations.
+// Cache syntax only; file values and evaluation context are never retained.
+const expressionCache = new Map<string, ASTNode>();
 export function parseExpression(input: string): ASTNode {
-	const tokens = tokenize(input);
-	const parser = new Parser(tokens);
-	return parser.parse();
+	const cached = expressionCache.get(input);
+	if (cached) return cached;
+	const ast = new Parser(tokenize(input)).parse();
+	if (input.length <= 4096) {
+		if (expressionCache.size >= 128) expressionCache.delete(expressionCache.keys().next().value!);
+		expressionCache.set(input, ast);
+	}
+	return ast;
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,8 @@
  *   - Bracket matching, auto-close brackets, indentation
  */
 
+import { filterNames } from "./filters";
+
 import {
 	keymap,
 	highlightSpecialChars,
@@ -103,6 +105,12 @@ const TEMPLATE_FILTERS = [
 	{ label: "footnote", detail: 'footnote:"id"' },
 	{ label: "table", detail: "array to markdown table" },
 ];
+
+const templateFilterOptions = filterNames.map(label => ({
+	label,
+	detail: TEMPLATE_FILTERS.find(filter => filter.label === label)?.detail,
+	type: "function",
+}));
 
 /** Built-in file.* template variables (legacy mode) */
 const FILE_VARIABLES = [
@@ -610,11 +618,7 @@ export function templateCompletionSource(extraVariables: TemplateVariable[] = []
 				const from = pos - filterWord[1].length;
 				return {
 					from,
-					options: TEMPLATE_FILTERS.map(f => ({
-						label: f.label,
-						detail: f.detail,
-						type: "function",
-					})),
+					options: templateFilterOptions,
 				};
 			}
 			return null;

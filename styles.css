@@ -153,6 +153,10 @@
     border-radius: var(--radius-m);
 }
 
+.modal.cv-template-modal {
+    width: min(960px, 90vw);
+}
+
 .cv-edit-view-modal.modal-content {
     max-height: 80vh;
     overflow-y: auto;

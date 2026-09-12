@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TFile, type App, type MarkdownView } from "obsidian";
 import type { ViewContext } from "../types";
+import * as renderer from "../renderer";
 import { EmbeddedViews } from "../embedded-views";
 
 const managers: EmbeddedViews[] = [];
@@ -67,6 +68,57 @@ describe("native embedded view lifecycle", () => {
 		expect(s.reset).toHaveBeenCalledTimes(calls);
 		expect(s.render).toHaveBeenCalledTimes(2);
 	});
+	it("keeps the mounted view when Canvas requests reading mode again", async () => {
+		const s = setup("canvas-node");
+		await vi.waitFor(() => expect(s.render).toHaveBeenCalledOnce());
+		const overlay = s.root.firstElementChild;
+		s.embed.showPreview(); s.embed.showPreview();
+		await Promise.resolve();
+		expect(s.root.firstElementChild).toBe(overlay);
+		expect(s.reset).not.toHaveBeenCalled();
+		expect(s.render).toHaveBeenCalledOnce();
+	});
+	it("ignores DOM updates outside tracked embeds", async () => {
+		const s = setup("canvas-node");
+		await vi.waitFor(() => expect(s.render).toHaveBeenCalledOnce());
+		s.enabled.mockClear();
+		window.document.body.append(window.document.createElement("div"));
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect(s.enabled).not.toHaveBeenCalled();
+	});
+
+	it("refreshes changed dependencies without touching unrelated embeds", async () => {
+		const s = setup("canvas-node");
+		await vi.waitFor(() => expect(s.render).toHaveBeenCalledOnce());
+		const related = new TFile(); related.path = "Related.md";
+		const unrelated = new TFile(); unrelated.path = "Unrelated.md";
+		const dependencies = vi.spyOn(renderer, "getTemplateDependencies").mockReturnValue(new Set([related]));
+		try {
+			s.enabled.mockClear(); s.manager.refreshFile(unrelated);
+			expect(s.enabled).not.toHaveBeenCalled();
+			s.manager.refreshFile(related);
+			await vi.waitFor(() => expect(s.render).toHaveBeenCalledTimes(2));
+			expect(s.render.mock.calls[1][2]).toBe(true);
+		} finally { dependencies.mockRestore(); }
+	});
+
+	it("coalesces pending renders and ignores a superseded rejection", async () => {
+		const s = setup("canvas-node");
+		let reject!: (error: Error) => void;
+		s.render.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
+		await vi.waitFor(() => expect(s.render).toHaveBeenCalledOnce());
+		s.manager.refresh(); s.manager.refresh();
+		expect(s.render).toHaveBeenCalledOnce();
+		s.embed.file.stat.mtime++;
+		s.manager.refresh();
+		await vi.waitFor(() => expect(s.render).toHaveBeenCalledTimes(2));
+		const overlay = s.root.firstElementChild;
+		reject(new Error("obsolete render"));
+		await new Promise(resolve => setTimeout(resolve, 0));
+		expect(s.reset).not.toHaveBeenCalled();
+		expect(s.root.firstElementChild).toBe(overlay);
+	});
+
 	it("leaves excerpts and embeds inside custom templates native", async () => {
 		const s = setup(); s.embed.subpath = "#Heading";
 		await Promise.resolve(); expect(s.render).not.toHaveBeenCalled();

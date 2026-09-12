@@ -1,3 +1,4 @@
+import { applyFiltersWithRegistry, standardFilters, type FilterRegistry } from "knap";
 import { moment, type unitOfTime } from "./host-moment";
 
 /** Split a string into lowercase words for kebab/snake/pascal casing */
@@ -10,6 +11,7 @@ function escapeRegExp(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Keep encoded HTML encoded: Knap strip_tags also decodes entities.
 function stripHtmlTags(str: string): string {
 	let result = '';
 	let inTag = false;
@@ -79,50 +81,6 @@ function formatMarkdownLink(destination: string, label: string): string {
 	return `[${label}](${formatMarkdownDestination(destination)})`;
 }
 
-/**
- * Parse arguments like: "YYYY-MM-DD" or ("a", "b")
- * @param argString - The string to parse
- * @returns The parsed arguments
- */
-function parseArgs(argString: string): (string | number)[] {
-	if (!argString) return [];
-	const content = argString.trim().replace(/^\((.*)\)$/, '$1');
-	const args: (string | number)[] = [];
-	let current = '';
-	let quoteChar: string | null = null;
-	for (let i = 0; i < content.length; i++) {
-		const char = content[i];
-		if (char === '"' || char === "'") {
-			if (quoteChar === char) quoteChar = null;
-			else if (!quoteChar) quoteChar = char;
-		} else if (char === ',' && !quoteChar) {
-			args.push(cleanQuote(current));
-			current = '';
-			continue;
-		}
-		current += char;
-	}
-	if (current) args.push(cleanQuote(current));
-
-	return args;
-}
-
-/**
- * Clean the string by removing the outer quotes if they exist.
- * Also converts numeric strings to numbers.
- * @param str - The string to clean
- * @returns The cleaned string or number if the string represents a number
- */
-function cleanQuote(str: string): string | number {
-	str = str.trim();
-	if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
-		return str.slice(1, -1);
-	}
-
-	if (!isNaN(Number(str))) return Number(str);
-	return str;
-}
-
 type FilterValue = string | number | string[] | number[] | boolean | null | undefined;
 type FilterFunction = (value: FilterValue, ...args: unknown[]) => FilterValue;
 
@@ -130,6 +88,10 @@ type FilterFunction = (value: FilterValue, ...args: unknown[]) => FilterValue;
  * Registry of filter functions available for template value transformation.
  * Each filter takes a value and optional arguments, returning a transformed value.
  */
+function knapStringFilter(name: string): FilterFunction {
+	return value => standardFilters[name](String(value)) as FilterValue;
+}
+
 const filters: Record<string, FilterFunction> = {
 	date: (val: FilterValue, format?: unknown, inputFormat?: unknown) => {
 		const formatStr = typeof format === 'string' ? format : "YYYY-MM-DD";
@@ -146,14 +108,14 @@ const filters: Record<string, FilterFunction> = {
 		return m.isValid() ? m.add(amount, unit).format("YYYY-MM-DD") : val;
 	},
 
-	capitalize: (val: string) => String(val).charAt(0).toUpperCase() + String(val).slice(1).toLowerCase(),
-	upper: (val: string) => String(val).toUpperCase(),
-	lower: (val: string) => String(val).toLowerCase(),
-	title: (val: string) => String(val).replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase()),
+	capitalize: knapStringFilter("capitalize"),
+	upper: knapStringFilter("upper"),
+	lower: knapStringFilter("lower"),
+	title: knapStringFilter("title"),
 	camel: (val: string) => String(val).toLowerCase().replace(/[^a-zA-Z0-9]+(.)/g, (_m: string, chr: string) => chr.toUpperCase()),
 	kebab: (val: string) => splitWords(String(val))?.join('-') || val,
 	snake: (val: string) => splitWords(String(val))?.join('_') || val,
-	trim: (val: string) => String(val).trim(),
+	trim: knapStringFilter("trim"),
 
 	replace: (val: FilterValue, search: unknown, replaceWith?: unknown) => {
 		const searchStr = (typeof search === 'string' || typeof search === 'number') ? String(search) : "";
@@ -186,11 +148,9 @@ const filters: Record<string, FilterFunction> = {
 		if (Array.isArray(val)) return val.map(v => formatMarkdownImage(String(v), txt)).join("\n");
 		return formatMarkdownImage(String(val), txt);
 	},
-	blockquote: (val: string) => val.split('\n').map(line => `> ${line}`).join('\n'),
+	blockquote: knapStringFilter("blockquote"),
 
-	strip_tags: (val: FilterValue) => {
-		return stripHtmlTags(String(val));
-	},
+	strip_tags: value => stripHtmlTags(String(value)),
 
 	split: (val: FilterValue, separator?: unknown) => String(val).split(typeof separator === 'string' ? separator : ","),
 	join: (val: FilterValue, separator?: unknown) => Array.isArray(val) ? val.join(typeof separator === 'string' ? separator : ",") : val,
@@ -363,7 +323,7 @@ const filters: Record<string, FilterFunction> = {
 		str = str.replace(/<p>(.*?)<\/p>/gi, '$1\n\n');
 		str = str.replace(/<h([1-6])>(.*?)<\/h\1>/gi, (_m: string, level: string, text: string) => '#'.repeat(parseInt(level)) + ' ' + text + '\n');
 		str = str.replace(/<li>(.*?)<\/li>/gi, '- $1\n');
-		str = stripHtmlTags(str);
+		str = String(filters.strip_tags(str));
 		str = str.replace(/@@CUSTOM_VIEWS_MARKDOWN_LINK_(\d+)@@/g, (_m: string, index: string) => linkPlaceholders[Number(index)] ?? '');
 		return str.trim();
 	},
@@ -399,7 +359,7 @@ const filters: Record<string, FilterFunction> = {
 
 	// HTML processing
 	remove_html: (val: FilterValue) => {
-		return stripHtmlTags(String(val));
+		return filters.strip_tags(val);
 	},
 	remove_tags: (val: FilterValue, ...tagsToRemove: unknown[]) => {
 		let str = String(val);
@@ -517,66 +477,30 @@ const filters: Record<string, FilterFunction> = {
 	}
 };
 
-/**
- * Applies a chain of filters to a value.
- * Filters are separated by pipes (|) and can include arguments after a colon.
- *
- * @param value - The value to transform
- * @param filterChain - Pipe-separated filter chain (e.g., "upper | replace:\"old\",\"new\"")
- * @returns The transformed value after applying all filters in sequence
- *
- * @example
- * applyFilterChain("hello", "upper") // Returns: "HELLO"
- * applyFilterChain("  test  ", "trim | upper") // Returns: "TEST"
- * applyFilterChain(1234567890, "date:\"YYYY-MM-DD\"") // Returns formatted date
- */
+interface FilterState { value: FilterValue }
+
+// Knap owns pipe/argument parsing. Keep typed results for the expression engine,
+// which also consumes arrays and numbers rather than only rendered Markdown.
+const registry: FilterRegistry<FilterState> = Object.fromEntries(
+	Object.keys({ ...standardFilters, ...filters }).map(name => [name, (_value, param, context) => {
+		const state = context!.context!;
+		try {
+			const filter = filters[name];
+			state.value = filter
+				? filter(state.value, ...(context?.rawArguments ?? []))
+				: standardFilters[name](_value, param, context) as FilterValue;
+		} catch (error) {
+			console.error(`[Custom Views] Filter error '${name}':`, error);
+		}
+		return state.value;
+	}]),
+);
+
+export const filterNames = Object.keys(registry);
+
 export function applyFilterChain(value: FilterValue, filterChain: string): FilterValue {
 	if (!filterChain) return value;
-
-	const steps: string[] = [];
-	let current = '';
-	let quoteChar: string | null = null;
-
-	for (let i = 0; i < filterChain.length; i++) {
-		const char = filterChain[i];
-		if (char === '"' || char === "'") {
-			if (quoteChar === char) quoteChar = null;
-			else if (!quoteChar) quoteChar = char;
-		}
-
-		if (char === '|' && !quoteChar) {
-			steps.push(current.trim());
-			current = '';
-		} else {
-			current += char;
-		}
-	}
-	if (current) steps.push(current.trim());
-
-	let result = value;
-
-	for (const step of steps) {
-		if (!step) continue;
-
-		const colonIndex = step.indexOf(':');
-		let name = step;
-		let args: (string | number)[] = [];
-
-		if (colonIndex > -1) {
-			name = step.substring(0, colonIndex);
-			const argString = step.substring(colonIndex + 1);
-			args = parseArgs(argString);
-		}
-
-		const fn = filters[name];
-		if (fn) {
-			try {
-				result = fn(result, ...args);
-			} catch (e) {
-				console.error(`[Custom Views] Filter error '${name}':`, e);
-			}
-		}
-	}
-
-	return result;
+	const context = { value };
+	applyFiltersWithRegistry(value, filterChain, registry, { variables: {}, context });
+	return context.value;
 }
