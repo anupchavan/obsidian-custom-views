@@ -1,66 +1,49 @@
 import { describe, expect, it } from "vitest";
 import { App, TFile } from "obsidian";
-import {
-	buildScriptExecutionTemplate,
-	executeCustomViewJavaScript,
-	getScriptExecutionDelimiters,
-	warmCustomViewScriptEngine,
-} from "../script-engine";
-import type { CustomViewScriptContext } from "../script-engine";
+import { executeCustomViewJavaScript, type CustomViewScriptContext } from "../script-engine";
 
-describe("script engine template wrapper", () => {
-	it("wraps JavaScript in an execution command bound to the rendered container", () => {
-		const template = buildScriptExecutionTemplate("this.dataset.ready = 'true';");
+function context(): CustomViewScriptContext {
+	return { app: new App(), file: new TFile(), container: document.createElement("div"),
+		frontmatter: { title: "Example" }, bodyContent: "Body", viewConfig: undefined,
+		activeDocument: document, activeWindow: window };
+}
 
-		expect(template).toContain("*await (async function () {");
-		expect(template).toContain("this.dataset.ready = 'true';");
-		expect(template).toContain("}).call(tp.container);");
+describe("custom view JavaScript", () => {
+	it("preserves this, tp, DOM access, and awaited completion", async () => {
+		const ctx = context();
+		await executeCustomViewJavaScript(`
+			await Promise.resolve();
+			const child = tp.activeDocument.createElement('span');
+			child.textContent = tp.frontmatter.title + tp.bodyContent;
+			this.append(child);
+			this.dataset.same = String(this === tp.container);
+		`, ctx);
+		expect(ctx.container.textContent).toBe("ExampleBody");
+		expect(ctx.container.dataset.same).toBe("true");
 	});
-
-	it("chooses alternate delimiters when user code contains the defaults", () => {
-		const code = "const marker = '\uE000/custom-views-js\uE001';";
-		const delimiters = getScriptExecutionDelimiters(code);
-
-		expect(delimiters.openTag).toBe("\uE000custom-views-js-1\uE001");
-		expect(delimiters.closeTag).toBe("\uE000/custom-views-js-1\uE001");
+	it("isolates local declarations across repeated calls and ignores script return values", async () => {
+		const ctx = context();
+		const code = "const local = 1; this.dataset.n = String(Number(this.dataset.n || 0) + local); return 42;";
+		expect(await executeCustomViewJavaScript(code, ctx)).toBeUndefined();
+		await executeCustomViewJavaScript(code, ctx);
+		expect(ctx.container.dataset.n).toBe("2");
 	});
-
-	it("executes JavaScript with the rendered container as this", async () => {
-		const doc = new DOMParser().parseFromString("<div></div>", "text/html");
-		const container = doc.body.firstElementChild as HTMLElement;
-		const context: CustomViewScriptContext = {
-			app: new App(),
-			file: new TFile(),
-			container,
-			frontmatter: undefined,
-			bodyContent: "",
-			viewConfig: undefined,
-			activeDocument: doc,
-			activeWindow: doc.defaultView as Window,
-		};
-
-		await executeCustomViewJavaScript("this.dataset.ready = 'true';", context);
-
-		expect(container.dataset.ready).toBe("true");
+	it("accepts template delimiters and trailing line comments as ordinary JavaScript", async () => {
+		const ctx = context();
+		await executeCustomViewJavaScript("this.textContent = '\uE000/custom-views-js\uE001 <% {{ }}'; // trailing", ctx);
+		expect(ctx.container.textContent).toBe("\uE000/custom-views-js\uE001 <% {{ }}");
 	});
-
-	it("can pre-initialize the WASM renderer before executing scripts", async () => {
-		const doc = new DOMParser().parseFromString("<div></div>", "text/html");
-		const container = doc.body.firstElementChild as HTMLElement;
-		const context: CustomViewScriptContext = {
-			app: new App(),
-			file: new TFile(),
-			container,
-			frontmatter: undefined,
-			bodyContent: "",
-			viewConfig: undefined,
-			activeDocument: doc,
-			activeWindow: doc.defaultView as Window,
-		};
-
-		await warmCustomViewScriptEngine();
-		await executeCustomViewJavaScript("this.dataset.warmed = 'true';", context);
-
-		expect(container.dataset.warmed).toBe("true");
+	it("keeps the legacy tR binding available", async () => {
+		const ctx = context();
+		await executeCustomViewJavaScript("tR += 'text'; this.textContent = tR;", ctx);
+		expect(ctx.container.textContent).toBe("text");
+	});
+	it.each(["throw new Error('failure')", "await Promise.reject(new Error('failure'))"])("propagates script errors: %s", async code => {
+		await expect(executeCustomViewJavaScript(code, context())).rejects.toThrow("failure");
+	});
+	it("rejects syntax errors without executing the script", async () => {
+		const ctx = context();
+		await expect(executeCustomViewJavaScript("this.textContent = 'bad'; const =", ctx)).rejects.toThrow(SyntaxError);
+		expect(ctx.container.textContent).toBe("");
 	});
 });

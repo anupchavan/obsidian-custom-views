@@ -15,7 +15,6 @@ import { CustomViewsSettings, CustomViewsSettingTab } from "./settings";
 import { NativeRuleEngine } from "./native-filters/engine";
 import { getTemplateDependencies, renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR } from "./renderer";
 import { createEditableContentExtensions } from "./editable-content";
-import { warmCustomViewScriptEngine } from "./script-engine";
 import type { ViewConfig } from "./types";
 import { EmbeddedBasesProvider } from "./bases/provider";
 
@@ -206,7 +205,6 @@ export default class CustomViewsPlugin extends Plugin {
 				new Notice(error instanceof Error ? error.message : "Native view filters are unavailable.");
 			}
 		}
-		this.prepareScriptEngine();
 		this.basesProvider = new EmbeddedBasesProvider(this);
 		this.basesProvider.register();
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
@@ -339,14 +337,6 @@ export default class CustomViewsPlugin extends Plugin {
 		});
 		// Clean up canvas nodes
 		this.restoreAllCanvasNodes();
-	}
-
-	private prepareScriptEngine() {
-		if (!this.settings.allowJavaScript) return;
-
-		void warmCustomViewScriptEngine().catch((e) => {
-			console.error("[Custom Views] Failed to initialize script engine:", e);
-		});
 	}
 
 	private hideStaleActiveOverlay(file: TFile) {
@@ -984,7 +974,6 @@ export default class CustomViewsPlugin extends Plugin {
 	 */
 	refreshAllViews() {
 		this.settingsVersion++;
-		this.prepareScriptEngine();
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView && leaf.view.file) {
 				void this._processLeaf(leaf.view, leaf.view.file);
