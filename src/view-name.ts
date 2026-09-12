@@ -19,7 +19,7 @@ export function renameViewInline(app: App, setting: Setting, view: ViewConfig, v
 	const input = setting.nameEl;
 	input.setAttribute("contenteditable", "plaintext-only");
 	input.setAttribute("role", "textbox");
-	const button = setting.controlEl?.querySelector<HTMLElement>('[aria-label="Rename view"]');
+	const button = setting.controlEl?.querySelector<HTMLElement>('[aria-label="Rename view"], [aria-label="View actions"]');
 	button?.setAttribute("aria-pressed", "true");
 	button?.classList.add("is-active");
 	const events = new AbortController();
@@ -39,7 +39,7 @@ export function renameViewInline(app: App, setting: Setting, view: ViewConfig, v
 		button?.setAttribute("aria-pressed", "false");
 		button?.classList.remove("is-active");
 		setting.setName(view.name);
-		if (restoreFocus) setting.controlEl?.querySelector<HTMLElement>('[aria-label="Rename view"]')?.focus();
+		if (restoreFocus) setting.controlEl?.querySelector<HTMLElement>('[aria-label="Rename view"], [aria-label="View actions"]')?.focus();
 	};
 	const commit = (restoreFocus = false) => {
 		if (closed) return;

@@ -8,7 +8,27 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+vi.mock("../confirm-delete", () => ({
+	confirmDelete: (_app: unknown, _name: string, remove: () => void) => ({
+		onClose() {}, open() { remove(); this.onClose(); }, close() { this.onClose(); },
+	}),
+}));
 import { DEFAULT_SETTINGS, CustomViewsSettingTab } from "../settings";
+
+function renderedDeletes(tab: CustomViewsSettingTab) {
+	const list = tab.getSettingDefinitions().find(item => "type" in item && item.type === "list") as unknown as {
+		items: { render(setting: import("obsidian").Setting): void }[];
+	};
+	const rows = list.items.map(item => {
+		const setting = {
+			settingEl: document.createElement("div"), nameEl: document.createElement("div"),
+			addToggle: () => {}, addExtraButton: () => {},
+		};
+		item.render(setting as unknown as import("obsidian").Setting);
+		return { click: () => setting.settingEl.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete" })), element: setting.settingEl };
+	});
+	return { rows, onDelete: (index: number) => rows[index]?.click() };
+}
 
 // ---------------------------------------------------------------------------
 // DEFAULT_SETTINGS
@@ -187,7 +207,7 @@ describe("view priority changes", () => {
 		previous.onReorder(1, 0);
 		expect(s.plugin.settings.views.map(v => v.id)).toEqual(["second", "first", "third"]);
 		expect(s.plugin.saveSettings).toHaveBeenCalledOnce();
-		list().onDelete(0); await Promise.resolve();
+		renderedDeletes(s.tab).onDelete(0); await Promise.resolve();
 		expect(s.plugin.settings.views.map(v => v.id)).toEqual(["first", "third"]);
 	});
 	it("keeps the displayed list and priority consistent if persistence fails", async () => {
@@ -234,9 +254,18 @@ describe("view deletion", () => {
 		const plugin = { unloadSignal: new AbortController().signal, settings: { ...DEFAULT_SETTINGS, views }, saveSettings: vi.fn(async () => {}), refreshAllViews: vi.fn() };
 		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
 		const update = vi.fn(); Object.assign(tab, { update });
-		const definition = tab.getSettingDefinitions().find(item => "type" in item && item.type === "list") as unknown as { onDelete(index: number): void };
+		const definition = renderedDeletes(tab);
 		return { plugin, definition, update };
 	}
+	it("preserves row keyboard deletion without deleting from input fields", () => {
+		const s = setup();
+		const row = s.definition.rows[0].element;
+		const input = document.createElement("input"); row.append(input);
+		input.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+		expect(s.plugin.settings.views).toHaveLength(3);
+		row.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
+		expect(s.plugin.settings.views.map(view => view.id)).toEqual(["second", "third"]);
+	});
 	it("removes the row and reapplies views while deletion is still saving", async () => {
 		const s = setup(); let finish!: () => void;
 		s.plugin.saveSettings.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
@@ -344,5 +373,24 @@ describe("display setting changes", () => {
 		expect(s.plugin.settings.workInLivePreview).toBe(false);
 		expect(s.plugin.refreshAllViews).toHaveBeenCalledOnce();
 		expect(s.refreshDomState).toHaveBeenCalledOnce();
+	});
+});
+
+describe("view list search", () => {
+	it("matches words without changing the list order or excluding disabled views", () => {
+		const views = [
+			{ ...DEFAULT_SETTINGS.views[0], id: "one", name: "Movie cards", enabled: false },
+			{ ...DEFAULT_SETTINGS.views[0], id: "two", name: "People" },
+		];
+		const plugin = { unloadSignal: new AbortController().signal, settings: { ...DEFAULT_SETTINGS, views } };
+		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin as unknown as CustomViewsPlugin);
+		const list = tab.getSettingDefinitions().find(item => "type" in item && item.type === "list") as unknown as {
+			search: { match(item: { name: string }, query: string): boolean }; items: { name: string }[];
+		};
+		expect(list.search.match(views[0], "CAR movie")).toBe(true);
+		expect(list.search.match(views[1], "movie")).toBe(false);
+		expect(list.search.match(views[1], "  ")).toBe(true);
+		expect(list.items.map(item => item.name)).toEqual(["Movie cards", "People"]);
+		expect(plugin.settings.views).toEqual(views);
 	});
 });
