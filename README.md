@@ -24,7 +24,7 @@ Custom Views lets structured notes render as purpose-built pages while keeping t
 
 The first matching view is used, so place more specific views above broader ones. Changes save automatically. If a save fails, a persistent notice offers a retry while your edits remain in memory.
 
-The Rules editor uses Obsidian’s internal Bases controls, including property pickers, nested groups, and advanced formulas. See [native filter integration](docs/NATIVE-FILTERS.md) for requirements and legacy-rule behavior.
+The Rules editor uses Obsidian’s internal Bases controls, including property pickers, nested groups, and advanced formulas. Enable the Bases core plugin to edit rules; existing rules continue to work without automatic migration.
 
 ## Previews, Canvas, and embedded notes
 
