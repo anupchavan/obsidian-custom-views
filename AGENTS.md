@@ -249,3 +249,7 @@ this.registerInterval(window.setInterval(() => { /* ... */ }, 1000));
 - Developer policies: https://docs.obsidian.md/Developer+policies
 - Plugin guidelines: https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines
 - Style guide: https://help.obsidian.md/style-guide
+
+## Local development deployment
+
+Successful `npm run build` and `npm run dev` builds automatically synchronize JS, CSS, and manifest to targets in the gitignored `.local-deploy.json`. Dev mode also watches stylesheet and manifest changes. For CSS-only edits without a running dev watcher, run `npm run sync:local`. Verify the `[local deploy]` success output before reporting installation. Do not copy `data.json` or other vault files. Previous changed artifacts are backed up in `.local-deploy-backups/`. This sync installs files; it does not guarantee the running app has reloaded them.

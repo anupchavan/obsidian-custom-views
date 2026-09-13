@@ -8,10 +8,10 @@ import { resolveViewContext } from "./view-context";
 import type { ViewConfig, ViewContext } from "./types";
 
 /** One set of editors; overrides are independent so CSS-only variants need no HTML copy. */
-export function mountContextTemplateEditors(host: HTMLElement, view: ViewConfig, variables: TemplateVariable[], allowJS: boolean, save: () => void) {
+export function mountContextTemplateEditors(host: HTMLElement, view: ViewConfig, variables: TemplateVariable[], allowJS: boolean, save: () => void, openEditor?: (context: ViewContext) => void) {
 	let context: ViewContext = "note";
 	let switching = false;
-	new Setting(settingsGroup(host, "Template")).setName("Template for").setDesc("Other contexts inherit the main template. Override only the languages you need.")
+	new Setting(settingsGroup(host, "Template", openEditor ? { label: "Open view editor", onClick: () => openEditor(context) } : undefined)).setName("Template for").setDesc("Other contexts inherit the main template. Override only the languages you need.")
 		.addDropdown(dropdown => dropdown.addOptions({ note: "Main note", popover: "Popover preview", canvas: "Canvas", embed: "Embedded note" })
 			.onChange(value => { context = value as ViewContext; refresh(); }));
 	const fields = ([['template', 'HTML', 'html'], ['css', 'CSS', 'css'], ['js', 'JavaScript', 'javascript']] as const).map(([key, label, language]) => {

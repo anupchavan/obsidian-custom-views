@@ -10,6 +10,7 @@
  *   - Bracket matching, auto-close brackets, indentation
  */
 
+import { templateHighlighting } from "./editor-template-highlighting";
 import { filterNames } from "./filters";
 import { completionAppearance } from "./editor-completions";
 
@@ -742,27 +743,27 @@ export const themeConfig = {
 	dropdownBackground: "var(--background-primary)",
 	dropdownBorder: "var(--background-modifier-border)",
 	activeLine: "var(--background-primary)",
-	matchingBracket: "var(--background-modifier-accent)",
+	matchingBracket: "var(--background-modifier-hover)",
 	// All syntax colors use Obsidian's built-in CSS variables so they
 	// adapt correctly to any theme (light, dark, or custom).
-	keyword: "var(--code-keyword)",
-	storage: "var(--code-keyword)",
-	variable: "var(--code-normal)",
-	parameter: "var(--code-property)",
-	function: "var(--code-function)",
-	string: "var(--code-string)",
-	constant: "var(--code-value)",
+	keyword: "var(--color-green)",
+	storage: "var(--color-green)",
+	variable: "var(--color-blue)",
+	parameter: "var(--color-blue)",
+	function: "var(--color-orange)",
+	string: "var(--color-cyan)",
+	constant: "var(--color-yellow)",
 	type: "var(--code-property)",
 	class: "var(--code-property)",
-	number: "var(--code-value)",
+	number: "var(--color-purple)",
 	comment: "var(--code-comment)",
 	heading: "var(--code-keyword)",
 	invalid: "var(--text-error)",
 	regexp: "var(--code-string)",
 	tag: "var(--code-tag)",
 	attribute: "var(--code-property)",
-	operator: "var(--code-operator)",
-	punctuation: "var(--code-punctuation)",
+	operator: "var(--text-muted)",
+	punctuation: "var(--text-muted)",
 	important: "var(--code-important)",
 };
 
@@ -783,8 +784,8 @@ export const obsidianTheme = EditorView.theme(
 			backgroundColor: themeConfig.dropdownBackground,
 			color: themeConfig.foreground,
 		},
-		".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
-		".cm-panels.cm-panels-bottom": { borderTop: "2px solid black" },
+		".cm-panels.cm-panels-top": { borderBottom: "1px solid var(--background-modifier-border)" },
+		".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--background-modifier-border)" },
 
 		".cm-searchMatch": {
 			backgroundColor: themeConfig.dropdownBackground,
@@ -802,10 +803,14 @@ export const obsidianTheme = EditorView.theme(
 			backgroundColor: themeConfig.matchingBracket,
 			outline: "none",
 		},
+		// Initial selection starts at the first HTML tag, even before focus.
+		"&:not(.cm-focused) .cm-matchingBracket, &:not(.cm-focused) .cm-nonmatchingBracket": {
+			backgroundColor: "transparent",
+		},
 		".cm-gutters": {
 			backgroundColor: themeConfig.background,
 			color: themeConfig.comment,
-			borderRight: "1px solid var(--background-modifier-border)",
+			borderRight: "none",
 		},
 		".cm-lineNumbers, .cm-gutterElement": { color: "inherit" },
 
@@ -901,6 +906,7 @@ export function buildEditorExtensions(lang: EditorLanguage = "html", extraTempla
 		highlightSpecialChars(),
 		history(),
 		getLanguageExtension(lang),
+		templateHighlighting,
 		autoCloseTemplateBraces,
 		autocompletion({ ...completionAppearance, override: [context => {
 			const template = templateSource(context);
@@ -919,7 +925,8 @@ export function buildEditorExtensions(lang: EditorLanguage = "html", extraTempla
 		dropCursor(),
 		EditorState.allowMultipleSelections.of(true),
 		indentOnInput(),
-		indentUnit.of("    "),
+		indentUnit.of("  "),
+		EditorState.tabSize.of(2),
 		syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 		EditorView.lineWrapping,
 		bracketMatching(),

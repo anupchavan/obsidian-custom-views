@@ -1,4 +1,26 @@
 // Obsidian supplies this global helper at runtime.
+const delegatedListeners = new WeakMap<HTMLElement, { type: string; selector: string; listener: (this: HTMLElement, event: never, target: HTMLElement) => unknown; callback: EventListener }[]>();
+HTMLElement.prototype.on = function(type, selector, listener, options) {
+	const callback: EventListener = event => {
+		const target = event.target as Element | null;
+		const match = target?.closest(selector) as HTMLElement | null;
+		if (match && this.contains(match)) listener.call(match, event as never, match);
+	};
+	const entries = delegatedListeners.get(this) ?? [];
+	entries.push({ type, selector, listener, callback });
+	delegatedListeners.set(this, entries);
+	this.addEventListener(type, callback, options);
+};
+HTMLElement.prototype.off = function(type, selector, listener, options) {
+	const entries = delegatedListeners.get(this) ?? [];
+	for (const entry of entries) {
+		if (entry.type === type && entry.selector === selector && entry.listener === listener) {
+			this.removeEventListener(type, entry.callback, options);
+		}
+	}
+	delegatedListeners.set(this, entries.filter(entry => entry.type !== type || entry.selector !== selector || entry.listener !== listener));
+};
+
 globalThis.createEl = (tag, options, callback) => {
 	const element = window.document.createElement(tag);
 	if (typeof options === "string") element.className = options;

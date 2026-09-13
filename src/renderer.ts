@@ -1,3 +1,4 @@
+import { scopeStyleElements } from "./scoped-styles";
 import { createDetachedEl } from "./dom";
 import { TemplateDependencies, recordLinkDependency } from "./template-dependencies";
 import { App, TFile, MarkdownRenderer, Component } from "obsidian";
@@ -375,6 +376,7 @@ export async function renderTemplate(
 	sourceContent?: string,
 	basesProvider?: BasesDataProvider,
 	signal?: AbortSignal,
+	beforeScripts?: () => void,
 ) {
 	signal?.throwIfAborted();
 	const dependencies = new TemplateDependencies(app);
@@ -528,6 +530,10 @@ export async function renderTemplate(
 	}
 
 	signal?.throwIfAborted();
+	if (beforeScripts) {
+		if (scopeId) scopeStyleElements(container, scopeId);
+		beforeScripts();
+	}
 	if (allowJavaScript) {
 		const scripts = Array.from(container.querySelectorAll("script"));
 		const hasExecutableInlineScripts = scripts.some(hasExecutableInlineScriptCode);
@@ -613,25 +619,6 @@ function createScriptContext(
 		activeDocument: ownerDocument,
 		activeWindow: ownerDocument.defaultView ?? activeWindow,
 	};
-}
-
-/**
- * Wrap all unscoped <style> elements inside a container with a CSS nesting
- * selector that restricts rules to a specific data-cv-id scope.
- */
-const scopedStyleContents = new WeakMap<HTMLStyleElement, string>();
-
-function scopeStyleElements(container: HTMLElement, scopeId: string) {
-	const styles = container.querySelectorAll("style");
-	for (const style of Array.from(styles)) {
-		const raw = style.textContent;
-		if (raw && raw !== scopedStyleContents.get(style)) {
-			const scoped = `[data-cv-id="${scopeId}"] {\n${raw}\n}`;
-			scopedStyleContents.set(style, scoped);
-			style.textContent = scoped;
-			style.setAttribute("data-cv-scoped", "true");
-		}
-	}
 }
 
 /** Find the first pipe character outside of quotes */

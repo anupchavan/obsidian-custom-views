@@ -1,3 +1,4 @@
+import type { ViewConfig } from "../types";
 /**
  * Tests for renderer.ts — pure utility functions.
  *
@@ -1122,4 +1123,30 @@ describe("initially missing linked notes", () => {
 		await renderTemplate(app, "<p>Independent</p>", file, container, component, false, undefined, undefined, false, "Body");
 		expect(getTemplateDependencies(container)?.has(created)).toBe(false);
 	});
+});
+
+it("keeps live CSS and inline HTML styles updating through repeated edits and reversions", async () => {
+ const { capturePreview, patchPreview } = await import("../view-editor-patch");
+ const app = { metadataCache: { getFileCache: () => null }, vault: { cachedRead: async () => "" } } as unknown as App;
+ const render = async (color: string) => {
+  const container = document.createElement("div");
+  await renderTemplate(app, `<style>p { color: ${color}; }</style><p>${color}</p>`, new TFile(), container, new Component(), false,
+   { id: "test", name: "Test", css: `p { background: ${color}; }` } as ViewConfig, "revert-test", false);
+  return container;
+ };
+ const live = await render("red");
+ let tree = capturePreview(live);
+ const styles = Array.from(live.querySelectorAll("style"));
+ const textNodes = styles.map(style => style.firstChild);
+ for (const color of ["blue", "red", "green", "red"]) {
+  const staged = await render(color);
+  tree = patchPreview(tree, staged);
+  await Promise.resolve(); await Promise.resolve();
+  expect(live.querySelector("p")?.textContent).toBe(color);
+  for (const [index, style] of styles.entries()) {
+   expect(style.textContent).toContain(color);
+   expect(style.textContent?.match(/data-cv-id/g)).toHaveLength(1);
+   expect(style.firstChild).toBe(textNodes[index]);
+  }
+ }
 });

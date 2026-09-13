@@ -1,3 +1,4 @@
+import { registerViewEditor } from "./view-editor";
 import { fitIframeEditor } from "./iframe-editor-layout";
 import { EmbeddedViews } from "./embedded-views";
 import { resolveViewContext } from "./view-context";
@@ -6,12 +7,13 @@ import { createDetachedEl } from "./dom";
 import { loadValidatedSettings } from "./settings-loader";
 import { RenderCoordinator } from "./render-coordinator";
 import { AtomicNavigation } from "./atomic-navigation";
+import { NoteViewMenu } from "./note-view-menu";
 import { getSharedSettingsWriter } from "./settings-writer";
 import { SaveFeedback } from "./save-feedback";
-import { Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
+import { Events, Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLeaf } from "obsidian";
 import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { CustomViewsSettings, CustomViewsSettingTab } from "./settings";
+import { CustomViewsSettings, CustomViewsSettingTab, EditViewModal } from "./settings";
 import { NativeRuleEngine } from "./native-filters/engine";
 import { getTemplateDependencies, renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR } from "./renderer";
 import { createEditableContentExtensions } from "./editable-content";
@@ -101,6 +103,7 @@ export default class CustomViewsPlugin extends Plugin {
 	settings: CustomViewsSettings;
 	nativeRules: NativeRuleEngine;
 	navigation?: AtomicNavigation;
+	private noteViewMenu?: NoteViewMenu;
 	private get settingsWriter() { return getSharedSettingsWriter<CustomViewsSettings>(this.app, settings => this.saveData(settings)); }
 	private saveFeedback = new SaveFeedback(() => this.saveSettings());
 
@@ -129,6 +132,7 @@ export default class CustomViewsPlugin extends Plugin {
 
 	/** Provides Obsidian Bases query results to templates when Bases are referenced. */
 	private basesProvider: EmbeddedBasesProvider | undefined;
+	get editorBasesProvider() { return this.basesProvider; }
 
 	/** Prevents deferred startup work from running after a fast disable/reload. */
 	private unloaded = false;
@@ -208,6 +212,8 @@ export default class CustomViewsPlugin extends Plugin {
 		this.basesProvider = new EmbeddedBasesProvider(this);
 		this.basesProvider.register();
 		this.addSettingTab(new CustomViewsSettingTab(this.app, this));
+		this.noteViewMenu = new NoteViewMenu(this);
+		registerViewEditor(this);
 		this.registerNoteRefreshEvents();
 		this.app.workspace.onLayoutReady(() => {
 			window.setTimeout(() => {
@@ -298,14 +304,13 @@ export default class CustomViewsPlugin extends Plugin {
 			}, 1000));
 		}
 		this.navigation = new AtomicNavigation(this.app, (view, state) => {
-			if (this.unloaded || !this.settings.enabled) return false;
+			if (this.unloaded) return false;
 			if (view.contentEl.querySelector(`:scope > .${CUSTOM_VIEW_CLASS}`)) return true;
 			const file = typeof state.file === "string" ? this.app.vault.getAbstractFileByPath(state.file) : view.file;
 			if (!(file instanceof TFile)) return false;
 			const mode = { ...view.getState(), ...state };
 			if (mode.mode === "source" && (mode.source === true || !this.settings.workInLivePreview)) return false;
-			const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
-			return this.settings.views.some(config => this.nativeRules.matches(config, file, metadata));
+			return !!this.getEffectiveView(view, file);
 		}, async view => {
 			if (view.file) await this._processLeaf(view, view.file);
 		});
@@ -340,8 +345,6 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	private hideStaleActiveOverlay(file: TFile) {
-		if (!this.settings.enabled) return;
-
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView) {
 			this.hideStaleOverlay(activeView, file);
@@ -408,13 +411,6 @@ export default class CustomViewsPlugin extends Plugin {
 	 * anyway (the editor is reparented, not replaced), so we simply skip it.
 	 */
 	private preHideIfMatch(file: TFile) {
-		if (!this.settings.enabled) return;
-		const cache = this.app.metadataCache.getFileCache(file);
-		const matches = this.settings.views.some(v =>
-			this.nativeRules.matches(v, file, cache?.frontmatter)
-		);
-		if (!matches) return;
-
 		// Only use iterateAllLeaves with file matching — getLeaf(false) would hide the
 		// active leaf unconditionally, which sets display:none on .cm-editor and causes
 		// Obsidian to lose the file explorer's has-focus tracking.
@@ -422,7 +418,8 @@ export default class CustomViewsPlugin extends Plugin {
 			if (
 				leaf.view instanceof MarkdownView &&
 				leaf.view.file === file &&
-				leaf.view.getState().mode === "preview"
+				leaf.view.getState().mode === "preview" &&
+				this.getEffectiveView(leaf.view, file)
 			) {
 				leaf.view.contentEl.addClass(HIDE_MARKDOWN_CLASS);
 			}
@@ -480,23 +477,7 @@ export default class CustomViewsPlugin extends Plugin {
 	private async renderLeaf(view: MarkdownView, file: TFile, signal: AbortSignal) {
 		const container = view.contentEl;
 
-		if (!this.settings.enabled) {
-			this.restoreEditableView(view);
-			this.restoreDefaultView(view);
-			this.clearAppliedState(container);
-			return;
-		}
-
-		const cache = this.app.metadataCache.getFileCache(file);
-		let matchedConfig: ViewConfig | null = null;
-
-		for (const viewConfig of this.settings.views) {
-			const isMatch = this.nativeRules.matches(viewConfig, file, cache?.frontmatter);
-			if (isMatch) {
-				matchedConfig = viewConfig;
-				break;
-			}
-		}
+		let matchedConfig = this.getEffectiveView(view, file);
 
 		const stateKey = this.computeStateKey(file, view, matchedConfig);
 		const appliedKey = container.getAttribute("data-cv-state");
@@ -958,10 +939,13 @@ export default class CustomViewsPlugin extends Plugin {
 		if (result.recovered) new Notice("Recovered malformed custom view settings. Invalid views were skipped. The original configuration will be preserved in the settings file on your next save.", 15000);
 	}
 
+	readonly settingsEvents = new Events();
+
 	async saveSettings() {
 		try {
 			await this.settingsWriter.save(this.settings);
 			this.saveFeedback.clear();
+			this.settingsEvents.trigger("changed");
 		} catch (error) {
 			if (!this.unloaded) this.saveFeedback.failed(error);
 			throw error;
@@ -981,6 +965,28 @@ export default class CustomViewsPlugin extends Plugin {
 		});
 		this.embeddedViews?.refresh(true);
 		this.processAllCanvasNodes();
+	}
+
+	findMatchingView(file: TFile, includeDisabled = false): ViewConfig | null {
+		const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		return this.settings.views.find(config => this.nativeRules.matches(
+			includeDisabled ? { ...config, enabled: true } : config, file, metadata
+		)) ?? null;
+	}
+
+	getEffectiveView(view: MarkdownView, file: TFile): ViewConfig | null {
+		const override = this.noteViewMenu?.resolve(view, file);
+		return override !== undefined ? override : this.settings.enabled ? this.findMatchingView(file) : null;
+	}
+
+	refreshTabView(view: MarkdownView): void {
+		this.contentVersions.set(view, (this.contentVersions.get(view) ?? 0) + 1);
+		this.clearAppliedState(view.contentEl);
+		if (view.file) void this._processLeaf(view, view.file);
+	}
+
+	openViewEditor(view: ViewConfig): void {
+		new EditViewModal(this.app, this, view, () => this.refreshAllViews()).open();
 	}
 
 	// ─── Canvas Support ────────────────────────────────────────────────────────

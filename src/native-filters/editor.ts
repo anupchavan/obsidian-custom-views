@@ -5,7 +5,7 @@ import { getNativeBasesApi } from "./api";
 import { toBasesFilter } from "./convert";
 
 /** Own the native widget for exactly the lifetime of its settings modal. */
-export function mountNativeFilters(app: App, host: HTMLElement, view: ViewConfig, save: () => void): () => void {
+export function mountNativeFilters(app: App, host: HTMLElement, view: ViewConfig, save: () => void, popover = false): () => void {
 	let closed = false;
 	let pending = false;
 	let dispose: (() => void) | undefined;
@@ -20,7 +20,7 @@ export function mountNativeFilters(app: App, host: HTMLElement, view: ViewConfig
 				if (closed) return;
 				view.basesFilters = value;
 				save();
-			});
+			}, popover);
 		}).catch(error => {
 			if (closed) return;
 			host.replaceChildren();

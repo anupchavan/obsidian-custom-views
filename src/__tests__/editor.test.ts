@@ -52,8 +52,8 @@ describe("themeConfig", () => {
 		expect(themeConfig.foreground).toBe("var(--text-normal)");
 	});
 
-	it("uses Obsidian --code-keyword variable for keywords", () => {
-		expect(themeConfig.keyword).toBe("var(--code-keyword)");
+	it("uses Obsidian --color-green variable for keywords", () => {
+		expect(themeConfig.keyword).toBe("var(--color-green)");
 	});
 
 	it("uses Obsidian --code-property variable for class", () => {
@@ -86,25 +86,25 @@ describe("themeConfig", () => {
 
 	it("uses matching bracket color from Obsidian variable", () => {
 		expect(themeConfig.matchingBracket).toBe(
-			"var(--background-modifier-accent)"
+			"var(--background-modifier-hover)"
 		);
 	});
 
-	it("uses Obsidian --code-string variable for strings", () => {
-		expect(themeConfig.string).toBe("var(--code-string)");
+	it("uses Obsidian --color-cyan variable for strings", () => {
+		expect(themeConfig.string).toBe("var(--color-cyan)");
 	});
 
-	it("uses Obsidian --code-function variable for functions", () => {
-		expect(themeConfig.function).toBe("var(--code-function)");
+	it("uses Obsidian --color-orange variable for functions", () => {
+		expect(themeConfig.function).toBe("var(--color-orange)");
 	});
 
-	it("uses Obsidian --code-operator variable for operators", () => {
-		expect(themeConfig.operator).toBe("var(--code-operator)");
+	it("uses Obsidian --text-muted variable for operators", () => {
+		expect(themeConfig.operator).toBe("var(--text-muted)");
 	});
 
 	it("uses Obsidian --code-value variable for numbers/constants", () => {
-		expect(themeConfig.number).toBe("var(--code-value)");
-		expect(themeConfig.constant).toBe("var(--code-value)");
+		expect(themeConfig.number).toBe("var(--color-purple)");
+		expect(themeConfig.constant).toBe("var(--color-yellow)");
 	});
 
 	it("uses only Obsidian CSS variables (no hardcoded hex colors for syntax)", () => {
