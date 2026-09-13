@@ -157,7 +157,7 @@ export class EditorWorkbench {
 		if (this.code.parentElement !== this.root) this.root.appendChild(this.code);
 		this.size();
 	}
-	private size() { this.code.style.flex = `${this.state.ratio} 1 0`; this.previewPane.style.flex = `${1-this.state.ratio} 1 0`; }
+	private size() { this.code.style.setProperty("--cv-editor-grow", String(this.state.ratio)); this.previewPane.style.setProperty("--cv-editor-grow", String(1-this.state.ratio)); }
 	private buildEditors() {
 		cancelPanelDrag(this.plugin.app,this);
 		for (const {editor} of this.editors.values()) editor.destroy();
@@ -210,7 +210,7 @@ export class EditorWorkbench {
 		this.sizePanels();
 	}
 	private visibleWeight() { return this.state.visible.reduce((sum,key)=>sum+this.state.weights[key],0) || 1; }
-	private sizePanels() { for (const [key,{element,editor}] of this.editors) {element.style.flex=`${this.state.weights[key] * 100} 1 0`; editor.requestMeasure();} }
+	private sizePanels() { for (const [key,{element,editor}] of this.editors) {element.style.setProperty("--cv-section-grow", String(this.state.weights[key] * 100)); editor.requestMeasure();} }
 	private matches(file:TFile) { return this.plugin.nativeRules.matches({...this.view,enabled:true},file,this.plugin.app.metadataCache.getFileCache(file)?.frontmatter); }
 	private refreshNotes(refreshPicker = true) {
 		if (refreshPicker) this.notePicker?.refresh();
