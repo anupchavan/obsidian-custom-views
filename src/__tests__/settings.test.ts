@@ -1,3 +1,4 @@
+import { createView } from "../new-view";
 /**
  * Tests for src/settings.ts
  *
@@ -231,8 +232,7 @@ describe("stable settings row identity", () => {
 	it("uses unique IDs for views created in the same millisecond", () => {
 		const now = vi.spyOn(Date, "now").mockReturnValue(1234);
 		try {
-			const tab = new CustomViewsSettingTab({} as import("obsidian").App, { unloadSignal: new AbortController().signal } as CustomViewsPlugin);
-			const create = () => (tab as unknown as { createNewView(): ViewConfig }).createNewView();
+			const create = () => createView();
 			expect(create().id).not.toBe(create().id);
 		} finally { now.mockRestore(); }
 	});
@@ -392,5 +392,38 @@ describe("view list search", () => {
 		expect(list.search.match(views[1], "  ")).toBe(true);
 		expect(list.items.map(item => item.name)).toEqual(["Movie cards", "People"]);
 		expect(plugin.settings.views).toEqual(views);
+	});
+});
+
+describe("view info click", () => {
+	it("opens the current view from its info area, excluding controls, cancelled clicks and unloaded tabs", () => {
+		const abort = new AbortController();
+		const views = ["first", "second"].map(id => ({ ...DEFAULT_SETTINGS.views[0], id }));
+		const plugin = { unloadSignal: abort.signal, settings: { ...DEFAULT_SETTINGS, views } } as CustomViewsPlugin;
+		const tab = new CustomViewsSettingTab({} as import("obsidian").App, plugin);
+		const open = vi.fn(); Object.assign(tab, { openEditModal: open });
+		const { rows } = renderedDeletes(tab);
+		for (const { element } of rows) {
+			element.className = "setting-item";
+			element.innerHTML = '<div class="setting-item-info"><span>View</span></div><div class="setting-item-control"><button>Menu</button><input type="checkbox"></div>';
+			tab.containerEl.append(element);
+		}
+		const row = rows[1].element;
+		row.querySelector<HTMLElement>("span")!.click();
+		expect(open).toHaveBeenLastCalledWith(views[1]);
+		open.mockClear();
+		row.querySelector<HTMLElement>("button")!.click();
+		row.querySelector<HTMLElement>("input")!.click();
+		row.click();
+		const cancelled = new MouseEvent("click", { bubbles: true, cancelable: true }); cancelled.preventDefault();
+		row.querySelector("span")!.dispatchEvent(cancelled);
+		expect(open).not.toHaveBeenCalled();
+		views.reverse();
+		row.querySelector<HTMLElement>("span")!.click();
+		expect(open).toHaveBeenLastCalledWith(views[0]);
+		open.mockClear();
+		abort.abort();
+		row.querySelector<HTMLElement>("span")!.click();
+		expect(open).not.toHaveBeenCalled();
 	});
 });

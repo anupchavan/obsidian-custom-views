@@ -18,6 +18,11 @@ type ScriptConstructor = new (contextName: string, body: string) => (context: Cu
 const AsyncFunction = (Object.getPrototypeOf(async function () {}) as { constructor: ScriptConstructor }).constructor;
 
 export async function executeCustomViewJavaScript(code: string, context: CustomViewScriptContext): Promise<void> {
-	const execute = new AsyncFunction("tp", `let tR = ''; await (async function () {\n${code}\n}).call(tp.container);`);
+	// Use the container's realm so an editor preview iframe owns its timers and globals.
+	const realm = context.activeWindow as Window & { Function: FunctionConstructor };
+	const Constructor = realm && realm !== window
+		? (realm.Function("return (async function () {}).constructor") as () => ScriptConstructor)()
+		: AsyncFunction;
+	const execute = new Constructor("tp", `let tR = ''; await (async function () {\n${code}\n}).call(tp.container);`);
 	await execute(context);
 }

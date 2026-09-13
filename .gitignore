@@ -24,3 +24,7 @@ data.json
 
 # Generated test coverage
 /coverage/
+
+# Local deployment paths and rollback copies
+.local-deploy.json
+.local-deploy-backups/

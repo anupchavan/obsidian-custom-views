@@ -24,14 +24,25 @@ export class TFile {
 	stat = { ctime: 0, mtime: 0, size: 0 };
 	parent: { path: string } | null = null;
 }
+export class Events {
+ private handlers=new Map<string,Set<(...args:unknown[])=>void>>();
+ on(name:string,callback:(...args:unknown[])=>void) {const set=this.handlers.get(name)??new Set();set.add(callback);this.handlers.set(name,set);return {off:()=>set.delete(callback)};}
+ trigger(name:string,...args:unknown[]) {for(const callback of this.handlers.get(name)??[])callback(...args);}
+}
 export class Component {
+	private cleanups: (() => void)[] = [];
 	load() { }
 	onload() { }
-	unload() { }
+	unload() { for (const cleanup of this.cleanups.splice(0)) cleanup(); }
 	onunload() { }
 	addChild<T extends Component>(component: T): T { return component; }
 	removeChild<T extends Component>(component: T): T { return component; }
-	register() { }
+	registerEvent(ref:{off:()=>void}) { this.register(()=>ref.off()); }
+	register(cleanup: () => void) { this.cleanups.push(cleanup); }
+	registerDomEvent(el: EventTarget, type: string, callback: EventListener, options?: AddEventListenerOptions) {
+		el.addEventListener(type,callback,options);
+		this.register(()=>el.removeEventListener(type,callback,options));
+	}
 }
 export const MarkdownRenderer = {
 	async render(_app: unknown, markdown: string, el: HTMLElement) {
@@ -39,7 +50,9 @@ export const MarkdownRenderer = {
 	},
 };
 export class MarkdownView { }
-export class PluginSettingTab { }
+export class PluginSettingTab {
+	containerEl = document.createElement("div");
+}
 export class Setting { }
 export class Modal {
 	contentEl = Object.assign(document.createElement("div"), { empty(this: HTMLElement) { this.replaceChildren(); } });
@@ -61,7 +74,23 @@ export class Scope {
 	}
 }
 export class Notice { }
-export class FuzzySuggestModal { }
+export class FuzzySuggestModal<T> extends Modal {
+	scope = new Scope();
+	inputEl = document.createElement("input");
+	getItems(): T[] { return []; }
+	getSuggestions(query: string) { return this.getItems().filter(item => this.getItemText(item).toLowerCase().includes(query.toLowerCase())).map(item => ({ item, match: { score: 0, matches: [] } })); }
+	constructor(public app: App) { super(); }
+	setPlaceholder() { }
+	setInstructions() { }
+	onOpen() { }
+	renderSuggestion(match: { item: T }, el: HTMLElement) { el.textContent = this.getItemText(match.item); }
+	getItemText(_item: T) { return ""; }
+}
+export class ItemView {
+	contentEl = Object.assign(document.createElement("div"), { empty(this: HTMLElement) { this.replaceChildren(); } });
+	constructor(public leaf: WorkspaceLeaf) { }
+	async setState() { }
+}
 export class AbstractInputSuggest {
 	constructor(_app: unknown, _inputEl: unknown) { }
 	limit = 100;

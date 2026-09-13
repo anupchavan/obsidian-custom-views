@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { ViewConfig } from "../types";
 
 // Obsidian's setValue invokes onChange; context switches must not save overrides.
-const controls = vi.hoisted(() => ({ dropdown: undefined as undefined | ((value: string) => void), toggles: [] as Array<(value: boolean) => void> }));
+const controls = vi.hoisted(() => ({ open: undefined as undefined | (() => void), dropdown: undefined as undefined | ((value: string) => void), toggles: [] as Array<(value: boolean) => void> }));
 vi.mock("obsidian", async importOriginal => ({
 	...await importOriginal<typeof import("obsidian")>(),
 	SettingGroup: undefined,
@@ -17,6 +17,10 @@ vi.mock("obsidian", async importOriginal => ({
 			this.controlEl.addClass = (...classes) => this.controlEl.classList.add(...classes);
 		}
 		setHeading() { return this; } setName() { return this; } setDesc() { return this; }
+		addButton(callback: (control: unknown) => void) {
+			const control = { setButtonText: () => control, onClick: (fn: () => void) => { controls.open = fn; return control; } };
+			callback(control); return this;
+		}
 		addDropdown(callback: (control: unknown) => void) {
 			const control = { addOptions: () => control, onChange(fn: (value: string) => void) { controls.dropdown = fn; return control; } };
 			callback(control); return this;
@@ -37,9 +41,12 @@ it("switches contexts without saving, isolates edits, and inherits each language
 	host.createDiv = options => host.createEl("div", options);
 	const config = { template: "Main", css: "body {}", js: "" } as ViewConfig;
 	const save = vi.fn();
-	const editors = mountContextTemplateEditors(host, config, [], true, save);
+	const open = vi.fn();
+	const editors = mountContextTemplateEditors(host, config, [], true, save, open);
 	try {
+		controls.open!(); expect(open).toHaveBeenLastCalledWith("note");
 		controls.dropdown!("popover");
+		controls.open!(); expect(open).toHaveBeenLastCalledWith("popover");
 		expect(save).not.toHaveBeenCalled(); expect(config.contexts).toBeUndefined();
 		expect(editors.templateEditor.state.readOnly).toBe(true);
 		controls.toggles[1](false);

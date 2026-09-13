@@ -24,7 +24,7 @@ export interface NativeController {
 	query: NativeQuery;
 	viewName: string;
 	ctx: unknown;
-	filterMenu: { globalFilterBuilder: NativeBuilder; toolbarItem?: { setOpen(open: boolean): void; scrollEl?: HTMLElement; button?: { containerEl: HTMLElement } } };
+	filterMenu: { globalFilterBuilder: NativeBuilder; toolbarItem?: { setOpen(open: boolean): void; scrollEl?: HTMLElement; button?: { containerEl: HTMLElement; setText?(text: string): void }; menu?: { mobileTitleEl?: HTMLElement } } };
 	buildBasesContext(): unknown;
 	unload(): void;
 }
@@ -43,7 +43,7 @@ interface QueryConstructor { parse(data: unknown): NativeQuery }
 type EmbedFactory = (context: { app: App; containerEl: HTMLElement; sourcePath: string; linktext: string }, file: TFile, subpath: string) => NativeEmbed;
 export interface NativeBasesApi {
 	parse(filters: BasesFilter | null): NativeQuery;
-	createEditor(host: HTMLElement, filters: BasesFilter | null, save: (filters: BasesFilter | null) => void): () => void;
+	createEditor(host: HTMLElement, filters: BasesFilter | null, save: (filters: BasesFilter | null) => void, popover?: boolean): () => void;
 	test(filter: ParsedFilter, file: TFile): boolean;
 }
 
@@ -102,7 +102,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 			const Entry = BasesEntry as unknown as new (context: unknown, file: TFile) => BasesEntry;
 			return filter.test(new Entry({ app, formulas: {}, local: null }, target));
 		},
-		createEditor(parent, filters, save) {
+		createEditor(parent, filters, save, popover = false) {
 			const query = parse(filters);
 			const internalHost = createDetachedEl(parent.ownerDocument, "div");
 			const embed = factory({ app, containerEl: internalHost, sourcePath: "", linktext: "" }, file, "");
@@ -132,11 +132,12 @@ async function discover(app: App): Promise<NativeBasesApi> {
 					controller.ctx = controller.buildBasesContext();
 					save(value);
 				}, query.getViewConfig("Rules"), query.filters);
-				if (Platform.isMobile) {
+				if (Platform.isMobile || popover) {
 					const toolbar = controller.filterMenu.toolbarItem;
 					if (!toolbar?.scrollEl || !toolbar.button?.containerEl) {
 						throw new Error("This Obsidian version does not expose a compatible mobile Bases filter editor.");
 					}
+					if (popover) { toolbar.button.setText?.("Rules"); toolbar.menu?.mobileTitleEl?.setText("Rules"); }
 					// Preserve Bases' native sheet, pickers, focus scope, and dismissal.
 					// Only global rules apply here; there is no second per-Bases-view scope.
 					toolbar.scrollEl.replaceChildren(builder.innerContainerEl);

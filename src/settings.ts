@@ -1,9 +1,11 @@
+import { createView, DEFAULT_RULES } from "./new-view";
+import { openViewEditorTab } from "./view-editor";
 import { confirmDelete } from "./confirm-delete";
 import { nanoid } from "nanoid";
 import { copyViewName, conflictingView } from "./view-name";
 import { getVaultTemplateProperties } from "./template-properties";
 import { mountNativeFilters } from "./native-filters/editor";
-import { App, PluginSettingTab, Setting, Modal, ConfirmationModal, ButtonComponent, TextComponent, Menu, SearchComponent, Scope, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
+import { Notice, App, PluginSettingTab, Setting, Modal, ConfirmationModal, ButtonComponent, TextComponent, Menu, SearchComponent, Scope, ExtraButtonComponent, SettingGroup, SettingDefinitionItem, requireApiVersion } from "obsidian";
 import CustomViewsPlugin from "./main";
 import { ViewConfig, FilterGroup } from "./types";
 import { settingsGroup } from "./settings-layout";
@@ -29,11 +31,7 @@ function javaScriptDescription(): DocumentFragment {
 	});
 }
 
-const DEFAULT_RULES: FilterGroup = {
-	type: "group",
-	operator: "AND",
-	conditions: []
-};
+
 
 
 export interface CustomViewsSettings {
@@ -78,7 +76,20 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: CustomViewsPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
-		plugin.unloadSignal.addEventListener("abort", () => { this.cancelRename?.(); this.deleteConfirmation?.close(); }, { once: true });
+		// Match the installed-plugin list: only the info area opens the editor.
+		const selector = ".setting-item[data-cv-view-id] .setting-item-info";
+		const openView = (event: MouseEvent, info: HTMLElement) => {
+			if (event.defaultPrevented) return;
+			const id = info.closest("[data-cv-view-id]")?.getAttribute("data-cv-view-id");
+			const view = this.plugin.settings.views.find(view => view.id === id);
+			if (view) this.openEditModal(view);
+		};
+		this.containerEl.on("click", selector, openView);
+		plugin.unloadSignal.addEventListener("abort", () => {
+			this.containerEl.off("click", selector, openView);
+			this.cancelRename?.();
+			this.deleteConfirmation?.close();
+		}, { once: true });
 	}
 
 
@@ -239,9 +250,15 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 
 	private addViewActions(setting: Setting, view: ViewConfig) {
 		this.nameRows.set(view.id, setting);
+		setting.settingEl.setAttribute("data-cv-view-id", view.id);
 		setting.addExtraButton(button => button.setIcon("ellipsis").setTooltip("View actions").onClick(() => {
 			const menu = new Menu();
-			menu.addItem(item => item.setTitle("Edit view").setIcon("settings").onClick(() => this.openEditModal(view)));
+			menu.addItem(item => item.setTitle("Edit view").setIcon("square-pen").onClick(() => this.openEditModal(view)));
+			menu.addItem(item => item.setTitle("Open view editor").setIcon("panels-top-left").onClick(() => {
+				if (this.plugin.unloadSignal.aborted) return;
+				(this.app as App & { setting: { close(): void } }).setting.close();
+				void openViewEditorTab(this.plugin, view).catch(() => new Notice("Could not open view editor."));
+			}));
 			menu.addItem(item => item.setTitle("Rename view").setIcon("text-cursor-input").onClick(() => this.beginRename(setting, view)));
 			menu.addItem(item => item.setTitle("Duplicate view").setIcon("copy").onClick(() => { void this.duplicateView(view).catch(() => {}); }));
 			menu.addSeparator();
@@ -282,17 +299,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		await this.plugin.saveSettings();
 	}
 
-	private createNewView(): ViewConfig {
-		return {
-			id: nanoid(),
-			name: "New View",
-			rules: JSON.parse(JSON.stringify(DEFAULT_RULES)) as FilterGroup,
-			template: "<h1>{{file.basename}}</h1>\n{{file.content}}"
-		};
-	}
 
 	private async addNewViewAndEdit() {
-		const newView = this.createNewView();
+		const newView = createView();
 		this.plugin.settings.views.push(newView);
 		this.refreshSettingsTab();
 		this.openEditModal(newView);
@@ -557,7 +566,13 @@ export class EditViewModal extends Modal {
 
 
 		if (!this.plugin.settings.allowJavaScript) contentEl.createEl("p", { text: "JavaScript execution is disabled in the plugin settings." });
-		Object.assign(this, mountContextTemplateEditors(contentEl, this.view, templateVariables, this.plugin.settings.allowJavaScript, autoSave));
+		Object.assign(this, mountContextTemplateEditors(contentEl, this.view, templateVariables, this.plugin.settings.allowJavaScript, autoSave, context => {
+			if (this.closed || this.plugin.unloadSignal.aborted) return;
+			this.close();
+			// Settings.close is the host lifecycle API (internal), including popout settings.
+			(this.app as App & { setting: { close(): void } }).setting.close();
+			void openViewEditorTab(this.plugin, this.view, context).catch(() => new Notice("Could not open view editor."));
+		}));
 	}
 
 	private selectFocusedName(input: HTMLInputElement) {
