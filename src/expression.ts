@@ -126,6 +126,7 @@ enum TokenType {
 	And,
 	Or,
 	Not,
+	Coalesce,
 	Pipe,
 	Regex,
 	EOF,
@@ -141,6 +142,8 @@ interface Token {
 // ---------------------------------------------------------------------------
 // Tokenizer
 // ---------------------------------------------------------------------------
+
+const WORD_OPERATORS = new Map([["and", TokenType.And], ["or", TokenType.Or], ["not", TokenType.Not]]);
 
 export function tokenize(input: string): Token[] {
 	const tokens: Token[] = [];
@@ -218,6 +221,7 @@ export function tokenize(input: string): Token[] {
 			if (two === '>=') { tokens.push({ type: TokenType.Gte, value: '>=', pos: i }); i += 2; continue; }
 			if (two === '&&') { tokens.push({ type: TokenType.And, value: '&&', pos: i }); i += 2; continue; }
 			if (two === '||') { tokens.push({ type: TokenType.Or, value: '||', pos: i }); i += 2; continue; }
+			if (two === '??') { tokens.push({ type: TokenType.Coalesce, value: '??', pos: i }); i += 2; continue; }
 			if (two === '**') { tokens.push({ type: TokenType.Power, value: '**', pos: i }); i += 2; continue; }
 		}
 
@@ -242,7 +246,10 @@ export function tokenize(input: string): Token[] {
 		if (/[a-zA-Z_]/.test(ch)) {
 			const start = i;
 			while (i < input.length && /[a-zA-Z0-9_-]/.test(input[i])) i++;
-			tokens.push({ type: TokenType.Identifier, value: input.slice(start, i), pos: start });
+			const word = input.slice(start, i);
+			// `and` / `or` / `not` are operators, except as a property name after a dot.
+			const keyword = tokens[tokens.length - 1]?.type === TokenType.Dot ? undefined : WORD_OPERATORS.get(word);
+			tokens.push({ type: keyword ?? TokenType.Identifier, value: word, pos: start });
 			continue;
 		}
 
@@ -275,6 +282,7 @@ function canStartRegexLiteral(previous: Token | undefined): boolean {
 		TokenType.And,
 		TokenType.Or,
 		TokenType.Not,
+		TokenType.Coalesce,
 		TokenType.Pipe,
 	].includes(previous.type);
 }
@@ -407,9 +415,20 @@ class Parser {
 		return node;
 	}
 
-	// Expression → Or
+	// Expression → Coalesce
 	private parseExpression(): ASTNode {
-		return this.parseOr();
+		return this.parseCoalesce();
+	}
+
+	// Coalesce → Or (?? Or)*
+	private parseCoalesce(): ASTNode {
+		let left = this.parseOr();
+		while (this.peek().type === TokenType.Coalesce) {
+			this.advance();
+			const right = this.parseOr();
+			left = { type: "binaryOp", op: "??", left, right };
+		}
+		return left;
 	}
 
 	// Or → And (|| And)*
@@ -423,15 +442,24 @@ class Parser {
 		return left;
 	}
 
-	// And → Equality (&& Equality)*
+	// And → Not (&& Not)*
 	private parseAnd(): ASTNode {
-		let left = this.parseEquality();
+		let left = this.parseNot();
 		while (this.peek().type === TokenType.And) {
 			this.advance();
-			const right = this.parseEquality();
+			const right = this.parseNot();
 			left = { type: "binaryOp", op: "&&", left, right };
 		}
 		return left;
+	}
+
+	// Not → `not` Not | Equality. Like Jinja, `not a == b` means `not (a == b)`; `!` stays unary.
+	private parseNot(): ASTNode {
+		if (this.peek().type === TokenType.Not && this.peek().value === "not") {
+			this.advance();
+			return { type: "unaryOp", op: "!", operand: this.parseNot() };
+		}
+		return this.parseEquality();
 	}
 
 	// Equality → Comparison (==|!= Comparison)*
@@ -1461,6 +1489,7 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 			const left = await evaluate(node.left, ctx);
 			if (node.op === "&&") return isTruthy(left) ? evaluate(node.right, ctx) : left;
 			if (node.op === "||") return isTruthy(left) ? left : evaluate(node.right, ctx);
+			if (node.op === "??") return left === null || left === undefined ? evaluate(node.right, ctx) : left;
 			const right = await evaluate(node.right, ctx);
 
 			switch (node.op) {
@@ -1773,8 +1802,8 @@ async function evaluateForList(listExpr: string, ctx: ExprContext): Promise<Expr
 
 /** Process {% if %}...{% elif %}...{% else %}...{% endif %} */
 async function processIfBlocks(template: string, ctx: ExprContext): Promise<string> {
-	// Find innermost {% if %} blocks
-	const ifRegex = /\{%\s*if\s+(.*?)\s*%\}([\s\S]*?)\{%\s*endif\s*%\}/g;
+	// Find innermost {% if %} blocks: the body may not open another if.
+	const ifRegex = /\{%\s*if\s+((?:(?!%\}).)*?)\s*%\}((?:(?!\{%\s*if\s)[\s\S])*?)\{%\s*endif\s*%\}/g;
 	let result = template;
 	let safety = 0;
 
@@ -1900,7 +1929,9 @@ export function isExpressionMode(expr: string): boolean {
 	}
 	// If no parens or pipes, check for operators
 	if (/[+\-*/<>=!&|%]/.test(expr)) return true;
-	return false;
+	// `??` and word operators count only outside string literals.
+	const unquoted = expr.replace(/"[^"]*"|'[^']*'/g, '""');
+	return /\?\?|(?:^|\s)(?:and|or|not)\s/.test(unquoted);
 }
 
 /**
