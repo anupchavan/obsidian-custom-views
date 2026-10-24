@@ -20,11 +20,28 @@ export interface NativeBuilder {
 	root?: { children?: unknown[]; advancedInputEditor?: { destroy(): void } };
 	updateQuery(save: (filters: BasesFilter | null) => void, view: NativeViewConfig, filters?: ParsedFilter): void;
 }
+interface NativeToolbarItem {
+	setOpen(open: boolean): void;
+	scrollEl?: HTMLElement;
+	/** 1.15+ holds the toolbar button here instead of on `button`. */
+	containerEl?: HTMLElement;
+	button?: { containerEl?: HTMLElement; setText?(text: string): void };
+	menu?: { mobileTitleEl?: HTMLElement };
+}
+/** Obsidian 1.15 merged the global and per-view builders into one editor with two sections. */
+interface NativeFilterSection { innerEl: HTMLElement; root?: NativeBuilder["root"] }
+interface NativeFilterMenu {
+	globalFilterBuilder?: NativeBuilder;
+	filterEditor?: { updateQuery(save: (filters: (BasesFilter | null)[]) => void, filters: (ParsedFilter | null)[]): void };
+	baseSection?: NativeFilterSection;
+	createPage?(host: unknown): { containerEl: HTMLElement };
+	toolbarItem?: NativeToolbarItem;
+}
 export interface NativeController {
 	query: NativeQuery;
 	viewName: string;
 	ctx: unknown;
-	filterMenu: { globalFilterBuilder: NativeBuilder; toolbarItem?: { setOpen(open: boolean): void; scrollEl?: HTMLElement; button?: { containerEl: HTMLElement; setText?(text: string): void }; menu?: { mobileTitleEl?: HTMLElement } } };
+	filterMenu: NativeFilterMenu;
 	buildBasesContext(): unknown;
 	unload(): void;
 }
@@ -73,7 +90,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 	const seed = factory({ app, containerEl: host, sourcePath: "", linktext: "" }, file, "");
 	let Query: QueryConstructor;
 	try {
-		if (typeof seed.loadQuery !== "function" || !seed.controller?.filterMenu?.globalFilterBuilder) {
+		if (typeof seed.loadQuery !== "function" || !globalBuilder(seed.controller?.filterMenu)) {
 			throw new Error("This Obsidian version does not expose a compatible Bases filter editor.");
 		}
 		// loadQuery's receiver supplies its data source. This uses the native parser
@@ -112,7 +129,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 				if (disposed) return;
 				disposed = true;
 				cleanup(() => embed.controller?.filterMenu?.toolbarItem?.setOpen(false));
-				cleanup(() => embed.controller?.filterMenu?.toolbarItem?.button?.containerEl.remove());
+				cleanup(() => toolbarEl(embed.controller?.filterMenu?.toolbarItem)?.remove());
 				destroyFormulaEditors(builder?.root);
 				cleanup(() => builder?.innerContainerEl.remove());
 				cleanup(() => embed.unload());
@@ -120,7 +137,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 			};
 			try {
 				const controller = embed.controller;
-				builder = controller?.filterMenu?.globalFilterBuilder;
+				builder = globalBuilder(controller?.filterMenu);
 				if (!builder) throw new Error("This Obsidian version does not expose a compatible Bases filter editor.");
 				query.saveFn = () => {};
 				controller.query = query;
@@ -133,16 +150,28 @@ async function discover(app: App): Promise<NativeBasesApi> {
 					save(value);
 				}, query.getViewConfig("Rules"), query.filters);
 				if (Platform.isMobile || popover) {
-					const toolbar = controller.filterMenu.toolbarItem;
-					if (!toolbar?.scrollEl || !toolbar.button?.containerEl) {
+					const menu = controller.filterMenu;
+					const toolbar = menu.toolbarItem;
+					const buttonEl = toolbarEl(toolbar);
+					if (!toolbar || !buttonEl || (!toolbar.scrollEl && typeof menu.createPage !== "function")) {
 						throw new Error("This Obsidian version does not expose a compatible mobile Bases filter editor.");
 					}
-					if (popover) { toolbar.button.setText?.("Rules"); toolbar.menu?.mobileTitleEl?.setText("Rules"); }
+					if (popover) { toolbar.button?.setText?.("Rules"); toolbar.menu?.mobileTitleEl?.setText("Rules"); }
 					// Preserve Bases' native sheet, pickers, focus scope, and dismissal.
 					// Only global rules apply here; there is no second per-Bases-view scope.
-					toolbar.scrollEl.replaceChildren(builder.innerContainerEl);
+					const rulesEl = builder.innerContainerEl;
+					if (toolbar.scrollEl) toolbar.scrollEl.replaceChildren(rulesEl);
+					else {
+						// 1.15+ builds the menu page on open; show only the global section in it.
+						const createPage = menu.createPage!.bind(menu);
+						menu.createPage = host => {
+							const page = createPage(host);
+							page.containerEl.replaceChildren(rulesEl);
+							return page;
+						};
+					}
 					parent.classList.remove("cv-native-filter-host");
-					parent.replaceChildren(toolbar.button.containerEl);
+					parent.replaceChildren(buttonEl);
 				} else {
 					parent.replaceChildren(builder.innerContainerEl);
 				}
@@ -151,6 +180,25 @@ async function discover(app: App): Promise<NativeBasesApi> {
 				throw error;
 			}
 			return dispose;
+		},
+	};
+}
+
+function toolbarEl(toolbar: NativeToolbarItem | undefined): HTMLElement | undefined {
+	return toolbar?.button?.containerEl ?? toolbar?.containerEl;
+}
+
+/** The global filter builder, in the shape every supported Obsidian version can provide. */
+function globalBuilder(menu: NativeFilterMenu | undefined): NativeBuilder | undefined {
+	if (menu?.globalFilterBuilder) return menu.globalFilterBuilder;
+	const editor = menu?.filterEditor, section = menu?.baseSection;
+	if (!editor || !section?.innerEl) return undefined;
+	return {
+		innerContainerEl: section.innerEl,
+		get root() { return section.root; },
+		updateQuery(save, _view, filters) {
+			// The second section holds per-view filters, which Custom Views does not use.
+			editor.updateQuery(([global]) => save(global ?? null), [filters ?? null, null]);
 		},
 	};
 }

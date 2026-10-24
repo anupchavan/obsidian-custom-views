@@ -330,3 +330,47 @@ describe("legacy filter conversion", () => {
 		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: [expect.stringContaining('note["rating"] >= 3.5')] });
 	});
 });
+
+describe("native Bases integration on Obsidian 1.15+", () => {
+	function setup115() {
+		vi.stubGlobal("activeDocument", window.document);
+		const entries: { filterMenu: { filterEditor: { updateQuery: ReturnType<typeof vi.fn> }; baseSection: { innerEl: HTMLElement; root: { children: unknown[] } }; createPage(host: unknown): { containerEl: HTMLElement }; toolbarItem: { setOpen: ReturnType<typeof vi.fn>; containerEl: HTMLElement; button: { setText(text: string): void } } } }[] = [];
+		const factory = vi.fn(() => {
+			const filterMenu = {
+				filterEditor: { updateQuery: vi.fn() },
+				baseSection: { innerEl: document.createElement("div"), root: { children: [] } },
+				viewSectionEl: document.createElement("div"),
+				createPage(this: { viewSectionEl: HTMLElement }) { const containerEl = document.createElement("div"); containerEl.append(this.viewSectionEl); return { containerEl }; },
+				toolbarItem: { setOpen: vi.fn(), containerEl: document.createElement("div"), button: { setText: vi.fn() } },
+			};
+			entries.push({ filterMenu });
+			return { controller: { filterMenu, buildBasesContext: () => ({}) }, loadQuery: async () => new Query(), unload: vi.fn() };
+		});
+		return { app: { embedRegistry: { embedByExtension: { base: factory } } } as unknown as App, entries };
+	}
+	it("mounts only the global section and saves only global filters", async () => {
+		const s = setup115(); const api = await getNativeBasesApi(s.app);
+		const parent = document.createElement("div"); const save = vi.fn();
+		api.createEditor(parent, "true", save);
+		const menu = s.entries[1].filterMenu;
+		expect(parent.firstChild).toBe(menu.baseSection.innerEl);
+		const [callback, filters] = menu.filterEditor.updateQuery.mock.calls[0] as [(f: (BasesFilter | null)[]) => void, unknown[]];
+		expect(filters).toHaveLength(2); expect(filters[1]).toBeNull();
+		callback([{ and: ["rating > 3"] }, "ignored"]);
+		expect(save).toHaveBeenCalledWith({ and: ["rating > 3"] });
+	});
+	it("shows only the global section in the popover page", async () => {
+		const s = setup115(); const api = await getNativeBasesApi(s.app);
+		const parent = document.createElement("div");
+		const error = vi.spyOn(console, "error");
+		const dispose = api.createEditor(parent, "true", vi.fn(), true);
+		const menu = s.entries[1].filterMenu;
+		expect(parent.firstChild).toBe(menu.toolbarItem.containerEl);
+		const page = menu.createPage({});
+		expect([...page.containerEl.children]).toEqual([menu.baseSection.innerEl]);
+		dispose();
+		expect(menu.toolbarItem.setOpen).toHaveBeenCalledWith(false);
+		expect(parent.children).toHaveLength(0);
+		expect(error).not.toHaveBeenCalled();
+	});
+});
