@@ -41,7 +41,7 @@
         "@typescript-eslint/eslint-plugin": "^8.51.0",
         "@typescript-eslint/parser": "^8.51.0",
         "@typescript-eslint/utils": "^8.51.0",
-        "@vitest/coverage-v8": "^4.1.11",
+        "@vitest/coverage-v8": "^4.1.12",
         "esbuild": "^0.28.1",
         "eslint": "^9.39.4",
         "eslint-plugin-obsidianmd": "^0.4.2",
@@ -51,7 +51,7 @@
         "tslib": "2.4.0",
         "typescript": "^5.9.3",
         "typescript-eslint": "^8.51.0",
-        "vitest": "^4.1.11"
+        "vitest": "^4.1.12"
     },
     "dependencies": {
         "knap": "^0.4.2",
@@ -59,6 +59,9 @@
     },
     "overrides": {
         "@codemirror/state": "$@codemirror/state",
-        "@codemirror/view": "$@codemirror/view"
+        "@codemirror/view": "$@codemirror/view",
+        "eslint-plugin-obsidianmd": {
+            "obsidian": "$obsidian"
+        }
     }
 }
