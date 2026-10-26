@@ -30,7 +30,9 @@
     font-family: var(--font-monospace);
     font-size: var(--font-ui-small);
     font-weight: var(--font-normal);
-    height: 24em;
+    /* Grows with the code up to this height, then scrolls; no empty space under short templates. */
+    height: auto;
+    max-height: 24em;
     outline: none;
     overflow: hidden;
     text-align: left;
@@ -41,7 +43,7 @@
     line-height: var(--line-height-normal);
     overflow: auto;
 }
-.cv-codemirror-container .cm-content { padding: var(--size-4-5) 0 var(--size-4-10); }
+.cv-codemirror-container .cm-content { padding: var(--size-4-5) 0; }
 .cv-codemirror-container .cm-line { padding: 0 var(--size-4-4) 0 var(--size-4-2); }
 .cv-codemirror-container .cm-line span { font-weight: inherit; }
 .cv-codemirror-container .cm-gutters {
@@ -509,8 +511,7 @@
    the range underlined, and a banner at the line's end carries the message; clicking it opens
    the full messages and hints in a popover over the code. Problems with no place in the code are listed under
    the editor instead, never more than about half of a short editor, and fold away once fixed. */
-.cv-codemirror-container .cm-editor.cm-editor { container-type: size; }
-/* These editors have a fixed height, so panels never overlap the code; keep them
+/* These editors scroll inside a bounded height, so panels never overlap the code; keep them
    under Obsidian's suggestion popover, which sits at a lower layer than CodeMirror's 300. */
 .cv-codemirror-container .cm-panels { z-index: 1; }
 .cv-diagnostics-pinned { height: var(--cv-diagnostics-height); overflow: hidden; }
@@ -524,7 +525,7 @@
 }
 .cv-diagnostics {
     --cv-diagnostic-indent: calc(var(--icon-s) + var(--size-4-2));
-    max-height: min(10.5em, 45cqh);
+    max-height: 10.5em;
     overflow: auto;
     padding: var(--size-4-2) var(--size-4-3);
     font-family: var(--font-interface);
@@ -637,7 +638,9 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
 .cv-codemirror-container .cm-tooltip.cv-issue-popover {
     width: max-content;
     max-width: min(32em, 90vw);
-    margin-top: var(--size-2-2);
+    max-height: min(20em, 45vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: var(--size-4-2) var(--size-4-3);
     border: var(--border-width) solid var(--background-modifier-border);
     border-radius: var(--radius-m);
@@ -670,7 +673,13 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
     .cv-codemirror-container button.cv-issue-detail-title:hover { text-decoration: underline; text-underline-offset: 2px; }
 }
 .cv-issue-hint { margin-top: var(--size-2-2); color: var(--text-muted); }
-/* In a narrow editor the banner shrinks to its icon, as Xcode's does; the message is a click away. */
-@container (max-width: 480px) {
-    .cv-issue-message { display: none; }
+/* In a narrow editor the banner shrinks to its icon; the message is a click away. */
+.cm-editor[data-cv-narrow] .cv-issue-message { display: none; }
+.cv-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }

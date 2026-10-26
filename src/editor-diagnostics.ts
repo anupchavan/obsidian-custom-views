@@ -193,16 +193,34 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 		},
 	}]));
 
+	// In a narrow editor the banners shrink to their icons. A query on the editor's width
+	// would need CSS containment, and containment clips the popover at the editor's edge.
+	const narrow = ViewPlugin.fromClass(class {
+		constructor(private view: EditorView) { this.measure(); }
+		update(update: ViewUpdate) { if (update.geometryChanged) this.measure(); }
+		measure() {
+			this.view.requestMeasure({
+				key: this,
+				read: view => view.dom.clientWidth > 0 && view.dom.clientWidth <= NARROW_WIDTH,
+				write: (isNarrow, view) => view.dom.toggleAttribute("data-cv-narrow", isNarrow),
+			});
+		}
+	});
+
 	return [
 		field,
 		scheduler,
 		inline,
+		narrow,
 		popoverTooltip,
 		dismiss,
 		escape,
 		showPanel.compute([field], state => state.field(field).open ? createPanel : null),
 	];
 }
+
+/** Editors at most this wide show banners as icons only. */
+const NARROW_WIDTH = 480;
 
 const ICONS = { error: "circle-alert", warning: "triangle-alert" } as const;
 
@@ -230,9 +248,6 @@ class IssueBanner extends WidgetType {
 		banner.className = `cv-issue-banner is-${this.severity}`;
 		banner.setAttribute("aria-expanded", String(this.open));
 		banner.dataset.line = String(this.lineFrom);
-		const plain = this.issues.map(issue => issue.message.replace(/`/g, "")).join("\n");
-		banner.setAttribute("aria-label", `${plain}. ${this.open ? "Hide" : "Show"} details.`);
-		banner.title = plain;
 		banner.append(icon(doc, this.severity));
 		const message = banner.appendChild(createDetachedEl(doc, "span"));
 		message.className = "cv-issue-message";
@@ -267,8 +282,6 @@ function issuePopover(view: EditorView, issues: TemplateDiagnostic[], lineFrom: 
 		const title = text.appendChild(createDetachedEl(doc, "button"));
 		title.type = "button";
 		title.className = "cv-issue-detail-title";
-		const line = view.state.doc.lineAt(Math.min(issue.from!, view.state.doc.length));
-		title.setAttribute("aria-label", `Column ${issue.from! - line.from + 1}: ${issue.message.replace(/`/g, "")}. Select it.`);
 		appendCode(title, issue.message);
 		title.addEventListener("click", () => {
 			const from = Math.min(issue.from!, view.state.doc.length);
@@ -284,6 +297,8 @@ function issuePopover(view: EditorView, issues: TemplateDiagnostic[], lineFrom: 
 	}
 	return {
 		dom,
+		// Opens below the banner, or above it when there isn't room below.
+		offset: { x: 0, y: 4 },
 		getCoords: () => {
 			const banner = view.contentDOM.querySelector(`.cv-issue-banner[data-line="${lineFrom}"]`);
 			if (!banner) return view.coordsAtPos(lineFrom) ?? { left: 0, right: 0, top: 0, bottom: 0 };

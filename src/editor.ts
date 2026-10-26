@@ -22,9 +22,11 @@ import {
 	EditorView,
 	lineNumbers,
 	rectangularSelection,
+	ViewPlugin,
 	ViewUpdate,
 } from "@codemirror/view";
 import type { KeyBinding } from "@codemirror/view";
+import { createDetachedEl } from "./dom";
 import { Extension, EditorState, Transaction } from "@codemirror/state";
 import {
 	LanguageSupport,
@@ -992,13 +994,34 @@ export function createTemplateEditor(
 	return new EditorView({ root: options.root, state: createTemplateEditorState(options) });
 }
 
+let labelCount = 0;
+
+/**
+ * Names the editing surface for screen readers. The name lives in a hidden
+ * element rather than `aria-label`, which Obsidian also shows as a hover tooltip.
+ */
+function hiddenLabel(text: string): Extension {
+	const id = `cv-editor-label-${++labelCount}`;
+	return [
+		EditorView.contentAttributes.of({ "aria-labelledby": id }),
+		ViewPlugin.define(view => {
+			const label = createDetachedEl(view.dom.ownerDocument, "span");
+			label.id = id;
+			label.className = "cv-visually-hidden";
+			label.textContent = text;
+			view.dom.appendChild(label);
+			return { destroy: () => label.remove() };
+		}),
+	];
+}
+
 /** A fresh state keeps undo history isolated when an editor switches templates. */
 export function createTemplateEditorState(options: TemplateEditorOptions): EditorState {
 	const language = options.language ?? "html";
 	const labels: Record<EditorLanguage, string> = { html: "HTML template", css: "CSS styles", javascript: "JavaScript code" };
 	const extensions: Extension[] = [
 		...buildEditorExtensions(language, options.templateVariables ?? []),
-		EditorView.contentAttributes.of({ "aria-label": labels[language] }),
+		hiddenLabel(labels[language]),
 	];
 
 	if (options.onChange) {
