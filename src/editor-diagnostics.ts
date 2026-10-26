@@ -8,8 +8,11 @@ import type { ScriptErrorSource } from "./renderer";
 /** Problems found while the preview ran this editor's code, such as a thrown error. */
 export const setRuntimeDiagnostics = StateEffect.define<TemplateDiagnostic[]>();
 const setStaticDiagnostics = StateEffect.define<TemplateDiagnostic[]>();
+/** Sent once the list has finished collapsing after the last problem was fixed. */
+const closeList = StateEffect.define<null>();
 
-interface DiagnosticState { found: TemplateDiagnostic[]; runtime: TemplateDiagnostic[] }
+/** `open` outlives the last problem by one collapse animation. */
+interface DiagnosticState { found: TemplateDiagnostic[]; runtime: TemplateDiagnostic[]; open: boolean }
 
 /** New problems wait for a pause in typing; fixes clear at once. */
 export const NEW_PROBLEM_DELAY = 700;
@@ -37,9 +40,12 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 		}
 	};
 	const field = StateField.define<DiagnosticState>({
-		create: state => ({ found: run(state.doc), runtime: [] }),
+		create: state => {
+			const found = run(state.doc);
+			return { found, runtime: [], open: found.length > 0 };
+		},
 		update(value, transaction) {
-			let { found, runtime } = value;
+			let { found, runtime, open } = value;
 			if (transaction.docChanged) {
 				found = found.map(diagnostic => mapDiagnostic(diagnostic, transaction.changes));
 				runtime = runtime.map(diagnostic => mapDiagnostic(diagnostic, transaction.changes));
@@ -47,8 +53,10 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 			for (const effect of transaction.effects) {
 				if (effect.is(setStaticDiagnostics)) found = effect.value;
 				if (effect.is(setRuntimeDiagnostics)) runtime = effect.value;
+				if (effect.is(closeList)) open = false;
 			}
-			return found === value.found && runtime === value.runtime ? value : { found, runtime };
+			if (found.length || runtime.length) open = true;
+			return found === value.found && runtime === value.runtime && open === value.open ? value : { found, runtime, open };
 		},
 	});
 	const all = (state: EditorState) => {
@@ -93,22 +101,104 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 		dom.className = "cv-diagnostics";
 		dom.setAttribute("role", "status");
 		let shown: readonly TemplateDiagnostic[] = [];
+		const collapse = new Collapse(view, dom);
 		const render = (state: EditorState) => {
 			const list = all(state);
 			if (list === shown) return;
 			shown = list;
+			// The last problem was fixed: keep showing it while the list folds away.
+			if (!list.length) { collapse.start(); return; }
+			collapse.cancel();
 			renderDiagnostics(dom, view, list);
+			keepCaretVisible(view, dom);
 		};
 		render(view.state);
-		return { dom, update: update => render(update.state) };
+		return {
+			dom,
+			mount: () => keepCaretVisible(view, dom),
+			update: update => render(update.state),
+			destroy: () => collapse.cancel(),
+		};
 	};
 
 	return [
 		field,
 		scheduler,
 		underlines,
-		showPanel.compute([field], state => all(state).length ? createPanel : null),
+		showPanel.compute([field], state => state.field(field).open ? createPanel : null),
 	];
+}
+
+/** Room left between the caret and the list, so the line being typed never touches it. */
+const CARET_MARGIN = 8;
+
+/**
+ * The list takes its height from the code above it. When that would cover the
+ * line being typed, scroll just enough to keep it in sight. A caret that was
+ * already out of view (the person scrolled away) stays where it is.
+ */
+function keepCaretVisible(view: EditorView, list: HTMLElement) {
+	view.requestMeasure({
+		key: keepCaretVisible,
+		read() {
+			if (!view.hasFocus) return 0;
+			const caret = view.coordsAtPos(view.state.selection.main.head);
+			if (!caret) return 0;
+			const bottom = view.scrollDOM.getBoundingClientRect().bottom;
+			const covered = caret.bottom + CARET_MARGIN - bottom;
+			return covered > 0 && caret.top < bottom + list.offsetHeight ? covered : 0;
+		},
+		write(covered) {
+			if (covered > 0) view.scrollDOM.scrollTop += covered;
+		},
+	});
+}
+
+/** How long the list takes to fold away. Matches the transition in styles.css. */
+export const COLLAPSE_MS = 160;
+
+/**
+ * Folds the list away instead of removing it in one frame, so the code below
+ * slides back into place rather than jumping.
+ */
+class Collapse {
+	private timer?: number;
+	constructor(private view: EditorView, private dom: HTMLElement) {}
+
+	/** The panel's frame: its own box, or the shared container when it is alone there. */
+	private get target() {
+		const parent = this.dom.parentElement;
+		return parent?.childElementCount === 1 ? parent : this.dom;
+	}
+
+	start() {
+		if (this.timer !== undefined) return;
+		const win = this.view.dom.ownerDocument.defaultView ?? window;
+		const finish = () => {
+			this.timer = undefined;
+			this.view.dispatch({ effects: closeList.of(null) });
+		};
+		if (win.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+			this.timer = win.setTimeout(finish, 0);
+			return;
+		}
+		const target = this.target;
+		// Pin the current height, then let the transition take it to zero.
+		target.style.setProperty("--cv-diagnostics-height", `${target.offsetHeight}px`);
+		target.classList.add("cv-diagnostics-pinned");
+		void target.offsetHeight;
+		target.classList.add("cv-diagnostics-collapsing");
+		this.timer = win.setTimeout(finish, COLLAPSE_MS);
+	}
+
+	cancel() {
+		if (this.timer === undefined) return;
+		(this.view.dom.ownerDocument.defaultView ?? window).clearTimeout(this.timer);
+		this.timer = undefined;
+		const target = this.target;
+		target.classList.remove("cv-diagnostics-pinned", "cv-diagnostics-collapsing");
+		target.style.removeProperty("--cv-diagnostics-height");
+	}
 }
 
 // ---------------------------------------------------------------------------

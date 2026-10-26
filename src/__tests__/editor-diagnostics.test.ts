@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
-import { codeFrame, NEW_PROBLEM_DELAY, scriptErrorDiagnostic, setRuntimeDiagnostics } from "../editor-diagnostics";
+import { codeFrame, COLLAPSE_MS, NEW_PROBLEM_DELAY, scriptErrorDiagnostic, setRuntimeDiagnostics } from "../editor-diagnostics";
 import { analyzeEditorSource, createTemplateEditor } from "../editor";
 
 const views: EditorView[] = [];
@@ -50,6 +50,10 @@ describe("diagnostics panel", () => {
 		const view = editor("{{ cover | imag }}");
 		type(view, 15, 15, "e");
 		vi.advanceTimersByTime(0);
+		expect(view.dom.querySelector(".cv-diagnostic-mark")).toBeNull();
+		// The list folds away instead of vanishing, so the code doesn't jump.
+		expect(view.dom.querySelector(".cv-diagnostics-collapsing")).not.toBeNull();
+		vi.advanceTimersByTime(COLLAPSE_MS);
 		expect(view.dom.querySelector(".cv-diagnostics")).toBeNull();
 
 		type(view, 3, 8, "covr");
@@ -59,13 +63,26 @@ describe("diagnostics panel", () => {
 		expect(titles(view)).toEqual(["Line 1, column 4: No note has a property named covr"]);
 	});
 
+	it("keeps the list open when a new problem arrives while it folds away", () => {
+		vi.useFakeTimers();
+		const view = editor("{{ cover | imag }}");
+		type(view, 15, 15, "e");
+		vi.advanceTimersByTime(0);
+		type(view, 3, 8, "covr");
+		vi.advanceTimersByTime(NEW_PROBLEM_DELAY);
+		expect(view.dom.querySelector(".cv-diagnostics-collapsing")).toBeNull();
+		expect(titles(view)).toEqual(["Line 1, column 4: No note has a property named covr"]);
+	});
+
 	it("keeps runtime errors on the code until replaced", () => {
+		vi.useFakeTimers();
 		const view = editor("const a = 1;\nnull.foo;", "javascript");
 		view.dispatch({ effects: setRuntimeDiagnostics.of([{ from: 13, to: 17, severity: "error", message: "TypeError: boom", hint: "Thrown when the preview ran this on Dune." }]) });
 		expect(titles(view)).toEqual(["Line 2, column 1: TypeError: boom"]);
 		type(view, 0, 0, "\n");
 		expect(titles(view)).toEqual(["Line 3, column 1: TypeError: boom"]);
 		view.dispatch({ effects: setRuntimeDiagnostics.of([]) });
+		vi.advanceTimersByTime(COLLAPSE_MS);
 		expect(view.dom.querySelector(".cv-diagnostics")).toBeNull();
 	});
 

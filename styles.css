@@ -506,9 +506,22 @@
 .is-mobile .workspace-leaf-content .view-content.cv-editor-workbench { padding-bottom: max(0px, var(--view-bottom-spacing, 0px)); }
 
 /* Template diagnostics: listed under the code, after pele.run's playground.
-   Below rather than above, so a problem appearing never moves the line being typed.
-   The list never takes more than about half of a short editor. */
+   Below rather than above, so a problem appearing never pushes the line being typed down;
+   when the list would cover that line, the code scrolls just enough to keep it in sight.
+   The list never takes more than about half of a short editor, and folds away once fixed. */
 .cv-codemirror-container .cm-editor.cm-editor { container-type: size; }
+/* These editors have a fixed height, so panels never overlap the code; keep them
+   under Obsidian's suggestion popover, which sits at a lower layer than CodeMirror's 300. */
+.cv-codemirror-container .cm-panels { z-index: 1; }
+.cv-diagnostics-pinned { height: var(--cv-diagnostics-height); overflow: hidden; }
+.cv-diagnostics-pinned.cv-diagnostics-collapsing {
+    height: 0;
+    padding-block: 0;
+    margin-block: 0 !important;
+    border-color: transparent !important;
+    opacity: 0;
+    transition: height 160ms cubic-bezier(0.2, 0, 0, 1), margin 160ms cubic-bezier(0.2, 0, 0, 1), padding 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms linear;
+}
 .cv-diagnostics {
     --cv-diagnostic-indent: calc(var(--icon-s) + var(--size-4-2));
     max-height: min(10.5em, 45cqh);
