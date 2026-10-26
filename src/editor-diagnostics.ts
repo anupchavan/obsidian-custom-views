@@ -1,5 +1,5 @@
-import { StateEffect, StateField, type ChangeDesc, type EditorState, type Extension, type Text } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, WidgetType, showPanel, type Panel, type ViewUpdate } from "@codemirror/view";
+import { Prec, StateEffect, StateField, type ChangeDesc, type EditorState, type Extension, type Text } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, showPanel, showTooltip, type Panel, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import { setIcon } from "obsidian";
 import { createDetachedEl } from "./dom";
 import { scriptErrorPosition, type TemplateDiagnostic } from "./template-diagnostics";
@@ -10,8 +10,8 @@ export const setRuntimeDiagnostics = StateEffect.define<TemplateDiagnostic[]>();
 const setStaticDiagnostics = StateEffect.define<TemplateDiagnostic[]>();
 /** Sent once the list has finished collapsing after the last problem was fixed. */
 const closeList = StateEffect.define<null>();
-/** Opens or closes the full messages under a line, by the line's start. */
-const toggleIssues = StateEffect.define<number>();
+/** Opens a line's full messages by the line's start, or closes them when given the open line or null. */
+const toggleIssues = StateEffect.define<number | null>();
 
 interface DiagnosticState {
 	found: TemplateDiagnostic[];
@@ -22,8 +22,8 @@ interface DiagnosticState {
 	loose: TemplateDiagnostic[];
 	/** Whether the list of loose problems is showing; it outlives the last one by one collapse. */
 	open: boolean;
-	/** Starts of the lines whose full messages are open. */
-	expanded: readonly number[];
+	/** Start of the line whose full messages are showing in a popover, if any. */
+	popover: number | null;
 }
 
 /** New problems wait for a pause in typing; fixes clear at once. */
@@ -50,8 +50,8 @@ function split(found: TemplateDiagnostic[], runtime: TemplateDiagnostic[], lengt
 /**
  * Xcode-style diagnostics. Each problem sits on its own line: the line is
  * tinted, the exact range is underlined, and a banner at the line's end gives
- * the message. Clicking the banner opens the full message and hint under the
- * line. Nothing takes height from the editor, so the line being typed and
+ * the message. Clicking the banner opens the full messages and hints in a
+ * popover over the code. Nothing takes height from the editor, so the line being typed and
  * autocomplete stay where they are. `analyze` must be cheap and pure; it runs
  * again after each pause in typing.
  */
@@ -67,35 +67,30 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 		create: state => {
 			const found = run(state.doc);
 			const { located, loose } = split(found, [], state.doc.length);
-			return { found, runtime: [], located, loose, open: loose.length > 0, expanded: [] };
+			return { found, runtime: [], located, loose, open: loose.length > 0, popover: null };
 		},
 		update(value, transaction) {
-			let { found, runtime, located, loose, open, expanded } = value;
+			let { found, runtime, located, loose, open, popover } = value;
 			const doc = transaction.state.doc;
 			if (transaction.docChanged) {
 				found = found.map(diagnostic => mapDiagnostic(diagnostic, transaction.changes));
 				runtime = runtime.map(diagnostic => mapDiagnostic(diagnostic, transaction.changes));
-				expanded = expanded.map(pos => doc.lineAt(transaction.changes.mapPos(pos, -1)).from);
+				// Typing means attention has moved back to the code.
+				popover = null;
 			}
 			for (const effect of transaction.effects) {
 				if (effect.is(setStaticDiagnostics)) found = effect.value;
 				if (effect.is(setRuntimeDiagnostics)) runtime = effect.value;
 				if (effect.is(closeList)) open = false;
-				if (effect.is(toggleIssues)) {
-					expanded = expanded.includes(effect.value) ? expanded.filter(pos => pos !== effect.value) : [...expanded, effect.value];
-				}
+				if (effect.is(toggleIssues)) popover = effect.value === popover ? null : effect.value;
 			}
 			if (found !== value.found || runtime !== value.runtime) ({ located, loose } = split(found, runtime, doc.length));
 			if (loose.length) open = true;
 			// A line whose problems are all fixed closes its messages.
-			if (expanded.length) {
-				const lines = new Set(located.map(diagnostic => doc.lineAt(diagnostic.from!).from));
-				const kept = expanded.filter(pos => lines.has(pos));
-				if (kept.length !== expanded.length || transaction.docChanged) expanded = kept;
-			}
-			return found === value.found && runtime === value.runtime && open === value.open && expanded === value.expanded
+			if (popover !== null && !located.some(diagnostic => doc.lineAt(diagnostic.from!).from === popover)) popover = null;
+			return found === value.found && runtime === value.runtime && open === value.open && popover === value.popover
 				? value
-				: { found, runtime, located, loose, open, expanded };
+				: { found, runtime, located, loose, open, popover };
 		},
 	});
 
@@ -120,7 +115,7 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 	});
 
 	const inline = EditorView.decorations.compute([field], state => {
-		const { located, expanded } = state.field(field);
+		const { located, popover } = state.field(field);
 		const ranges = [];
 		const byLine = new Map<number, TemplateDiagnostic[]>();
 		for (const diagnostic of located) {
@@ -132,14 +127,12 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 			if (to > from) ranges.push(Decoration.mark({ class: `cv-diagnostic-mark is-${diagnostic.severity}` }).range(from, to));
 		}
 		for (const [lineFrom, issues] of byLine) {
-			const line = state.doc.lineAt(lineFrom);
 			const severity = issues.some(issue => issue.severity === "error") ? "error" : "warning";
-			const open = expanded.includes(lineFrom);
+			const open = popover === lineFrom;
 			ranges.push(Decoration.line({ class: `cv-issue-line is-${severity}` }).range(lineFrom));
 			// The banner floats right. Placed at the line's start, it shares the first row with
 			// the code, which wraps around it instead of pushing it onto a row of its own.
 			ranges.push(Decoration.widget({ widget: new IssueBanner(issues, severity, lineFrom, open), side: -1 }).range(lineFrom));
-			if (open) ranges.push(Decoration.widget({ widget: new IssueDetails(issues), block: true, side: 2 }).range(line.to));
 		}
 		return Decoration.set(ranges, true);
 	});
@@ -169,15 +162,49 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 		};
 	};
 
+	const popoverTooltip = showTooltip.compute([field], (state): Tooltip | null => {
+		const { located, popover: lineFrom } = state.field(field);
+		if (lineFrom === null) return null;
+		const issues = located.filter(diagnostic => state.doc.lineAt(diagnostic.from!).from === lineFrom);
+		return { pos: lineFrom, above: false, create: view => issuePopover(view, issues, lineFrom) };
+	});
+
+	// The popover closes on a click anywhere else, or on Escape.
+	const dismiss = ViewPlugin.fromClass(class {
+		constructor(private view: EditorView) {
+			view.dom.ownerDocument.addEventListener("mousedown", this.onPointer, true);
+		}
+		onPointer = (event: MouseEvent) => {
+			if (this.view.state.field(field).popover === null) return;
+			const target = event.target as Element | null;
+			if (target?.closest?.(".cv-issue-popover, .cv-issue-banner")) return;
+			this.view.dispatch({ effects: toggleIssues.of(null) });
+		};
+		destroy() {
+			this.view.dom.ownerDocument.removeEventListener("mousedown", this.onPointer, true);
+		}
+	});
+	const escape = Prec.highest(keymap.of([{
+		key: "Escape",
+		run: view => {
+			if (view.state.field(field).popover === null) return false;
+			view.dispatch({ effects: toggleIssues.of(null) });
+			return true;
+		},
+	}]));
+
 	return [
 		field,
 		scheduler,
 		inline,
+		popoverTooltip,
+		dismiss,
+		escape,
 		showPanel.compute([field], state => state.field(field).open ? createPanel : null),
 	];
 }
 
-const ICONS = { error: "octagon-alert", warning: "triangle-alert" } as const;
+const ICONS = { error: "circle-alert", warning: "triangle-alert" } as const;
 
 function icon(doc: Document, severity: TemplateDiagnostic["severity"]) {
 	const el = createDetachedEl(doc, "span");
@@ -202,6 +229,7 @@ class IssueBanner extends WidgetType {
 		banner.type = "button";
 		banner.className = `cv-issue-banner is-${this.severity}`;
 		banner.setAttribute("aria-expanded", String(this.open));
+		banner.dataset.line = String(this.lineFrom);
 		const plain = this.issues.map(issue => issue.message.replace(/`/g, "")).join("\n");
 		banner.setAttribute("aria-label", `${plain}. ${this.open ? "Hide" : "Show"} details.`);
 		banner.title = plain;
@@ -222,50 +250,48 @@ class IssueBanner extends WidgetType {
 	ignoreEvent() { return true; }
 }
 
-/** Every message on the line, with its hint, opened under the line from its banner. */
-class IssueDetails extends WidgetType {
-	constructor(readonly issues: TemplateDiagnostic[]) { super(); }
-
-	eq(other: IssueDetails) {
-		return other.issues.length === this.issues.length
-			&& other.issues.every((issue, i) => issue.message === this.issues[i].message && issue.hint === this.issues[i].hint && issue.from === this.issues[i].from);
-	}
-
-	toDOM(view: EditorView) {
-		const doc = view.dom.ownerDocument;
-		// The outer box takes the spacing as padding, so CodeMirror measures the full height.
-		const outer = createDetachedEl(doc, "div");
-		outer.className = "cv-issue-details-row";
-		const box = outer.appendChild(createDetachedEl(doc, "div"));
-		box.className = "cv-issue-details";
-		for (const issue of this.issues) {
-			const item = box.appendChild(createDetachedEl(doc, "div"));
-			item.className = `cv-issue-detail is-${issue.severity}`;
-			item.append(icon(doc, issue.severity));
-			const text = item.appendChild(createDetachedEl(doc, "div"));
-			text.className = "cv-issue-detail-text";
-			const title = text.appendChild(createDetachedEl(doc, "button"));
-			title.type = "button";
-			title.className = "cv-issue-detail-title";
-			const line = view.state.doc.lineAt(Math.min(issue.from!, view.state.doc.length));
-			title.setAttribute("aria-label", `Column ${issue.from! - line.from + 1}: ${issue.message.replace(/`/g, "")}. Select it.`);
-			appendCode(title, issue.message);
-			title.addEventListener("click", () => {
-				const from = Math.min(issue.from!, view.state.doc.length);
-				const to = Math.min(Math.max(from, issue.to ?? from), view.state.doc.length);
-				view.dispatch({ selection: { anchor: from, head: to } });
-				view.focus();
-			});
-			if (issue.hint) {
-				const hint = text.appendChild(createDetachedEl(doc, "div"));
-				hint.className = "cv-issue-hint";
-				appendCode(hint, issue.hint);
-			}
+/**
+ * Every message on a line, with its hint, in a popover over the code. It hangs
+ * from the banner's right edge, so it reads as the banner opening up.
+ */
+function issuePopover(view: EditorView, issues: TemplateDiagnostic[], lineFrom: number) {
+	const doc = view.dom.ownerDocument;
+	const dom = createDetachedEl(doc, "div");
+	dom.className = "cv-issue-popover";
+	for (const issue of issues) {
+		const item = dom.appendChild(createDetachedEl(doc, "div"));
+		item.className = `cv-issue-detail is-${issue.severity}`;
+		item.append(icon(doc, issue.severity));
+		const text = item.appendChild(createDetachedEl(doc, "div"));
+		text.className = "cv-issue-detail-text";
+		const title = text.appendChild(createDetachedEl(doc, "button"));
+		title.type = "button";
+		title.className = "cv-issue-detail-title";
+		const line = view.state.doc.lineAt(Math.min(issue.from!, view.state.doc.length));
+		title.setAttribute("aria-label", `Column ${issue.from! - line.from + 1}: ${issue.message.replace(/`/g, "")}. Select it.`);
+		appendCode(title, issue.message);
+		title.addEventListener("click", () => {
+			const from = Math.min(issue.from!, view.state.doc.length);
+			const to = Math.min(Math.max(from, issue.to ?? from), view.state.doc.length);
+			view.dispatch({ selection: { anchor: from, head: to }, effects: toggleIssues.of(null) });
+			view.focus();
+		});
+		if (issue.hint) {
+			const hint = text.appendChild(createDetachedEl(doc, "div"));
+			hint.className = "cv-issue-hint";
+			appendCode(hint, issue.hint);
 		}
-		return outer;
 	}
-
-	ignoreEvent() { return true; }
+	return {
+		dom,
+		getCoords: () => {
+			const banner = view.contentDOM.querySelector(`.cv-issue-banner[data-line="${lineFrom}"]`);
+			if (!banner) return view.coordsAtPos(lineFrom) ?? { left: 0, right: 0, top: 0, bottom: 0 };
+			const rect = banner.getBoundingClientRect();
+			const left = Math.max(view.scrollDOM.getBoundingClientRect().left, rect.right - dom.offsetWidth);
+			return { left, right: rect.right, top: rect.top, bottom: rect.bottom };
+		},
+	};
 }
 
 /** Room left between the caret and the list, so the line being typed never touches it. */
