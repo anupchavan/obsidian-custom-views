@@ -34,17 +34,35 @@ describe("inline diagnostics", () => {
 		expect(view.dom.querySelector(".cv-diagnostics")).toBeNull();
 	});
 
-	it("counts several problems on one line and opens them all from the banner", () => {
+	it("counts several problems on one line and opens them all in a popover from the banner", () => {
 		const view = editor("{{ covr }} {{ photo | imag }}");
 		const banner = view.dom.querySelector<HTMLButtonElement>(".cv-issue-banner")!;
 		expect(banner.querySelector(".cv-issue-count")!.textContent).toBe("2");
 		expect(banner.getAttribute("aria-expanded")).toBe("false");
 		banner.click();
-		const details = view.dom.querySelectorAll(".cv-issue-details .cv-issue-detail");
+		expect(view.dom.querySelector(".cv-issue-banner")!.getAttribute("aria-expanded")).toBe("true");
+		const details = view.dom.querySelectorAll(".cm-tooltip.cv-issue-popover .cv-issue-detail");
 		expect(Array.from(details, item => item.querySelector(".cv-issue-detail-title")!.textContent)).toEqual(["No note has a property named covr", "Unknown filter imag"]);
 		expect(details[1].querySelector(".cv-issue-hint code")!.textContent).toBe("image");
 		view.dom.querySelector<HTMLButtonElement>(".cv-issue-banner")!.click();
-		expect(view.dom.querySelector(".cv-issue-details")).toBeNull();
+		expect(view.dom.querySelector(".cv-issue-popover")).toBeNull();
+	});
+
+	it("closes the popover on a click elsewhere, on Escape and on typing", () => {
+		const view = editor("{{ covr }}\n<p></p>");
+		const open = () => view.dom.querySelector<HTMLButtonElement>(".cv-issue-banner")!.click();
+		const isOpen = () => view.dom.querySelector(".cv-issue-popover") !== null;
+		open();
+		view.dom.querySelector(".cv-issue-popover")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		expect(isOpen()).toBe(true);
+		view.contentDOM.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		expect(isOpen()).toBe(false);
+		open();
+		view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+		expect(isOpen()).toBe(false);
+		open();
+		type(view, 11, 11, "x");
+		expect(isOpen()).toBe(false);
 	});
 
 	it("selects the problem when its message is clicked", () => {
@@ -63,15 +81,14 @@ describe("inline diagnostics", () => {
 		type(view, 15, 15, "e");
 		vi.advanceTimersByTime(0);
 		expect(banners(view)).toEqual([]);
-		expect(view.dom.querySelector(".cv-issue-line, .cv-diagnostic-mark, .cv-issue-details")).toBeNull();
+		expect(view.dom.querySelector(".cv-issue-line, .cv-diagnostic-mark, .cv-issue-popover")).toBeNull();
 
 		type(view, 3, 8, "covr");
 		vi.advanceTimersByTime(NEW_PROBLEM_DELAY - 1);
 		expect(banners(view)).toEqual([]);
 		vi.advanceTimersByTime(1);
 		expect(banners(view)).toEqual(["No note has a property named covr"]);
-		// A new problem starts closed, even on a line that was open before.
-		expect(view.dom.querySelector(".cv-issue-details")).toBeNull();
+		expect(view.dom.querySelector(".cv-issue-popover")).toBeNull();
 	});
 
 	it("keeps runtime errors on the code until replaced", () => {

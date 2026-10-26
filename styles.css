@@ -507,7 +507,7 @@
 
 /* Template diagnostics, in Xcode's style: a problem lives on its own line. The line is tinted,
    the range underlined, and a banner at the line's end carries the message; clicking it opens
-   the full message and hint under the line. Problems with no place in the code are listed under
+   the full messages and hints in a popover over the code. Problems with no place in the code are listed under
    the editor instead, never more than about half of a short editor, and fold away once fixed. */
 .cv-codemirror-container .cm-editor.cm-editor { container-type: size; }
 /* These editors have a fixed height, so panels never overlap the code; keep them
@@ -627,20 +627,22 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
     background: color-mix(in srgb, var(--cv-issue-tint) 30%, var(--background-primary));
     font-variant-numeric: tabular-nums;
 }
-.cv-issue-banner code, .cv-issue-details code {
+.cv-issue-banner code, .cv-issue-popover code {
     padding: 0 0.2em;
     border-radius: var(--radius-s);
     background: var(--background-modifier-hover);
     font-family: var(--font-monospace);
     font-size: 0.92em;
 }
-.cv-issue-details-row { display: flex; justify-content: flex-end; padding: var(--size-2-1) var(--size-4-4) var(--size-2-3); }
-.cv-issue-details {
-    width: min(36em, 100%);
+.cv-codemirror-container .cm-tooltip.cv-issue-popover {
+    width: max-content;
+    max-width: min(32em, 90vw);
+    margin-top: var(--size-2-2);
     padding: var(--size-4-2) var(--size-4-3);
-    border-radius: var(--radius-s);
-    background: var(--background-secondary);
     border: var(--border-width) solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-primary);
+    box-shadow: var(--shadow-s);
     font-family: var(--font-interface);
     font-size: var(--font-ui-small);
     line-height: var(--line-height-tight);
