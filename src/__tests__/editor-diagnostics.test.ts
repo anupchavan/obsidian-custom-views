@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
-import { codeFrame, COLLAPSE_MS, NEW_PROBLEM_DELAY, scriptErrorDiagnostic, setRuntimeDiagnostics } from "../editor-diagnostics";
+import { codeFrame, COLLAPSE_MS, NEW_PROBLEM_DELAY, popoverGoesAbove, scriptErrorDiagnostic, setRuntimeDiagnostics } from "../editor-diagnostics";
 import { analyzeEditorSource, createTemplateEditor } from "../editor";
 
 const views: EditorView[] = [];
@@ -120,6 +120,20 @@ describe("inline diagnostics", () => {
 		expect(analyzeEditorSource("css", ".a { color red; }", []).map(d => d.message)).toEqual(["Expected `:` after `color`"]);
 		expect(analyzeEditorSource("javascript", "const a = ;", []).map(d => d.message)).toEqual(["Unexpected token ';'"]);
 		expect(analyzeEditorSource("html", ".a { color red; }", [])).toEqual([]);
+	});
+});
+
+describe("popoverGoesAbove", () => {
+	const editor = { top: 0, bottom: 300 };
+	it("opens below when it fits inside the editor there", () => {
+		expect(popoverGoesAbove({ top: 40, bottom: 60 }, editor, 100, 900)).toBe(false);
+	});
+	it("opens above on the last lines, where only the space above fits it", () => {
+		expect(popoverGoesAbove({ top: 260, bottom: 280 }, editor, 100, 900)).toBe(true);
+	});
+	it("takes the side of the window with more room when neither fits", () => {
+		expect(popoverGoesAbove({ top: 140, bottom: 160 }, editor, 200, 900)).toBe(false);
+		expect(popoverGoesAbove({ top: 700, bottom: 720 }, { top: 600, bottom: 800 }, 300, 900)).toBe(true);
 	});
 });
 
