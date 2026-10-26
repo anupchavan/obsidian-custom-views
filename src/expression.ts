@@ -101,7 +101,7 @@ const RENDERABLE_MARKDOWN_RE = /!?\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^)]+\)|!\[[^\]
 // Token types
 // ---------------------------------------------------------------------------
 
-enum TokenType {
+export enum TokenType {
 	Number,
 	String,
 	Identifier,
@@ -132,7 +132,7 @@ enum TokenType {
 	EOF,
 }
 
-interface Token {
+export interface Token {
 	type: TokenType;
 	value: string;
 	pos: number;
@@ -145,7 +145,18 @@ interface Token {
 
 const WORD_OPERATORS = new Map([["and", TokenType.And], ["or", TokenType.Or], ["not", TokenType.Not]]);
 
-export function tokenize(input: string): Token[] {
+/** Input the tokenizer tolerates at render time but an author almost never means. */
+export interface TokenizeIssue { kind: "unterminated-string" | "unknown-character"; pos: number; text: string }
+
+/** A syntax error with the offending token's position, for editor diagnostics. */
+export class ExpressionSyntaxError extends Error {
+	constructor(message: string, readonly token: Token, readonly expected?: TokenType) {
+		super(message);
+		this.name = "ExpressionSyntaxError";
+	}
+}
+
+export function tokenize(input: string, issues?: TokenizeIssue[]): Token[] {
 	const tokens: Token[] = [];
 	let i = 0;
 
@@ -184,6 +195,7 @@ export function tokenize(input: string): Token[] {
 				}
 				i++;
 			}
+			if (i >= input.length) issues?.push({ kind: "unterminated-string", pos: start, text: quote });
 			i++; // closing quote
 			tokens.push({ type: TokenType.String, value: str, pos: start });
 			continue;
@@ -254,6 +266,7 @@ export function tokenize(input: string): Token[] {
 		}
 
 		// Skip unknown characters
+		issues?.push({ kind: "unknown-character", pos: i, text: ch });
 		i++;
 	}
 
@@ -405,13 +418,21 @@ class Parser {
 	private expect(type: TokenType): Token {
 		const tok = this.peek();
 		if (tok.type !== type) {
-			throw new Error(`Expected ${TokenType[type]} but got ${TokenType[tok.type]} ("${tok.value}") at pos ${tok.pos}`);
+			throw new ExpressionSyntaxError(`Expected ${TokenType[type]} but got ${TokenType[tok.type]} ("${tok.value}") at pos ${tok.pos}`, tok, type);
 		}
 		return this.advance();
 	}
 
 	parse(): ASTNode {
 		const node = this.parseExpression();
+		return node;
+	}
+
+	/** Like parse(), but reports tokens left over after the expression. */
+	parseAll(): ASTNode {
+		const node = this.parseExpression();
+		const rest = this.peek();
+		if (rest.type !== TokenType.EOF) throw new ExpressionSyntaxError(`Unexpected token: ${TokenType[rest.type]} ("${rest.value}") at pos ${rest.pos}`, rest, TokenType.EOF);
 		return node;
 	}
 
@@ -638,7 +659,7 @@ class Parser {
 			return { type: "arrayLiteral", elements };
 		}
 
-		throw new Error(`Unexpected token: ${TokenType[tok.type]} ("${tok.value}") at pos ${tok.pos}`);
+		throw new ExpressionSyntaxError(`Unexpected token: ${TokenType[tok.type]} ("${tok.value}") at pos ${tok.pos}`, tok);
 	}
 
 	private parseArgList(): ASTNode[] {
@@ -651,6 +672,11 @@ class Parser {
 		}
 		return args;
 	}
+}
+
+/** Strict, uncached syntax check for editor diagnostics. Throws ExpressionSyntaxError. */
+export function checkExpressionSyntax(input: string): void {
+	new Parser(tokenize(input)).parseAll();
 }
 
 // Templates reuse the same expressions across notes and loop iterations.
@@ -803,7 +829,7 @@ async function readFileContent(app: App, tfile: TFile): Promise<string> {
 
 type GlobalFn = (ctx: ExprContext, args: ExprValue[]) => Promise<ExprValue> | ExprValue;
 
-const globalFunctions: Record<string, GlobalFn> = {
+export const globalFunctions: Record<string, GlobalFn> = {
 	// --- Link / File ---
 	link: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {
 		const target = exprToString(args[0]);
@@ -1267,6 +1293,9 @@ const objectMethods: Record<string, MethodFn> = {
 	isTruthy: (_ctx: ExprContext, obj: ExprValue) => isTruthy(obj),
 	isType: (_ctx: ExprContext, _obj: ExprValue, args: ExprValue[]) => exprToString(args[0]) === "object",
 };
+
+/** Every method name any value type answers to, for editor diagnostics. */
+export const methodNames: ReadonlySet<string> = new Set([stringMethods, numberMethods, listMethods, dateMethods, linkMethods, fileMethods, objectMethods].flatMap(Object.keys));
 
 function hasOwn(object: object, key: PropertyKey): boolean {
 	return Object.prototype.hasOwnProperty.call(object, key) === true;
