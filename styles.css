@@ -504,3 +504,72 @@
 .is-mobile .cv-editor-section-heading.setting-item { cursor: default; touch-action: pan-y; }
 /* Match native views' allowance for the floating mobile navigation and keyboard. */
 .is-mobile .workspace-leaf-content .view-content.cv-editor-workbench { padding-bottom: max(0px, var(--view-bottom-spacing, 0px)); }
+
+/* Template diagnostics: listed under the code, after pele.run's playground.
+   Below rather than above, so a problem appearing never moves the line being typed.
+   The list never takes more than about half of a short editor. */
+.cv-codemirror-container .cm-editor.cm-editor { container-type: size; }
+.cv-diagnostics {
+    --cv-diagnostic-indent: calc(var(--icon-s) + var(--size-4-2));
+    max-height: min(10.5em, 45cqh);
+    overflow: auto;
+    padding: var(--size-4-2) var(--size-4-3);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-small);
+    line-height: var(--line-height-tight);
+    color: var(--text-normal);
+    overflow-wrap: anywhere;
+}
+.cv-diagnostic + .cv-diagnostic { margin-top: var(--size-4-3); }
+.cv-diagnostic-title.cv-diagnostic-title {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: var(--size-4-2);
+    width: 100%;
+    height: auto;
+    padding: var(--size-2-1) 0;
+    border: 0;
+    border-radius: var(--radius-s);
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    white-space: normal;
+}
+button.cv-diagnostic-title { cursor: var(--cursor); }
+@media (hover: hover) {
+    button.cv-diagnostic-title:hover > span:last-child { text-decoration: underline; text-underline-offset: 2px; }
+}
+button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--background-modifier-border-focus); }
+.cv-diagnostic-icon { display: flex; flex: none; padding-top: 0.1em; --icon-size: var(--icon-s); }
+.cv-diagnostic.is-error .cv-diagnostic-icon,
+.cv-diagnostic.is-error .cv-diagnostic-caret { color: var(--text-error); }
+.cv-diagnostic.is-warning .cv-diagnostic-icon,
+.cv-diagnostic.is-warning .cv-diagnostic-caret { color: var(--text-warning); }
+.cv-diagnostic-frame {
+    margin: var(--size-2-2) 0 0 var(--cv-diagnostic-indent);
+    padding: 0;
+    overflow-x: auto;
+    background: none;
+    border: 0;
+    color: var(--text-muted);
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller);
+    line-height: var(--line-height-normal);
+    white-space: pre;
+}
+.cv-diagnostic-hint { margin: var(--size-2-2) 0 0 var(--cv-diagnostic-indent); color: var(--text-muted); }
+.cv-diagnostic-more { margin: var(--size-4-3) 0 0 var(--cv-diagnostic-indent); color: var(--text-muted); }
+.cv-diagnostics code {
+    padding: 0 0.25em;
+    border-radius: var(--radius-s);
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    font-family: var(--font-monospace);
+    font-size: 0.92em;
+}
+.cv-diagnostic-mark.is-error { text-decoration: wavy underline var(--text-error); }
+.cv-diagnostic-mark.is-warning { text-decoration: wavy underline var(--text-warning); }
+.cv-diagnostic-mark { text-decoration-thickness: 1px; text-decoration-skip-ink: none; text-underline-offset: 3px; }

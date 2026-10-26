@@ -10,6 +10,8 @@ import { mountNativeFilters } from "./native-filters/editor";
 import { CODE_LABELS, CODE_SECTIONS, mountCodeButtons, type CodeSection } from "./view-editor-native";
 import { cancelPanelDrag, labelPreviewContexts, panelOrderMenu, reorderHandle, splitter } from "./view-editor-layout";
 import { EditorPreview } from "./view-editor-preview";
+import { scriptErrorDiagnostic, setRuntimeDiagnostics } from "./editor-diagnostics";
+import type { ScriptErrorSource } from "./renderer";
 import type { ViewConfig, ViewContext } from "./types";
 
 export type Dock = "left" | "right" | "top" | "bottom";
@@ -43,6 +45,7 @@ export class EditorWorkbench {
 	private saveTimer?: number;
 	private previewTimer?: number;
 	private runRequested = false;
+	private scriptRun = 0;
 	private closed = false;
 	private note?: TFile;
 	private notePicker?: ReturnType<typeof mountNotePicker>;
@@ -268,6 +271,17 @@ export class EditorWorkbench {
 		try { await this.plugin.saveSettings(); }
 		catch { this.dirty=true; if(!this.closed) new Notice("Could not save. Your edits are still open."); }
 	}
+	/** Errors from the last script run stay on the code until the next run. */
+	private showScriptErrors(errors: { error: unknown; source: ScriptErrorSource }[], note: TFile) {
+		for (const key of ["js", "template"] as const) {
+			const editor = this.editors.get(key)?.editor;
+			if (!editor) continue;
+			const text = editor.state.doc.toString();
+			const list = errors.filter(({ source }) => (source.kind === "view") === (key === "js"))
+				.map(({ error, source }) => scriptErrorDiagnostic(error, source, text, note.basename));
+			editor.dispatch({ effects: setRuntimeDiagnostics.of(list) });
+		}
+	}
 	private requestPreview(run=false) {
 		this.runRequested ||= run;
 		this.host.win.clearTimeout(this.previewTimer);
@@ -275,7 +289,12 @@ export class EditorWorkbench {
 			const run = this.runRequested;
 			this.runRequested = false;
 			if(this.closed || !this.note) return;
-			void this.preview.render(this.note,resolveViewContext(this.view,this.context),run && this.plugin.settings.allowJavaScript,this.context).catch(error=>{if(!this.closed)new Notice(String(error));});
+			const note = this.note, ran = run && this.plugin.settings.allowJavaScript;
+			const generation = ran ? ++this.scriptRun : this.scriptRun;
+			const errors: { error: unknown; source: ScriptErrorSource }[] = [];
+			void this.preview.render(note,resolveViewContext(this.view,this.context),ran,this.context,ran ? (error, source) => errors.push({ error, source }) : undefined)
+				.then(() => { if (run && generation === this.scriptRun && !this.closed) this.showScriptErrors(errors, note); })
+				.catch(error=>{if(!this.closed)new Notice(String(error));});
 		},this.runRequested?0:250);
 	}
 	dispose() {

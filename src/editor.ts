@@ -53,6 +53,8 @@ import {
 } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { lintKeymap } from "@codemirror/lint";
+import { diagnosticsExtension } from "./editor-diagnostics";
+import { analyzeCss, analyzeJavaScript, analyzeTemplate, type TemplateDiagnostic } from "./template-diagnostics";
 import { tags as t } from "@lezer/highlight";
 import { html, autoCloseTags as autoCloseHTMLTags } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
@@ -899,14 +901,24 @@ function getLanguageExtension(lang: EditorLanguage): LanguageSupport {
 	}
 }
 
+/** Template checks for every field, plus the language's own syntax for CSS and JavaScript. */
+export function analyzeEditorSource(lang: EditorLanguage, source: string, properties: readonly string[]): TemplateDiagnostic[] {
+	const found = analyzeTemplate(source, { properties });
+	if (lang === "css") found.push(...analyzeCss(source, cssLanguage.language.parser));
+	if (lang === "javascript") found.push(...analyzeJavaScript(source, jsLanguage.language.parser));
+	return found.sort((a, b) => (a.from ?? -1) - (b.from ?? -1));
+}
+
 export function buildEditorExtensions(lang: EditorLanguage = "html", extraTemplateVars: TemplateVariable[] = []): Extension[] {
 	const templateSource = templateCompletionSource(extraTemplateVars);
+	const properties = extraTemplateVars.map(variable => variable.name);
 	return [
 		lineNumbers(),
 		highlightSpecialChars(),
 		history(),
 		getLanguageExtension(lang),
 		templateHighlighting,
+		diagnosticsExtension(source => analyzeEditorSource(lang, source, properties)),
 		autoCloseTemplateBraces,
 		autocompletion({ ...completionAppearance, override: [context => {
 			const template = templateSource(context);

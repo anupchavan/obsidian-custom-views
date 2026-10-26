@@ -3,7 +3,7 @@ import { mountPreviewSurface } from "./view-editor-surfaces";
 import { capturePreview, patchPreview, type PreviewTree } from "./view-editor-patch";
 import { createDetachedEl } from "./dom";
 import { Component, type App, type TFile, type WorkspaceLeaf } from "obsidian";
-import { renderTemplate } from "./renderer";
+import { renderTemplate, type ScriptErrorHandler } from "./renderer";
 import type { BasesDataProvider } from "./bases/types";
 import type { ViewConfig, ViewContext } from "./types";
 
@@ -20,7 +20,7 @@ class PreviewSession {
 	private surface?: ReturnType<typeof mountPreviewSurface>;
 	private patches: { component: Component; nodes: Node[] }[] = [];
 	constructor(private app: App, private host: HTMLElement, private basesProvider?: BasesDataProvider, private leaf?: WorkspaceLeaf) {}
-	async render(file: TFile, config: ViewConfig, runJavaScript: boolean, context: ViewContext = "note") {
+	async render(file: TFile, config: ViewConfig, runJavaScript: boolean, context: ViewContext = "note", onScriptError?: ScriptErrorHandler) {
 		if (this.frame && this.tree && this.filePath === file.path && this.context === context && !runJavaScript) {
 			await this.update(file, config);
 			return;
@@ -54,7 +54,7 @@ class PreviewSession {
 			if (link) { event.preventDefault(); void this.app.workspace.openLinkText(link.dataset.href ?? link.getAttribute("href") ?? "", file.path, true); }
 		});
 		try {
-			await renderTemplate(this.app, config.template, file, content, component, false, config, "cv-editor-preview", runJavaScript, undefined, this.basesProvider, abort.signal, () => { this.tree = capturePreview(content); });
+			await renderTemplate(this.app, config.template, file, content, component, false, config, "cv-editor-preview", runJavaScript, undefined, this.basesProvider, abort.signal, () => { this.tree = capturePreview(content); }, onScriptError);
 		} catch (error) {
 			if (abort.signal.aborted || generation !== this.generation) return;
 			content.setText(error instanceof Error ? error.message : "Could not render preview.");
@@ -132,7 +132,7 @@ export class EditorPreview {
  private generation = 0;
  constructor(private app: App, private host: HTMLElement, private basesProvider?: BasesDataProvider, private leaf?: WorkspaceLeaf) {}
  get frame() { return this.current?.session.getFrame(); }
- async render(file: TFile, config: ViewConfig, run: boolean, context: ViewContext = "note") {
+ async render(file: TFile, config: ViewConfig, run: boolean, context: ViewContext = "note", onScriptError?: ScriptErrorHandler) {
   const generation = ++this.generation;
   run ||= !!this.pending?.run && this.pending.session.matches(file,context);
   this.cancelImageWait?.();
@@ -144,7 +144,7 @@ export class EditorPreview {
   layer.className = "cv-editor-preview-layer is-pending"; this.host.appendChild(layer);
   const next = this.pending = {session:new PreviewSession(this.app,layer,this.basesProvider,this.leaf),layer,run};
   try {
-   await next.session.render(file,config,run,context);
+   await next.session.render(file,config,run,context,onScriptError);
    if(generation !== this.generation) return;
    await this.readyImages(next.session.getFrame());
    if (generation !== this.generation) return;
