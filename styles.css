@@ -505,10 +505,10 @@
 /* Match native views' allowance for the floating mobile navigation and keyboard. */
 .is-mobile .workspace-leaf-content .view-content.cv-editor-workbench { padding-bottom: max(0px, var(--view-bottom-spacing, 0px)); }
 
-/* Template diagnostics: listed under the code, after pele.run's playground.
-   Below rather than above, so a problem appearing never pushes the line being typed down;
-   when the list would cover that line, the code scrolls just enough to keep it in sight.
-   The list never takes more than about half of a short editor, and folds away once fixed. */
+/* Template diagnostics, in Xcode's style: a problem lives on its own line. The line is tinted,
+   the range underlined, and a banner at the line's end carries the message; clicking it opens
+   the full message and hint under the line. Problems with no place in the code are listed under
+   the editor instead, never more than about half of a short editor, and fold away once fixed. */
 .cv-codemirror-container .cm-editor.cm-editor { container-type: size; }
 /* These editors have a fixed height, so panels never overlap the code; keep them
    under Obsidian's suggestion popover, which sits at a lower layer than CodeMirror's 300. */
@@ -586,3 +586,89 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
 .cv-diagnostic-mark.is-error { text-decoration: wavy underline var(--text-error); }
 .cv-diagnostic-mark.is-warning { text-decoration: wavy underline var(--text-warning); }
 .cv-diagnostic-mark { text-decoration-thickness: 1px; text-decoration-skip-ink: none; text-underline-offset: 3px; }
+
+.cv-issue-line.is-error { background-color: color-mix(in srgb, var(--text-error) 7%, transparent); }
+.cv-issue-line.is-warning { background-color: color-mix(in srgb, var(--text-warning) 7%, transparent); }
+.cv-codemirror-container .cm-line button.cv-issue-banner {
+    --cv-issue-tint: var(--text-error);
+    float: right;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2-2);
+    max-width: min(50%, 36em);
+    height: auto;
+    margin: 0 0 0 var(--size-4-4);
+    padding: 0 var(--size-2-3);
+    border: 0;
+    border-radius: var(--radius-s);
+    background: color-mix(in srgb, var(--cv-issue-tint) 16%, var(--background-primary));
+    box-shadow: none;
+    color: var(--text-normal);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-smaller);
+    line-height: inherit;
+    white-space: nowrap;
+    cursor: var(--cursor);
+}
+.cv-codemirror-container .cm-line button.cv-issue-banner.is-warning { --cv-issue-tint: var(--text-warning); }
+@media (hover: hover) {
+    .cv-codemirror-container .cm-line button.cv-issue-banner:hover { background: color-mix(in srgb, var(--cv-issue-tint) 24%, var(--background-primary)); }
+}
+.cv-codemirror-container .cm-line button.cv-issue-banner[aria-expanded="true"] { background: color-mix(in srgb, var(--cv-issue-tint) 28%, var(--background-primary)); }
+.cv-codemirror-container .cm-line button.cv-issue-banner:focus-visible { box-shadow: 0 0 0 2px var(--background-modifier-border-focus); }
+.cv-issue-message { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cv-issue-icon { display: flex; flex: none; --icon-size: 12px; }
+.is-error > .cv-issue-icon { color: var(--text-error); }
+.is-warning > .cv-issue-icon { color: var(--text-warning); }
+.cv-issue-count {
+    flex: none;
+    padding: 0 var(--size-2-2);
+    border-radius: 1em;
+    background: color-mix(in srgb, var(--cv-issue-tint) 30%, var(--background-primary));
+    font-variant-numeric: tabular-nums;
+}
+.cv-issue-banner code, .cv-issue-details code {
+    padding: 0 0.2em;
+    border-radius: var(--radius-s);
+    background: var(--background-modifier-hover);
+    font-family: var(--font-monospace);
+    font-size: 0.92em;
+}
+.cv-issue-details-row { display: flex; justify-content: flex-end; padding: var(--size-2-1) var(--size-4-4) var(--size-2-3); }
+.cv-issue-details {
+    width: min(36em, 100%);
+    padding: var(--size-4-2) var(--size-4-3);
+    border-radius: var(--radius-s);
+    background: var(--background-secondary);
+    border: var(--border-width) solid var(--background-modifier-border);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-small);
+    line-height: var(--line-height-tight);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.cv-issue-detail { display: flex; align-items: flex-start; gap: var(--size-4-2); }
+.cv-issue-detail > .cv-issue-icon { padding-top: 0.15em; }
+.cv-issue-detail-text { flex: 1; min-width: 0; }
+.cv-issue-detail + .cv-issue-detail { margin-top: var(--size-4-2); }
+.cv-codemirror-container button.cv-issue-detail-title {
+    display: block;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--text-normal);
+    font: inherit;
+    text-align: start;
+    white-space: normal;
+    cursor: var(--cursor);
+}
+@media (hover: hover) {
+    .cv-codemirror-container button.cv-issue-detail-title:hover { text-decoration: underline; text-underline-offset: 2px; }
+}
+.cv-issue-hint { margin-top: var(--size-2-2); color: var(--text-muted); }
+/* In a narrow editor the banner shrinks to its icon, as Xcode's does; the message is a click away. */
+@container (max-width: 480px) {
+    .cv-issue-message { display: none; }
+}
