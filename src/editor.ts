@@ -22,6 +22,7 @@ import {
 	EditorView,
 	lineNumbers,
 	rectangularSelection,
+	tooltips,
 	ViewPlugin,
 	ViewUpdate,
 } from "@codemirror/view";
@@ -994,6 +995,11 @@ export function createTemplateEditor(
 	return new EditorView({ root: options.root, state: createTemplateEditorState(options) });
 }
 
+function tooltipParent(root: Document | ShadowRoot | undefined): HTMLElement {
+	if (!root) return document.body;
+	return "body" in root ? root.body : root.ownerDocument.body;
+}
+
 let labelCount = 0;
 
 /**
@@ -1022,6 +1028,10 @@ export function createTemplateEditorState(options: TemplateEditorOptions): Edito
 	const extensions: Extension[] = [
 		...buildEditorExtensions(language, options.templateVariables ?? []),
 		hiddenLabel(labels[language]),
+		// Popovers and autocomplete go on the page's body. Inside the editor they get
+		// clipped at its edge whenever an ancestor (like a modal) is transformed, which
+		// makes CodeMirror fall back to positioning them inside the editor box.
+		tooltips({ parent: tooltipParent(options.root) }),
 	];
 
 	if (options.onChange) {
