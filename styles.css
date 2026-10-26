@@ -419,6 +419,8 @@
 .cm-tooltip.cv-editor-completions > ul > li[role="option"] {
     font-family: var(--font-monospace);
 }
+/* Tooltips sit on the page's body, so they take the editor's text size explicitly. */
+.cm-tooltip.cv-editor-completions { font-size: var(--font-ui-small); }
 
 .cv-code-setting-control {
     min-width: 0;
@@ -635,7 +637,8 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
     font-family: var(--font-monospace);
     font-size: 0.92em;
 }
-.cv-codemirror-container .cm-tooltip.cv-issue-popover {
+/* Tooltips live on the document body, outside the editor, so a modal can't clip them. */
+.cm-tooltip.cv-issue-popover {
     width: max-content;
     max-width: min(32em, 90vw);
     max-height: min(20em, 45vh);
@@ -656,7 +659,7 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
 .cv-issue-detail > .cv-issue-icon { padding-top: 0.15em; }
 .cv-issue-detail-text { flex: 1; min-width: 0; }
 .cv-issue-detail + .cv-issue-detail { margin-top: var(--size-4-2); }
-.cv-codemirror-container button.cv-issue-detail-title {
+.cv-issue-popover button.cv-issue-detail-title {
     display: block;
     height: auto;
     padding: 0;
@@ -670,7 +673,7 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
     cursor: var(--cursor);
 }
 @media (hover: hover) {
-    .cv-codemirror-container button.cv-issue-detail-title:hover { text-decoration: underline; text-underline-offset: 2px; }
+    .cv-issue-popover button.cv-issue-detail-title:hover { text-decoration: underline; text-underline-offset: 2px; }
 }
 .cv-issue-hint { margin-top: var(--size-2-2); color: var(--text-muted); }
 /* In a narrow editor the banner shrinks to its icon; the message is a click away. */
