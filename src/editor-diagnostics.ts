@@ -1,5 +1,5 @@
 import { StateEffect, StateField, type ChangeDesc, type EditorState, type Extension, type Text } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, showPanel, type Panel, type ViewUpdate } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, showPanel, type Panel, type ViewUpdate } from "@codemirror/view";
 import { setIcon } from "obsidian";
 import { createDetachedEl } from "./dom";
 import { scriptErrorPosition, type TemplateDiagnostic } from "./template-diagnostics";
@@ -10,9 +10,21 @@ export const setRuntimeDiagnostics = StateEffect.define<TemplateDiagnostic[]>();
 const setStaticDiagnostics = StateEffect.define<TemplateDiagnostic[]>();
 /** Sent once the list has finished collapsing after the last problem was fixed. */
 const closeList = StateEffect.define<null>();
+/** Opens or closes the full messages under a line, by the line's start. */
+const toggleIssues = StateEffect.define<number>();
 
-/** `open` outlives the last problem by one collapse animation. */
-interface DiagnosticState { found: TemplateDiagnostic[]; runtime: TemplateDiagnostic[]; open: boolean }
+interface DiagnosticState {
+	found: TemplateDiagnostic[];
+	runtime: TemplateDiagnostic[];
+	/** Problems with a place in the code, in document order. Shown on their line. */
+	located: TemplateDiagnostic[];
+	/** Problems with no place, like an error thrown from somewhere we can't map. Listed under the code. */
+	loose: TemplateDiagnostic[];
+	/** Whether the list of loose problems is showing; it outlives the last one by one collapse. */
+	open: boolean;
+	/** Starts of the lines whose full messages are open. */
+	expanded: readonly number[];
+}
 
 /** New problems wait for a pause in typing; fixes clear at once. */
 export const NEW_PROBLEM_DELAY = 700;
@@ -26,10 +38,22 @@ function mapDiagnostic(diagnostic: TemplateDiagnostic, changes: ChangeDesc): Tem
 const sameProblem = (a: TemplateDiagnostic, b: TemplateDiagnostic) =>
 	a.message === b.message && a.from === b.from && a.to === b.to;
 
+function split(found: TemplateDiagnostic[], runtime: TemplateDiagnostic[], length: number) {
+	const located: TemplateDiagnostic[] = [], loose: TemplateDiagnostic[] = [];
+	for (const diagnostic of [...found, ...runtime]) {
+		(diagnostic.from !== undefined && diagnostic.from <= length ? located : loose).push(diagnostic);
+	}
+	located.sort((a, b) => a.from! - b.from!);
+	return { located, loose };
+}
+
 /**
- * Pele-style diagnostics: a list below the editor (so appearing never moves
- * the text being typed) plus an underline at each location. `analyze` must be
- * cheap and pure; it runs again after each pause in typing.
+ * Xcode-style diagnostics. Each problem sits on its own line: the line is
+ * tinted, the exact range is underlined, and a banner at the line's end gives
+ * the message. Clicking the banner opens the full message and hint under the
+ * line. Nothing takes height from the editor, so the line being typed and
+ * autocomplete stay where they are. `analyze` must be cheap and pure; it runs
+ * again after each pause in typing.
  */
 export function diagnosticsExtension(analyze: (source: string) => TemplateDiagnostic[]): Extension {
 	const run = (doc: Text) => {
@@ -42,27 +66,38 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 	const field = StateField.define<DiagnosticState>({
 		create: state => {
 			const found = run(state.doc);
-			return { found, runtime: [], open: found.length > 0 };
+			const { located, loose } = split(found, [], state.doc.length);
+			return { found, runtime: [], located, loose, open: loose.length > 0, expanded: [] };
 		},
 		update(value, transaction) {
-			let { found, runtime, open } = value;
+			let { found, runtime, located, loose, open, expanded } = value;
+			const doc = transaction.state.doc;
 			if (transaction.docChanged) {
 				found = found.map(diagnostic => mapDiagnostic(diagnostic, transaction.changes));
 				runtime = runtime.map(diagnostic => mapDiagnostic(diagnostic, transaction.changes));
+				expanded = expanded.map(pos => doc.lineAt(transaction.changes.mapPos(pos, -1)).from);
 			}
 			for (const effect of transaction.effects) {
 				if (effect.is(setStaticDiagnostics)) found = effect.value;
 				if (effect.is(setRuntimeDiagnostics)) runtime = effect.value;
 				if (effect.is(closeList)) open = false;
+				if (effect.is(toggleIssues)) {
+					expanded = expanded.includes(effect.value) ? expanded.filter(pos => pos !== effect.value) : [...expanded, effect.value];
+				}
 			}
-			if (found.length || runtime.length) open = true;
-			return found === value.found && runtime === value.runtime && open === value.open ? value : { found, runtime, open };
+			if (found !== value.found || runtime !== value.runtime) ({ located, loose } = split(found, runtime, doc.length));
+			if (loose.length) open = true;
+			// A line whose problems are all fixed closes its messages.
+			if (expanded.length) {
+				const lines = new Set(located.map(diagnostic => doc.lineAt(diagnostic.from!).from));
+				const kept = expanded.filter(pos => lines.has(pos));
+				if (kept.length !== expanded.length || transaction.docChanged) expanded = kept;
+			}
+			return found === value.found && runtime === value.runtime && open === value.open && expanded === value.expanded
+				? value
+				: { found, runtime, located, loose, open, expanded };
 		},
 	});
-	const all = (state: EditorState) => {
-		const { found, runtime } = state.field(field);
-		return runtime.length ? [...found, ...runtime].sort((a, b) => (a.from ?? -1) - (b.from ?? -1)) : found;
-	};
 
 	const scheduler = ViewPlugin.fromClass(class {
 		private timer?: number;
@@ -84,14 +119,27 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 		}
 	});
 
-	const underlines = EditorView.decorations.compute([field], state => {
+	const inline = EditorView.decorations.compute([field], state => {
+		const { located, expanded } = state.field(field);
 		const ranges = [];
-		for (const diagnostic of all(state)) {
-			if (diagnostic.from === undefined) continue;
-			let from = Math.min(diagnostic.from, state.doc.length), to = Math.min(diagnostic.to ?? from, state.doc.length);
+		const byLine = new Map<number, TemplateDiagnostic[]>();
+		for (const diagnostic of located) {
+			let from = diagnostic.from!, to = Math.min(diagnostic.to ?? from, state.doc.length);
+			const line = state.doc.lineAt(from);
+			byLine.set(line.from, [...byLine.get(line.from) ?? [], diagnostic]);
 			// An empty range has nothing to underline; mark the character before it.
 			if (to <= from) { if (from >= state.doc.length) from = Math.max(0, from - 1); to = Math.min(state.doc.length, from + 1); }
 			if (to > from) ranges.push(Decoration.mark({ class: `cv-diagnostic-mark is-${diagnostic.severity}` }).range(from, to));
+		}
+		for (const [lineFrom, issues] of byLine) {
+			const line = state.doc.lineAt(lineFrom);
+			const severity = issues.some(issue => issue.severity === "error") ? "error" : "warning";
+			const open = expanded.includes(lineFrom);
+			ranges.push(Decoration.line({ class: `cv-issue-line is-${severity}` }).range(lineFrom));
+			// The banner floats right. Placed at the line's start, it shares the first row with
+			// the code, which wraps around it instead of pushing it onto a row of its own.
+			ranges.push(Decoration.widget({ widget: new IssueBanner(issues, severity, lineFrom, open), side: -1 }).range(lineFrom));
+			if (open) ranges.push(Decoration.widget({ widget: new IssueDetails(issues), block: true, side: 2 }).range(line.to));
 		}
 		return Decoration.set(ranges, true);
 	});
@@ -103,7 +151,7 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 		let shown: readonly TemplateDiagnostic[] = [];
 		const collapse = new Collapse(view, dom);
 		const render = (state: EditorState) => {
-			const list = all(state);
+			const list = state.field(field).loose;
 			if (list === shown) return;
 			shown = list;
 			// The last problem was fixed: keep showing it while the list folds away.
@@ -124,9 +172,100 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 	return [
 		field,
 		scheduler,
-		underlines,
+		inline,
 		showPanel.compute([field], state => state.field(field).open ? createPanel : null),
 	];
+}
+
+const ICONS = { error: "octagon-alert", warning: "triangle-alert" } as const;
+
+function icon(doc: Document, severity: TemplateDiagnostic["severity"]) {
+	const el = createDetachedEl(doc, "span");
+	el.className = "cv-issue-icon";
+	el.setAttribute("aria-hidden", "true");
+	setIcon(el, ICONS[severity]);
+	return el;
+}
+
+/** The banner at the end of a line: the first message, how many there are, and a way to read them all. */
+class IssueBanner extends WidgetType {
+	constructor(readonly issues: TemplateDiagnostic[], readonly severity: TemplateDiagnostic["severity"], readonly lineFrom: number, readonly open: boolean) { super(); }
+
+	eq(other: IssueBanner) {
+		return other.severity === this.severity && other.open === this.open && other.lineFrom === this.lineFrom
+			&& other.issues.length === this.issues.length && other.issues.every((issue, i) => issue.message === this.issues[i].message);
+	}
+
+	toDOM(view: EditorView) {
+		const doc = view.dom.ownerDocument;
+		const banner = createDetachedEl(doc, "button");
+		banner.type = "button";
+		banner.className = `cv-issue-banner is-${this.severity}`;
+		banner.setAttribute("aria-expanded", String(this.open));
+		const plain = this.issues.map(issue => issue.message.replace(/`/g, "")).join("\n");
+		banner.setAttribute("aria-label", `${plain}. ${this.open ? "Hide" : "Show"} details.`);
+		banner.title = plain;
+		banner.append(icon(doc, this.severity));
+		const message = banner.appendChild(createDetachedEl(doc, "span"));
+		message.className = "cv-issue-message";
+		appendCode(message, this.issues[0].message);
+		if (this.issues.length > 1) {
+			const count = banner.appendChild(createDetachedEl(doc, "span"));
+			count.className = "cv-issue-count";
+			count.textContent = String(this.issues.length);
+		}
+		banner.addEventListener("mousedown", event => event.preventDefault());
+		banner.addEventListener("click", () => view.dispatch({ effects: toggleIssues.of(this.lineFrom) }));
+		return banner;
+	}
+
+	ignoreEvent() { return true; }
+}
+
+/** Every message on the line, with its hint, opened under the line from its banner. */
+class IssueDetails extends WidgetType {
+	constructor(readonly issues: TemplateDiagnostic[]) { super(); }
+
+	eq(other: IssueDetails) {
+		return other.issues.length === this.issues.length
+			&& other.issues.every((issue, i) => issue.message === this.issues[i].message && issue.hint === this.issues[i].hint && issue.from === this.issues[i].from);
+	}
+
+	toDOM(view: EditorView) {
+		const doc = view.dom.ownerDocument;
+		// The outer box takes the spacing as padding, so CodeMirror measures the full height.
+		const outer = createDetachedEl(doc, "div");
+		outer.className = "cv-issue-details-row";
+		const box = outer.appendChild(createDetachedEl(doc, "div"));
+		box.className = "cv-issue-details";
+		for (const issue of this.issues) {
+			const item = box.appendChild(createDetachedEl(doc, "div"));
+			item.className = `cv-issue-detail is-${issue.severity}`;
+			item.append(icon(doc, issue.severity));
+			const text = item.appendChild(createDetachedEl(doc, "div"));
+			text.className = "cv-issue-detail-text";
+			const title = text.appendChild(createDetachedEl(doc, "button"));
+			title.type = "button";
+			title.className = "cv-issue-detail-title";
+			const line = view.state.doc.lineAt(Math.min(issue.from!, view.state.doc.length));
+			title.setAttribute("aria-label", `Column ${issue.from! - line.from + 1}: ${issue.message.replace(/`/g, "")}. Select it.`);
+			appendCode(title, issue.message);
+			title.addEventListener("click", () => {
+				const from = Math.min(issue.from!, view.state.doc.length);
+				const to = Math.min(Math.max(from, issue.to ?? from), view.state.doc.length);
+				view.dispatch({ selection: { anchor: from, head: to } });
+				view.focus();
+			});
+			if (issue.hint) {
+				const hint = text.appendChild(createDetachedEl(doc, "div"));
+				hint.className = "cv-issue-hint";
+				appendCode(hint, issue.hint);
+			}
+		}
+		return outer;
+	}
+
+	ignoreEvent() { return true; }
 }
 
 /** Room left between the caret and the list, so the line being typed never touches it. */
