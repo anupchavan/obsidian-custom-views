@@ -166,7 +166,8 @@ export function diagnosticsExtension(analyze: (source: string) => TemplateDiagno
 		const { located, popover: lineFrom } = state.field(field);
 		if (lineFrom === null) return null;
 		const issues = located.filter(diagnostic => state.doc.lineAt(diagnostic.from!).from === lineFrom);
-		return { pos: lineFrom, above: false, create: view => issuePopover(view, issues, lineFrom) };
+		// The popover picks its own side in getCoords, so CodeMirror must not flip it.
+		return { pos: lineFrom, above: false, strictSide: true, create: view => issuePopover(view, issues, lineFrom) };
 	});
 
 	// The popover closes on a click anywhere else, or on Escape.
@@ -297,16 +298,37 @@ function issuePopover(view: EditorView, issues: TemplateDiagnostic[], lineFrom: 
 	}
 	return {
 		dom,
-		// Opens below the banner, or above it when there isn't room below.
-		offset: { x: 0, y: 4 },
+		offset: { x: 0, y: POPOVER_GAP },
 		getCoords: () => {
 			const banner = view.contentDOM.querySelector(`.cv-issue-banner[data-line="${lineFrom}"]`);
 			if (!banner) return view.coordsAtPos(lineFrom) ?? { left: 0, right: 0, top: 0, bottom: 0 };
 			const rect = banner.getBoundingClientRect();
-			const left = Math.max(view.scrollDOM.getBoundingClientRect().left, rect.right - dom.offsetWidth);
-			return { left, right: rect.right, top: rect.top, bottom: rect.bottom };
+			const editor = view.scrollDOM.getBoundingClientRect();
+			const left = Math.max(editor.left, rect.right - dom.offsetWidth);
+			if (!popoverGoesAbove(rect, editor, dom.offsetHeight, view.dom.ownerDocument.defaultView?.innerHeight ?? 0)) {
+				return { left, right: rect.right, top: rect.top, bottom: rect.bottom };
+			}
+			// CodeMirror always hangs it below these coordinates, so report a point
+			// one popover-height above the banner.
+			const top = rect.top - dom.offsetHeight - 2 * POPOVER_GAP;
+			return { left, right: rect.right, top, bottom: top };
 		},
 	};
+}
+
+/** Space between the banner and its popover. */
+const POPOVER_GAP = 4;
+
+/**
+ * Below the banner when the popover fits inside the editor there, otherwise
+ * above when it fits inside the editor there. When it fits neither way, the
+ * side of the window with more room wins.
+ */
+export function popoverGoesAbove(banner: { top: number; bottom: number }, editor: { top: number; bottom: number }, height: number, windowHeight: number): boolean {
+	const need = height + POPOVER_GAP;
+	if (banner.bottom + need <= editor.bottom) return false;
+	if (banner.top - need >= editor.top) return true;
+	return banner.top > windowHeight - banner.bottom;
 }
 
 /** Room left between the caret and the list, so the line being typed never touches it. */
