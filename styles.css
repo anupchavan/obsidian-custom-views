@@ -174,12 +174,9 @@
     padding: 0;
 }
 
-/* Native Bases supplies the filter rows, pickers, chips, and formula editor. */
-.cv-native-filter-host {
-    padding: var(--size-4-2);
-    border: var(--border-width) solid var(--background-modifier-border);
-    border-radius: var(--radius-m);
-}
+/* Native Bases supplies the filter rows, pickers, chips, and formula editor.
+   The host is a setting-item row for the group's padding and divider, stacked instead of flex. */
+.cv-native-filter-host { display: block; }
 
 .modal.cv-template-modal {
     --dialog-width: calc(var(--setting-group-max-width) + 2 * var(--size-4-4) + 2 * var(--modal-border-width));
@@ -698,10 +695,3 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
     overflow: hidden;
     white-space: nowrap;
 }
-
-/* Match counts: a second line under each view's name, and under the edit modal's Rules heading.
-   The slot always holds a line (a no-break space until counted), so rows never change height. */
-.cv-view-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.cv-view-count[data-cv-tone="warning"] { color: var(--text-warning); }
-.cv-view-count[data-cv-tone="faint"] { color: var(--text-faint); }
-.cv-rules-count { padding: var(--size-4-2) var(--size-4-3) 0; font-size: var(--font-ui-small); }

@@ -120,9 +120,10 @@ export function describeTally(tally: ViewTally, views: readonly ViewConfig[]): C
 /** Write a line into its slot, touching the DOM only when it changed. */
 export function showCountLine(slot: HTMLElement, line: CountLine | undefined): void {
 	const text = line?.text ?? " ";
-	if (slot.textContent !== text) slot.textContent = text;
+	if (slot.textContent !== text) slot.setText(text);
 	const tone = line?.tone ?? "muted";
 	if (slot.dataset.cvTone !== tone) slot.dataset.cvTone = tone;
+	slot.toggleClass("mod-warning", tone === "warning");
 }
 
 export interface CounterHost {
