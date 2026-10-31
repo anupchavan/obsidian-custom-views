@@ -1,44 +1,77 @@
+# Custom Views
 
-Create custom HTML, CSS, and JavaScript views for Obsidian notes based on matching rules.
+Turn structured notes into purpose-built pages. Custom Views renders matching notes with your own HTML, CSS and JavaScript, while the data stays in ordinary Markdown and frontmatter.
 
 ![Custom Views example](https://github.com/user-attachments/assets/f94e92b6-93a0-42eb-a9c7-bad6bc3aa7e2)
 
-Custom Views lets structured notes render as purpose-built pages while keeping the data in normal Markdown files. Use it for movie pages, album pages, catalogs, dashboards, project views, reading lists, and any note type that benefits from a custom layout.
+A movie note can look like a film page, an album like a record sleeve with its tracklist, a recipe like a card. Edit the note as usual, and the view updates with it.
 
-## What it does
+## Install
 
-- Matches notes using file data, tags, folders, and frontmatter properties.
-- Renders matching notes with HTML templates.
-- Supports placeholders, filters, conditionals, loops, and expressions.
-- Can render note content and wikilinks with Obsidian's Markdown renderer.
-- Can query Obsidian Bases from inside a template.
-- Supports scoped CSS and optional JavaScript for trusted templates.
+Search for **Custom Views** in **Settings → Community plugins → Browse**, install it, and enable it.
 
-## Getting started
+To try the latest beta, install [BRAT](https://github.com/TfTHacker/obsidian42-brat) and add `anupchavan/obsidian-custom-views` as a beta plugin.
 
-1. Enable the plugin in **Settings -> Community plugins**.
-2. Enable **Bases** in **Settings → Core plugins**, then open **Settings → Custom Views**.
-3. Add a view and choose its rules using the native Bases filter editor.
-4. Add an HTML template, then optional CSS and JavaScript.
-5. Open a matching note in reading mode or live preview.
+Custom Views uses Obsidian's Bases filters for its rules, so turn on **Bases** in **Settings → Core plugins**.
 
-The first matching view is used, so place more specific views above broader ones. Changes save automatically. If a save fails, a persistent notice offers a retry while your edits remain in memory.
+## Your first view
 
-The Rules editor uses Obsidian’s internal Bases controls, including property pickers, nested groups, and advanced formulas. Enable the Bases core plugin to edit rules; existing rules continue to work without automatic migration.
+1. Open **Settings → Custom Views** and add a view.
+2. Under **Rules**, choose which notes it applies to: a folder, a tag, a property value, or any combination, using the same filter editor as Bases.
+3. Write an HTML template, and optionally CSS and JavaScript.
+4. Open a matching note in reading view or live preview.
 
-## Previews, Canvas, and embedded notes
+The first matching view wins, so put specific views above broad ones. Changes save automatically.
 
-Enable **Work in popover preview**, **Work in canvas**, or **Work in embedded notes** in settings to use matching views outside the main note. Popovers and Canvas preserve Obsidian's reading/live preview controls. With **Editable content in live preview** enabled, `{{file.content}}` contains the native editor; source mode stays native. Full-note previews are supported; heading and block excerpts keep their original content.
+## Templates
 
-In a view's editor, **Template for** selects **Main note**, **Popover preview**, **Canvas**, or **Embedded note** without adding more editor panels. Each context inherits the main HTML, CSS, and JavaScript independently. Turn off **Use main CSS**, for example, to make a compact popover while sharing the same HTML and JavaScript. Overrides replace that language's main value; an empty override intentionally supplies nothing. Turn inheritance back on to discard the override and follow future main-template changes.
+Templates are HTML with placeholders for the note's properties:
 
-Canvas cards keep their rendered view between background checks. Editable note bodies share the template's scrollbar, including Canvas iframe editors. Embeds created inside a custom template stay native to prevent recursive rendering. Older hosts without support for moving iframes without reloading them keep the native Canvas editor. These surfaces use Obsidian's internal Markdown embed integration and may need updates when Obsidian changes it.
+```html
+<div class="movie">
+  <img src="{{poster}}" alt="{{title}}">
+  <h1>{{title}} <span>{{released | date:"YYYY"}}</span></h1>
+
+  {% if rating >= 8 %}<p class="badge">Favourite</p>{% endif %}
+
+  <ul>
+    {% for actor in cast %}<li>{{actor}}</li>{% endfor %}
+  </ul>
+
+  {{file.content}}
+</div>
+```
+
+- **Properties** come from frontmatter, plus built-ins like `file.basename`, `file.folder`, `file.mtime` and `file.content` (the note body, rendered as Markdown).
+- **Linked notes** can be followed through wikilinks. If `director` is `[[Christopher Nolan]]`, then `{{director[0].born}}` reads a property from that note.
+- **Filters** transform values: `upper`, `date`, `join`, `split`, `map`, `unique`, `round`, `markdown`, `wikilink` and many more.
+- **Logic** covers `{% if %}`, `{% for %}` and `{% set %}`, with `and`, `or`, `not`, comparisons and `??` for fallbacks.
+- **Bases** can be queried from inside a template with a `{% base %}` block, so an album view can list every song that links back to it.
+
+CSS is scoped to the view, so it won't leak into the rest of Obsidian.
+
+## View editor
+
+Run **Custom Views: Open view editor** from the command palette, or open it from settings, to edit a view beside a live preview. Pick any matching note to preview against, rearrange or dock the HTML, CSS and JavaScript panels, or pop them out into their own window on desktop.
+
+The editors check your code as you type. Unclosed tags, broken expressions, unknown filters, misspelled property names and JavaScript errors are underlined where they happen, with a message at the end of the line and a hint on how to fix it.
+
+## Beyond the main note
+
+Views can also apply in **popover previews**, **Canvas** cards and **embedded notes**. Turn each on in settings. In a view's editor, **Template for** lets each of these contexts inherit the main template or override its HTML, CSS or JavaScript separately, for example a compact card for hover previews.
+
+With **Editable content in live preview** on, `{{file.content}}` becomes the native editor, so you can write in the note without leaving the view.
+
+From a note's menu you can jump to its view's editor, turn the view off everywhere, or pause it for the current tab.
+
+## JavaScript
+
+Views can run JavaScript when the view renders. Scripts run inside Obsidian with full access to your vault, so only use scripts you wrote or trust. Turn off **Allow JavaScript execution** in settings to disable them entirely.
 
 ## Documentation
 
-The detailed documentation lives in the GitHub Wiki:
+The [wiki](https://github.com/anupchavan/obsidian-custom-views/wiki) covers everything in depth:
 
-- [Wiki home](https://github.com/anupchavan/obsidian-custom-views/wiki)
 - [Quick start](https://github.com/anupchavan/obsidian-custom-views/wiki/Quick-start)
 - [Template syntax](https://github.com/anupchavan/obsidian-custom-views/wiki/Template-syntax)
 - [Filters and functions](https://github.com/anupchavan/obsidian-custom-views/wiki/Filters-and-functions)
@@ -47,27 +80,10 @@ The detailed documentation lives in the GitHub Wiki:
 - [Album view tutorial](https://github.com/anupchavan/obsidian-custom-views/wiki/Album-view-tutorial)
 - [Troubleshooting](https://github.com/anupchavan/obsidian-custom-views/wiki/Troubleshooting)
 
-GitHub stores the wiki as a separate repository named `obsidian-custom-views.wiki.git`; each wiki page is a Markdown file in that repository.
-
-## JavaScript safety
-
-Template JavaScript is powerful and runs inside Obsidian when the view renders. Only enable JavaScript for templates you trust, and avoid pasting scripts from unknown sources.
-
-JavaScript template execution is powered by [`@silentvoid13/rusty_engine`](https://github.com/SilentVoid13/rusty_engine), the WASM engine created for [Templater](https://github.com/SilentVoid13/Templater).
-
-## Development
-
-```bash
-npm install
-npm run dev
-npm run lint
-npm run typecheck
-npm test
-npm run build
-```
-
-Release artifacts are generated at the plugin root for Obsidian: `main.js`, `manifest.json`, and `styles.css`.
-
 ## Contributing
 
-Issues and pull requests are welcome. If you are reporting a rendering problem, include the view rule, template, relevant frontmatter, and any console error.
+Issues and pull requests are welcome. When reporting a rendering problem, include the view's rules, template, the note's frontmatter and any console error. See [CONTRIBUTING.md](CONTRIBUTING.md) to set up a development build.
+
+## License
+
+[MIT](LICENSE)
