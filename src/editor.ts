@@ -22,9 +22,12 @@ import {
 	EditorView,
 	lineNumbers,
 	rectangularSelection,
+	tooltips,
+	ViewPlugin,
 	ViewUpdate,
 } from "@codemirror/view";
 import type { KeyBinding } from "@codemirror/view";
+import { createDetachedEl } from "./dom";
 import { Extension, EditorState, Transaction } from "@codemirror/state";
 import {
 	LanguageSupport,
@@ -53,6 +56,8 @@ import {
 } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { lintKeymap } from "@codemirror/lint";
+import { diagnosticsExtension } from "./editor-diagnostics";
+import { analyzeCss, analyzeJavaScript, analyzeTemplate, type TemplateDiagnostic } from "./template-diagnostics";
 import { tags as t } from "@lezer/highlight";
 import { html, autoCloseTags as autoCloseHTMLTags } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
@@ -899,14 +904,24 @@ function getLanguageExtension(lang: EditorLanguage): LanguageSupport {
 	}
 }
 
+/** Template checks for every field, plus the language's own syntax for CSS and JavaScript. */
+export function analyzeEditorSource(lang: EditorLanguage, source: string, properties: readonly string[]): TemplateDiagnostic[] {
+	const found = analyzeTemplate(source, { properties });
+	if (lang === "css") found.push(...analyzeCss(source, cssLanguage.language.parser));
+	if (lang === "javascript") found.push(...analyzeJavaScript(source, jsLanguage.language.parser));
+	return found.sort((a, b) => (a.from ?? -1) - (b.from ?? -1));
+}
+
 export function buildEditorExtensions(lang: EditorLanguage = "html", extraTemplateVars: TemplateVariable[] = []): Extension[] {
 	const templateSource = templateCompletionSource(extraTemplateVars);
+	const properties = extraTemplateVars.map(variable => variable.name);
 	return [
 		lineNumbers(),
 		highlightSpecialChars(),
 		history(),
 		getLanguageExtension(lang),
 		templateHighlighting,
+		diagnosticsExtension(source => analyzeEditorSource(lang, source, properties)),
 		autoCloseTemplateBraces,
 		autocompletion({ ...completionAppearance, override: [context => {
 			const template = templateSource(context);
@@ -980,13 +995,43 @@ export function createTemplateEditor(
 	return new EditorView({ root: options.root, state: createTemplateEditorState(options) });
 }
 
+function tooltipParent(root: Document | ShadowRoot | undefined): HTMLElement {
+	if (!root) return document.body;
+	return "body" in root ? root.body : root.ownerDocument.body;
+}
+
+let labelCount = 0;
+
+/**
+ * Names the editing surface for screen readers. The name lives in a hidden
+ * element rather than `aria-label`, which Obsidian also shows as a hover tooltip.
+ */
+function hiddenLabel(text: string): Extension {
+	const id = `cv-editor-label-${++labelCount}`;
+	return [
+		EditorView.contentAttributes.of({ "aria-labelledby": id }),
+		ViewPlugin.define(view => {
+			const label = createDetachedEl(view.dom.ownerDocument, "span");
+			label.id = id;
+			label.className = "cv-visually-hidden";
+			label.textContent = text;
+			view.dom.appendChild(label);
+			return { destroy: () => label.remove() };
+		}),
+	];
+}
+
 /** A fresh state keeps undo history isolated when an editor switches templates. */
 export function createTemplateEditorState(options: TemplateEditorOptions): EditorState {
 	const language = options.language ?? "html";
 	const labels: Record<EditorLanguage, string> = { html: "HTML template", css: "CSS styles", javascript: "JavaScript code" };
 	const extensions: Extension[] = [
 		...buildEditorExtensions(language, options.templateVariables ?? []),
-		EditorView.contentAttributes.of({ "aria-label": labels[language] }),
+		hiddenLabel(labels[language]),
+		// Popovers and autocomplete go on the page's body. Inside the editor they get
+		// clipped at its edge whenever an ancestor (like a modal) is transformed, which
+		// makes CodeMirror fall back to positioning them inside the editor box.
+		tooltips({ parent: tooltipParent(options.root) }),
 	];
 
 	if (options.onChange) {

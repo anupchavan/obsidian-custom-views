@@ -30,7 +30,9 @@
     font-family: var(--font-monospace);
     font-size: var(--font-ui-small);
     font-weight: var(--font-normal);
-    height: 24em;
+    /* Grows with the code up to this height, then scrolls; no empty space under short templates. */
+    height: auto;
+    max-height: 24em;
     outline: none;
     overflow: hidden;
     text-align: left;
@@ -41,7 +43,7 @@
     line-height: var(--line-height-normal);
     overflow: auto;
 }
-.cv-codemirror-container .cm-content { padding: var(--size-4-5) 0 var(--size-4-10); }
+.cv-codemirror-container .cm-content { padding: var(--size-4-5) 0; }
 .cv-codemirror-container .cm-line { padding: 0 var(--size-4-4) 0 var(--size-4-2); }
 .cv-codemirror-container .cm-line span { font-weight: inherit; }
 .cv-codemirror-container .cm-gutters {
@@ -417,6 +419,8 @@
 .cm-tooltip.cv-editor-completions > ul > li[role="option"] {
     font-family: var(--font-monospace);
 }
+/* Tooltips sit on the page's body, so they take the editor's text size explicitly. */
+.cm-tooltip.cv-editor-completions { font-size: var(--font-ui-small); }
 
 .cv-code-setting-control {
     min-width: 0;
@@ -504,3 +508,181 @@
 .is-mobile .cv-editor-section-heading.setting-item { cursor: default; touch-action: pan-y; }
 /* Match native views' allowance for the floating mobile navigation and keyboard. */
 .is-mobile .workspace-leaf-content .view-content.cv-editor-workbench { padding-bottom: max(0px, var(--view-bottom-spacing, 0px)); }
+
+/* Template diagnostics, in Xcode's style: a problem lives on its own line. The line is tinted,
+   the range underlined, and a banner at the line's end carries the message; clicking it opens
+   the full messages and hints in a popover over the code. Problems with no place in the code are listed under
+   the editor instead, never more than about half of a short editor, and fold away once fixed. */
+/* These editors scroll inside a bounded height, so panels never overlap the code; keep them
+   under Obsidian's suggestion popover, which sits at a lower layer than CodeMirror's 300. */
+.cv-codemirror-container .cm-panels { z-index: 1; }
+.cv-diagnostics-pinned { height: var(--cv-diagnostics-height); overflow: hidden; }
+.cv-diagnostics-pinned.cv-diagnostics-collapsing {
+    height: 0;
+    padding-block: 0;
+    margin-block: 0 !important;
+    border-color: transparent !important;
+    opacity: 0;
+    transition: height 160ms cubic-bezier(0.2, 0, 0, 1), margin 160ms cubic-bezier(0.2, 0, 0, 1), padding 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms linear;
+}
+.cv-diagnostics {
+    --cv-diagnostic-indent: calc(var(--icon-s) + var(--size-4-2));
+    max-height: 10.5em;
+    overflow: auto;
+    padding: var(--size-4-2) var(--size-4-3);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-small);
+    line-height: var(--line-height-tight);
+    color: var(--text-normal);
+    overflow-wrap: anywhere;
+}
+.cv-diagnostic + .cv-diagnostic { margin-top: var(--size-4-3); }
+.cv-diagnostic-title.cv-diagnostic-title {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: var(--size-4-2);
+    width: 100%;
+    height: auto;
+    padding: var(--size-2-1) 0;
+    border: 0;
+    border-radius: var(--radius-s);
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    white-space: normal;
+}
+button.cv-diagnostic-title { cursor: var(--cursor); }
+@media (hover: hover) {
+    button.cv-diagnostic-title:hover > span:last-child { text-decoration: underline; text-underline-offset: 2px; }
+}
+button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--background-modifier-border-focus); }
+.cv-diagnostic-icon { display: flex; flex: none; padding-top: 0.1em; --icon-size: var(--icon-s); }
+.cv-diagnostic.is-error .cv-diagnostic-icon,
+.cv-diagnostic.is-error .cv-diagnostic-caret { color: var(--text-error); }
+.cv-diagnostic.is-warning .cv-diagnostic-icon,
+.cv-diagnostic.is-warning .cv-diagnostic-caret { color: var(--text-warning); }
+.cv-diagnostic-frame {
+    margin: var(--size-2-2) 0 0 var(--cv-diagnostic-indent);
+    padding: 0;
+    overflow-x: auto;
+    background: none;
+    border: 0;
+    color: var(--text-muted);
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-smaller);
+    line-height: var(--line-height-normal);
+    white-space: pre;
+}
+.cv-diagnostic-hint { margin: var(--size-2-2) 0 0 var(--cv-diagnostic-indent); color: var(--text-muted); }
+.cv-diagnostic-more { margin: var(--size-4-3) 0 0 var(--cv-diagnostic-indent); color: var(--text-muted); }
+.cv-diagnostics code {
+    padding: 0 0.25em;
+    border-radius: var(--radius-s);
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    font-family: var(--font-monospace);
+    font-size: 0.92em;
+}
+.cv-diagnostic-mark.is-error { text-decoration: wavy underline var(--text-error); }
+.cv-diagnostic-mark.is-warning { text-decoration: wavy underline var(--text-warning); }
+.cv-diagnostic-mark { text-decoration-thickness: 1px; text-decoration-skip-ink: none; text-underline-offset: 3px; }
+
+.cv-issue-line.is-error { background-color: color-mix(in srgb, var(--text-error) 7%, transparent); }
+.cv-issue-line.is-warning { background-color: color-mix(in srgb, var(--text-warning) 7%, transparent); }
+.cv-codemirror-container .cm-line button.cv-issue-banner {
+    --cv-issue-tint: var(--text-error);
+    float: right;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2-2);
+    max-width: min(50%, 36em);
+    height: auto;
+    margin: 0 0 0 var(--size-4-4);
+    padding: 0 var(--size-2-3);
+    border: 0;
+    border-radius: var(--radius-s);
+    background: color-mix(in srgb, var(--cv-issue-tint) 16%, var(--background-primary));
+    box-shadow: none;
+    color: var(--text-normal);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-smaller);
+    line-height: inherit;
+    white-space: nowrap;
+    cursor: var(--cursor);
+}
+.cv-codemirror-container .cm-line button.cv-issue-banner.is-warning { --cv-issue-tint: var(--text-warning); }
+@media (hover: hover) {
+    .cv-codemirror-container .cm-line button.cv-issue-banner:hover { background: color-mix(in srgb, var(--cv-issue-tint) 24%, var(--background-primary)); }
+}
+.cv-codemirror-container .cm-line button.cv-issue-banner[aria-expanded="true"] { background: color-mix(in srgb, var(--cv-issue-tint) 28%, var(--background-primary)); }
+.cv-codemirror-container .cm-line button.cv-issue-banner:focus-visible { box-shadow: 0 0 0 2px var(--background-modifier-border-focus); }
+.cv-issue-message { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cv-issue-icon { display: flex; flex: none; --icon-size: 12px; }
+.is-error > .cv-issue-icon { color: var(--text-error); }
+.is-warning > .cv-issue-icon { color: var(--text-warning); }
+.cv-issue-count {
+    flex: none;
+    padding: 0 var(--size-2-2);
+    border-radius: 1em;
+    background: color-mix(in srgb, var(--cv-issue-tint) 30%, var(--background-primary));
+    font-variant-numeric: tabular-nums;
+}
+.cv-issue-banner code, .cv-issue-popover code {
+    padding: 0 0.2em;
+    border-radius: var(--radius-s);
+    background: var(--background-modifier-hover);
+    font-family: var(--font-monospace);
+    font-size: 0.92em;
+}
+/* Tooltips live on the document body, outside the editor, so a modal can't clip them. */
+.cm-tooltip.cv-issue-popover {
+    width: max-content;
+    max-width: min(32em, 90vw);
+    max-height: min(20em, 45vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--size-4-2) var(--size-4-3);
+    border: var(--border-width) solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-primary);
+    box-shadow: var(--shadow-s);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-small);
+    line-height: var(--line-height-tight);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.cv-issue-detail { display: flex; align-items: flex-start; gap: var(--size-4-2); }
+.cv-issue-detail > .cv-issue-icon { padding-top: 0.15em; }
+.cv-issue-detail-text { flex: 1; min-width: 0; }
+.cv-issue-detail + .cv-issue-detail { margin-top: var(--size-4-2); }
+.cv-issue-popover button.cv-issue-detail-title {
+    display: block;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--text-normal);
+    font: inherit;
+    text-align: start;
+    white-space: normal;
+    cursor: var(--cursor);
+}
+@media (hover: hover) {
+    .cv-issue-popover button.cv-issue-detail-title:hover { text-decoration: underline; text-underline-offset: 2px; }
+}
+.cv-issue-hint { margin-top: var(--size-2-2); color: var(--text-muted); }
+/* In a narrow editor the banner shrinks to its icon; the message is a click away. */
+.cm-editor[data-cv-narrow] .cv-issue-message { display: none; }
+.cv-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
