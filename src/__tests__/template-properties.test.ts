@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { App } from "obsidian";
-import { getVaultTemplateProperties } from "../template-properties";
+import { getVaultTemplateProperties, inferTemplatePropertyType } from "../template-properties";
 
 describe("vault template property suggestions", () => {
 	it("uses assigned native widgets without scanning vault files", () => {
@@ -33,5 +33,19 @@ describe("vault template property suggestions", () => {
 			metadataCache: { getFileCache: (file: string) => ({ frontmatter: file === "one" ? { date: "2026-09-05", count: null } : { count: 0 } }) },
 		} as unknown as App;
 		expect(getVaultTemplateProperties(app)).toEqual([{ name: "count", type: "number" }, { name: "date", type: "text" }]);
+	});
+});
+
+describe("inferTemplatePropertyType", () => {
+	it.each([
+		[null, "unknown"], [undefined, "unknown"],
+		[["a", "b"], "list"], [[], "list"],
+		[42, "number"], [0, "number"],
+		[true, "checkbox"], [false, "checkbox"],
+		["2024-06-15", "date"], ["2000-01-01", "date"],
+		["2024-06-15T14:30:00", "datetime"], ["2024-06-15T00:00:00Z", "datetime"],
+		["hello", "text"], ["https://example.com", "text"], ["42", "text"], ["[[My Note]]", "text"],
+	])("infers %j as %s", (value, type) => {
+		expect(inferTemplatePropertyType(value)).toBe(type);
 	});
 });

@@ -72,184 +72,52 @@ describe("isExpressionContext", () => {
 // ---------------------------------------------------------------------------
 
 describe("inferTypeBeforeDot", () => {
-	// File type inference
-	it("infers file from .asFile()", () => {
-		expect(inferTypeBeforeDot('link("Books").asFile()')).toBe("file");
-	});
-
-	it("infers file from file() function", () => {
-		expect(inferTypeBeforeDot('file("Books")')).toBe("file");
-	});
-
-	// Link type inference
-	it("infers link from link() function", () => {
-		expect(inferTypeBeforeDot('link("Books")')).toBe("link");
-	});
-
-	it("infers link from .asLink()", () => {
-		expect(inferTypeBeforeDot('file("x").asLink()')).toBe("link");
-	});
-
-	// Date type inference
-	it("infers date from now()", () => {
-		expect(inferTypeBeforeDot("now()")).toBe("date");
-	});
-
-	it("infers date from today()", () => {
-		expect(inferTypeBeforeDot("today()")).toBe("date");
-	});
-
-	it("infers date from date()", () => {
-		expect(inferTypeBeforeDot('date("2024-01-01")')).toBe("date");
-	});
-
-	// String type inference
-	it("infers string from .content()", () => {
-		expect(inferTypeBeforeDot('file("x").content()')).toBe("string");
-	});
-
-	it("infers string from .toString()", () => {
-		expect(inferTypeBeforeDot("something.toString()")).toBe("string");
-	});
-
-	it("infers string from .join()", () => {
-		expect(inferTypeBeforeDot('tags.join(",")')).toBe("string");
-	});
-
-	it("infers string from concat()", () => {
-		expect(inferTypeBeforeDot('concat("a","b")')).toBe("string");
-	});
-
-	it("infers string from .format()", () => {
-		expect(inferTypeBeforeDot('now().format("YYYY")')).toBe("string");
-	});
-
-	it("infers string from .name property", () => {
-		expect(inferTypeBeforeDot('file("x").name')).toBe("string");
-	});
-
-	it("infers string from .basename property", () => {
-		expect(inferTypeBeforeDot('file("x").basename')).toBe("string");
-	});
-
-	it("infers string from .path property", () => {
-		expect(inferTypeBeforeDot('file("x").path')).toBe("string");
-	});
-
-	it("infers string from .folder property", () => {
-		expect(inferTypeBeforeDot('file("x").folder')).toBe("string");
-	});
-
-	it("infers string from .ext property", () => {
-		expect(inferTypeBeforeDot('file("x").ext')).toBe("string");
-	});
-
-	// Number type inference
-	it("infers number from .length()", () => {
-		expect(inferTypeBeforeDot("tags.length()")).toBe("number");
-	});
-
-	it("infers number from length() function", () => {
-		expect(inferTypeBeforeDot('length("hello")')).toBe("number");
-	});
-
-	it("infers number from .abs()", () => {
-		expect(inferTypeBeforeDot("x.abs()")).toBe("number");
-	});
-
-	it("infers number from .ceil()", () => {
-		expect(inferTypeBeforeDot("x.ceil()")).toBe("number");
-	});
-
-	it("infers number from .floor()", () => {
-		expect(inferTypeBeforeDot("x.floor()")).toBe("number");
-	});
-
-	it("infers number from .round()", () => {
-		expect(inferTypeBeforeDot("x.round(2)")).toBe("number");
-	});
-
-	it("infers number from .year()", () => {
-		expect(inferTypeBeforeDot("now().year()")).toBe("number");
-	});
-
-	it("infers number from .size property", () => {
-		expect(inferTypeBeforeDot('file("x").size')).toBe("number");
-	});
-
-	it("infers number from .ctime property", () => {
-		expect(inferTypeBeforeDot('file("x").ctime')).toBe("number");
-	});
-
-	it("infers number from .mtime property", () => {
-		expect(inferTypeBeforeDot('file("x").mtime')).toBe("number");
-	});
-
-	it("infers number from number() function", () => {
-		expect(inferTypeBeforeDot('number("42")')).toBe("number");
-	});
-
-	// List type inference
-	it("infers list from list() function", () => {
-		expect(inferTypeBeforeDot('list("a","b")')).toBe("list");
-	});
-
-	it("infers list from .split()", () => {
-		expect(inferTypeBeforeDot('name.split(",")')).toBe("list");
-	});
-
-	it("infers list from .keys()", () => {
-		expect(inferTypeBeforeDot("obj.keys()")).toBe("list");
-	});
-
-	it("infers list from .values()", () => {
-		expect(inferTypeBeforeDot("obj.values()")).toBe("list");
-	});
-
-	it("infers list from .filter()", () => {
-		expect(inferTypeBeforeDot("tags.filter()")).toBe("list");
-	});
-
-	it("infers list from .map()", () => {
-		expect(inferTypeBeforeDot('items.map("name")')).toBe("list");
-	});
-
-	it("infers list from .sort()", () => {
-		expect(inferTypeBeforeDot("items.sort()")).toBe("list");
-	});
-
-	it("infers list from .unique()", () => {
-		expect(inferTypeBeforeDot("tags.unique()")).toBe("list");
-	});
-
-	it("infers list from .reverse()", () => {
-		expect(inferTypeBeforeDot("items.reverse()")).toBe("list");
-	});
-
-	it("infers list from .flat()", () => {
-		expect(inferTypeBeforeDot("items.flat()")).toBe("list");
-	});
-
-	it("infers list from .tags property", () => {
-		expect(inferTypeBeforeDot('file("x").tags')).toBe("list");
-	});
-
-	it("infers list from .links property", () => {
-		expect(inferTypeBeforeDot('file("x").links')).toBe("list");
-	});
-
-	// Object type inference
-	it("infers object from .properties", () => {
-		expect(inferTypeBeforeDot('file("x").properties')).toBe("object");
-	});
-
-	// Unknown type
-	it("returns unknown for bare identifiers", () => {
-		expect(inferTypeBeforeDot("myVariable")).toBe("unknown");
-	});
-
-	it("returns unknown for array index access", () => {
-		expect(inferTypeBeforeDot("cast[0]")).toBe("unknown");
+	it.each([
+		['link("Books").asFile()', "file"],
+		['file("Books")', "file"],
+		['link("Books")', "link"],
+		['file("x").asLink()', "link"],
+		["now()", "date"],
+		["today()", "date"],
+		['date("2024-01-01")', "date"],
+		['file("x").content()', "string"],
+		["something.toString()", "string"],
+		['tags.join(",")', "string"],
+		['concat("a","b")', "string"],
+		['now().format("YYYY")', "string"],
+		['file("x").name', "string"],
+		['file("x").basename', "string"],
+		['file("x").path', "string"],
+		['file("x").folder', "string"],
+		['file("x").ext', "string"],
+		["tags.length()", "number"],
+		['length("hello")', "number"],
+		["x.abs()", "number"],
+		["x.ceil()", "number"],
+		["x.floor()", "number"],
+		["x.round(2)", "number"],
+		["now().year()", "number"],
+		['file("x").size', "number"],
+		['file("x").ctime', "number"],
+		['file("x").mtime', "number"],
+		['number("42")', "number"],
+		['list("a","b")', "list"],
+		['name.split(",")', "list"],
+		["obj.keys()", "list"],
+		["obj.values()", "list"],
+		["tags.filter()", "list"],
+		['items.map("name")', "list"],
+		["items.sort()", "list"],
+		["tags.unique()", "list"],
+		["items.reverse()", "list"],
+		["items.flat()", "list"],
+		['file("x").tags', "list"],
+		['file("x").links', "list"],
+		['file("x").properties', "object"],
+		["myVariable", "unknown"],
+		["cast[0]", "unknown"],
+	])("infers the type of %s as %s", (expression, type) => {
+		expect(inferTypeBeforeDot(expression)).toBe(type);
 	});
 });
 
