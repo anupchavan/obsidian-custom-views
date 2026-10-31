@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Component, MarkdownRenderer, StringValue, TFile } from "obsidian";
-import type { App, BasesView, Plugin } from "obsidian";
+import type { App, BasesView, Plugin, TFolder } from "obsidian";
 import {
 	createCollectorBaseDocuments,
 	extractEmbeddedBaseBlocks,
@@ -16,6 +16,7 @@ import {
 	type TemplateBases,
 } from "../bases/types";
 import { buildBasesCollection } from "../bases/access";
+import { folder } from "./folder";
 import { normalizeBasesView } from "../bases/normalize";
 import { EmbeddedBasesProvider } from "../bases/provider";
 import { renderTemplate } from "../renderer";
@@ -28,13 +29,13 @@ function makeMockFile(overrides: Partial<TFile> = {}): TFile {
 		path: "Books/Book.md",
 		extension: "md",
 		stat: { size: 123, ctime: 1000, mtime: 2000 },
-		parent: { path: "Books" },
+		parent: folder("Books"),
 		...overrides,
 	} as unknown as TFile;
 }
 
 type MockTFileOverrides = Partial<Omit<TFile, "parent">> & {
-	parent?: { path: string } | null;
+	parent?: TFolder | null;
 };
 
 function makeTFile(overrides: MockTFileOverrides = {}): TFile {
@@ -45,7 +46,7 @@ function makeTFile(overrides: MockTFileOverrides = {}): TFile {
 		path: "Books/Book.md",
 		extension: "md",
 		stat: { size: 123, ctime: 1000, mtime: 2000 },
-		parent: { path: "Books" },
+		parent: folder("Books"),
 	}, overrides);
 	return file;
 }
@@ -1207,7 +1208,7 @@ describe("EmbeddedBasesProvider", () => {
 			name: "Dashboard.md",
 			basename: "Dashboard",
 			path: "Dashboards/Dashboard.md",
-			parent: { path: "Dashboards" },
+			parent: folder("Dashboards"),
 		});
 
 		expect(provider.register()).toBe(true);
@@ -1256,7 +1257,7 @@ describe("EmbeddedBasesProvider", () => {
 			name: "Dashboard.md",
 			basename: "Dashboard",
 			path: "Dashboards/Dashboard.md",
-			parent: { path: "Dashboards" },
+			parent: folder("Dashboards"),
 		});
 
 		try {
@@ -1304,7 +1305,7 @@ describe("EmbeddedBasesProvider", () => {
 			name: "Dashboard.md",
 			basename: "Dashboard",
 			path: "Dashboards/Dashboard.md",
-			parent: { path: "Dashboards" },
+			parent: folder("Dashboards"),
 		});
 
 		try {
@@ -1345,14 +1346,14 @@ describe("EmbeddedBasesProvider", () => {
 			name: "Dashboard.md",
 			basename: "Dashboard",
 			path: "Dashboards/Dashboard.md",
-			parent: { path: "Dashboards" },
+			parent: folder("Dashboards"),
 		});
 		const baseFile = makeTFile({
 			name: "Songs.base",
 			basename: "Songs",
 			path: "Dashboards/Songs.base",
 			extension: "base",
-			parent: { path: "Dashboards" },
+			parent: folder("Dashboards"),
 		});
 		const vault = (app as unknown as {
 			vault: {

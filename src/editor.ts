@@ -26,7 +26,6 @@ import {
 	ViewPlugin,
 	ViewUpdate,
 } from "@codemirror/view";
-import type { KeyBinding } from "@codemirror/view";
 import { createDetachedEl } from "./dom";
 import { Extension, EditorState, Transaction } from "@codemirror/state";
 import {
@@ -55,7 +54,6 @@ import {
 	completeFromList,
 } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { lintKeymap } from "@codemirror/lint";
 import { diagnosticsExtension } from "./editor-diagnostics";
 import { analyzeCss, analyzeJavaScript, analyzeTemplate, type TemplateDiagnostic } from "./template-diagnostics";
 import { tags as t } from "@lezer/highlight";
@@ -912,6 +910,12 @@ export function analyzeEditorSource(lang: EditorLanguage, source: string, proper
 	return found.sort((a, b) => (a.from ?? -1) - (b.from ?? -1));
 }
 
+/** Obsidian hides CodeMirror's inline completion detail, so show it in the info panel instead. */
+function detailAsInfo(result: CompletionResult): CompletionResult {
+	return { ...result, options: result.options.map(({ detail, ...option }) =>
+		detail && option.info === undefined ? { ...option, info: detail } : { ...option, detail }) };
+}
+
 export function buildEditorExtensions(lang: EditorLanguage = "html", extraTemplateVars: TemplateVariable[] = []): Extension[] {
 	const templateSource = templateCompletionSource(extraTemplateVars);
 	const properties = extraTemplateVars.map(variable => variable.name);
@@ -925,14 +929,14 @@ export function buildEditorExtensions(lang: EditorLanguage = "html", extraTempla
 		autoCloseTemplateBraces,
 		autocompletion({ ...completionAppearance, override: [context => {
 			const template = templateSource(context);
-			if (template) return template;
+			if (template) return detailAsInfo(template);
 			const sources = context.state.languageDataAt<CompletionSource | readonly Completion[]>("autocomplete", context.pos);
 			return Promise.all(sources.map(async source =>
 				(typeof source === "function" ? source : completeFromList(source))(context)
 			)).then(results => {
 				const first = results.find(result => result !== null);
-				return first ? { from: first.from, to: first.to, options: results.flatMap(result =>
-					result?.from === first.from && result.to === first.to ? result.options : []) } : null;
+				return first ? detailAsInfo({ from: first.from, to: first.to, options: results.flatMap(result =>
+					result?.from === first.from && result.to === first.to ? result.options : []) }) : null;
 			});
 		}] }),
 		javascriptLanguage.data.of({ autocomplete: scopeCompletionSource(window) }),
@@ -955,7 +959,6 @@ export function buildEditorExtensions(lang: EditorLanguage = "html", extraTempla
 			...searchKeymap,
 			...historyKeymap,
 			indentWithTab,
-			...(lintKeymap as KeyBinding[]),
 		]),
 	];
 }

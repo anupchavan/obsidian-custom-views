@@ -1,7 +1,7 @@
 import { scopeStyleElements } from "./scoped-styles";
 import { createDetachedEl } from "./dom";
 import { TemplateDependencies, recordLinkDependency } from "./template-dependencies";
-import { App, TFile, MarkdownRenderer, Component } from "obsidian";
+import { App, TFile, MarkdownRenderer, Component, getLinkpath } from "obsidian";
 import { applyFilterChain } from "./filters";
 import {
 	isExpressionMode,
@@ -157,7 +157,7 @@ export function extractWikiLink(value: string): string | null {
  */
 function resolveLinkedFile(app: App, linkTarget: string, sourcePath: string): TFile | null {
 	// Use Obsidian's built-in link resolution which handles all link formats
-	const linkedFile = app.metadataCache.getFirstLinkpathDest(linkTarget, sourcePath);
+	const linkedFile = app.metadataCache.getFirstLinkpathDest(getLinkpath(linkTarget), sourcePath);
 	return linkedFile;
 }
 
@@ -776,18 +776,13 @@ function escapeHtml(value: string): string {
 }
 
 function applyNativeInternalLinkState(app: App, container: HTMLElement, sourcePath: string) {
-	const metadataCache = app.metadataCache as App["metadataCache"] & {
-		getFirstLinkpathDest?: App["metadataCache"]["getFirstLinkpathDest"];
-	};
-	if (typeof metadataCache.getFirstLinkpathDest !== "function") return;
-
 	const links = container.querySelectorAll<HTMLElement>(".internal-link");
 	for (const link of Array.from(links)) {
 		const target = getInternalLinkTarget(link);
 		if (!target) continue;
 
-		const linkpath = target.split("#", 1)[0] || sourcePath;
-		const resolved = metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
+		const linkpath = getLinkpath(target) || sourcePath;
+		const resolved = app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
 		link.classList.toggle("is-unresolved", !resolved);
 	}
 }

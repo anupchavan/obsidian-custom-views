@@ -423,12 +423,12 @@ function renderDiagnostics(dom: HTMLElement, view: EditorView, list: readonly Te
 		title.className = "cv-diagnostic-title";
 		const icon = title.appendChild(createDetachedEl(doc, "span"));
 		icon.className = "cv-diagnostic-icon";
-		setIcon(icon, diagnostic.severity === "error" ? "triangle-alert" : "circle-alert");
+		setIcon(icon, ICONS[diagnostic.severity]);
 		const label = title.appendChild(createDetachedEl(doc, "span"));
 		const line = located ? view.state.doc.lineAt(diagnostic.from!) : undefined;
 		if (line) label.append(`Line ${line.number}, column ${diagnostic.from! - line.from + 1}: `);
 		appendCode(label, diagnostic.message);
-		if (line && title instanceof HTMLButtonElement) {
+		if (line && title.instanceOf(HTMLButtonElement)) {
 			title.type = "button";
 			title.setAttribute("aria-label", `${label.textContent ?? ""}. Go to this location.`);
 			title.addEventListener("click", () => {

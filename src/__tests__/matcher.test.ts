@@ -17,6 +17,8 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { checkRules } from "../matcher";
+import { folder } from "./folder";
+import type { TFolder } from "obsidian";
 import type { FilterGroup, Filter } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -29,7 +31,7 @@ interface MockFileOptions {
 	path?: string;
 	extension?: string;
 	stat?: { ctime: number; mtime: number; size: number };
-	parent?: { path: string } | null;
+	parent?: TFolder | null;
 }
 
 function mockFile(opts: MockFileOptions = {}) {
@@ -263,7 +265,9 @@ describe("file.size", () => {
 });
 
 describe("file.folder", () => {
-	const file = mockFile({ parent: { path: "projects/work" } });
+	const file = mockFile({ parent: folder("projects/work") });
+	it("is empty for a note at the vault root", () =>
+		expect(checkRules(mockApp(), andGroup(filter("file.folder", "is", "")), mockFile({ parent: folder("/") }))).toBe(true));
 	it("contains the folder name", () =>
 		expect(checkRules(mockApp(), andGroup(filter("file.folder", "contains", "work")), file)).toBe(true));
 	it("does not contain an unrelated string", () =>
@@ -276,32 +280,32 @@ describe("file.folder", () => {
 
 describe("in folder / is not in folder", () => {
 	it("matches file directly in target folder", () => {
-		const file = mockFile({ parent: { path: "work" } });
+		const file = mockFile({ parent: folder("work") });
 		expect(checkRules(mockApp(), andGroup(filter("file", "in folder", "work")), file)).toBe(true);
 	});
 
 	it("matches file in a sub-folder of target", () => {
-		const file = mockFile({ parent: { path: "work/projects" } });
+		const file = mockFile({ parent: folder("work/projects") });
 		expect(checkRules(mockApp(), andGroup(filter("file", "in folder", "work")), file)).toBe(true);
 	});
 
 	it("does not match file in a different folder", () => {
-		const file = mockFile({ parent: { path: "personal" } });
+		const file = mockFile({ parent: folder("personal") });
 		expect(checkRules(mockApp(), andGroup(filter("file", "in folder", "work")), file)).toBe(false);
 	});
 
 	it("is not in folder — true when file is elsewhere", () => {
-		const file = mockFile({ parent: { path: "personal" } });
+		const file = mockFile({ parent: folder("personal") });
 		expect(checkRules(mockApp(), andGroup(filter("file", "is not in folder", "work")), file)).toBe(true);
 	});
 
 	it("is not in folder — false when file is there", () => {
-		const file = mockFile({ parent: { path: "work" } });
+		const file = mockFile({ parent: folder("work") });
 		expect(checkRules(mockApp(), andGroup(filter("file", "is not in folder", "work")), file)).toBe(false);
 	});
 
 	it("handles leading/trailing slashes on folder value", () => {
-		const file = mockFile({ parent: { path: "work" } });
+		const file = mockFile({ parent: folder("work") });
 		expect(checkRules(mockApp(), andGroup(filter("file", "in folder", "/work/")), file)).toBe(true);
 	});
 });
@@ -576,6 +580,14 @@ describe("links to / does not link to", () => {
 		expect(checkRules(app, andGroup(filter("file", "links to", "Science Fiction")), mockFile())).toBe(true);
 	});
 
+	it("resolves links that point at a heading", () => {
+		const app = mockApp({
+			bodyLinks: [{ link: "Science Fiction#Plot" }],
+			linkDestMap: { "Science Fiction": { path: "Science Fiction.md" } },
+		});
+		expect(checkRules(app, andGroup(filter("file", "links to", "Science Fiction#Plot")), mockFile())).toBe(true);
+	});
+
 	it("does not match when file has no link to the target", () => {
 		const app = mockApp({
 			bodyLinks: [{ link: "Other Note" }],
@@ -802,7 +814,7 @@ describe("file.mtime date operators", () => {
 describe("complex combined filters", () => {
 	it("AND: file in folder AND has tag AND property value", () => {
 		const app = mockApp({ bodyTags: [{ tag: "#fiction" }] });
-		const file = mockFile({ parent: { path: "Books" } });
+		const file = mockFile({ parent: folder("Books") });
 		const fm = { status: "published" };
 		const group = andGroup(
 			filter("file", "in folder", "Books"),
@@ -814,7 +826,7 @@ describe("complex combined filters", () => {
 
 	it("AND fails when one condition fails", () => {
 		const app = mockApp({ bodyTags: [{ tag: "#fiction" }] });
-		const file = mockFile({ parent: { path: "Books" } });
+		const file = mockFile({ parent: folder("Books") });
 		const fm = { status: "draft" };
 		const group = andGroup(
 			filter("file", "in folder", "Books"),
@@ -826,7 +838,7 @@ describe("complex combined filters", () => {
 
 	it("OR: matches when at least one condition true", () => {
 		const app = mockApp({ bodyTags: [] });
-		const file = mockFile({ parent: { path: "Music" } });
+		const file = mockFile({ parent: folder("Music") });
 		const fm = { genre: "rock" };
 		const group = orGroup(
 			filter("file", "has tag", "fiction"),    // false
@@ -838,7 +850,7 @@ describe("complex combined filters", () => {
 
 	it("NOR: true when all conditions are false", () => {
 		const app = mockApp({ bodyTags: [] });
-		const file = mockFile({ parent: { path: "Music" } });
+		const file = mockFile({ parent: folder("Music") });
 		const fm = { status: "published" };
 		const group = norGroup(
 			filter("file", "has tag", "fiction"),           // false
@@ -854,7 +866,7 @@ describe("complex combined filters", () => {
 			bodyLinks: [{ link: "Dune" }],
 			linkDestMap: { "Dune": { path: "Books/Dune.md" } }
 		});
-		const file = mockFile({ parent: { path: "Reviews" } });
+		const file = mockFile({ parent: folder("Reviews") });
 		const group = andGroup(
 			orGroup(
 				filter("file", "links to", "Dune"),
@@ -921,7 +933,7 @@ describe("vault scenario: Books/Dune.md", () => {
 		name: "Dune.md",
 		basename: "Dune",
 		path: "Books/Dune.md",
-		parent: { path: "Books" },
+		parent: folder("Books"),
 		stat: { ctime: 0, mtime: 0, size: 500 }
 	});
 	const fm = {
@@ -989,7 +1001,7 @@ describe("vault scenario: Movies/Interstellar.md", () => {
 		name: "Interstellar.md",
 		basename: "Interstellar",
 		path: "Movies/Interstellar.md",
-		parent: { path: "Movies" }
+		parent: folder("Movies")
 	});
 	const fm = {
 		categories: ["[[Movies]]"],
@@ -1041,7 +1053,7 @@ describe("vault scenario: Music/Belinda Says.md", () => {
 		name: "Belinda Says.md",
 		basename: "Belinda Says",
 		path: "Music/Belinda Says.md",
-		parent: { path: "Music" }
+		parent: folder("Music")
 	});
 	const fm = {
 		categories: ["[[Songs]]"],
@@ -1091,7 +1103,7 @@ describe("vault scenario: Recipes/Pasta Aglio e Olio.md", () => {
 		name: "Pasta Aglio e Olio.md",
 		basename: "Pasta Aglio e Olio",
 		path: "Recipes/Pasta Aglio e Olio.md",
-		parent: { path: "Recipes" }
+		parent: folder("Recipes")
 	});
 	const fm = {
 		categories: ["[[Recipes]]"],
@@ -1136,7 +1148,7 @@ describe("vault scenario: Empty Note.md", () => {
 		name: "Empty Note.md",
 		basename: "Empty Note",
 		path: "Empty Note.md",
-		parent: { path: "" }
+		parent: folder("")
 	});
 
 	function emptyApp() {
@@ -1168,7 +1180,7 @@ describe("vault scenario: Projects/Plugin Development.md", () => {
 		name: "Plugin Development.md",
 		basename: "Plugin Development",
 		path: "Projects/Plugin Development.md",
-		parent: { path: "Projects" }
+		parent: folder("Projects")
 	});
 	const fm = {
 		categories: ["[[Projects]]"],
@@ -1227,7 +1239,7 @@ describe("vault scenario: Movies/Homebound.md", () => {
 		name: "Homebound.md",
 		basename: "Homebound",
 		path: "Movies/Homebound.md",
-		parent: { path: "Movies" }
+		parent: folder("Movies")
 	});
 	const fm = {
 		categories: ["[[Movies]]"],
@@ -1274,7 +1286,7 @@ describe("cross-vault: 'file links to Science Fiction'", () => {
 			linkDestMap: VAULT_LINK_MAP,
 			cacheFrontmatter: { categories: ["[[Books]]", "songs"] }
 		});
-		const file = mockFile({ basename: "Untitled", path: "Untitled.md", parent: { path: "" } });
+		const file = mockFile({ basename: "Untitled", path: "Untitled.md", parent: folder("") });
 		const fm = { categories: ["[[Books]]", "songs"] };
 		expect(checkRules(app, linkToSFFilter, file, fm)).toBe(true);
 	});
@@ -1285,7 +1297,7 @@ describe("cross-vault: 'file links to Science Fiction'", () => {
 			linkDestMap: VAULT_LINK_MAP,
 			cacheFrontmatter: { categories: ["[[Books]]", "[[Science Fiction]]"] }
 		});
-		const file = mockFile({ basename: "Dune", path: "Books/Dune.md", parent: { path: "Books" } });
+		const file = mockFile({ basename: "Dune", path: "Books/Dune.md", parent: folder("Books") });
 		const fm = { categories: ["[[Books]]", "[[Science Fiction]]"] };
 		expect(checkRules(app, linkToSFFilter, file, fm)).toBe(true);
 	});
@@ -1296,7 +1308,7 @@ describe("cross-vault: 'file links to Science Fiction'", () => {
 			linkDestMap: VAULT_LINK_MAP,
 			cacheFrontmatter: { genres: ["[[Adventure]]", "[[Drama]]", "[[Science Fiction]]"] }
 		});
-		const file = mockFile({ basename: "Interstellar", path: "Movies/Interstellar.md", parent: { path: "Movies" } });
+		const file = mockFile({ basename: "Interstellar", path: "Movies/Interstellar.md", parent: folder("Movies") });
 		const fm = { genres: ["[[Adventure]]", "[[Drama]]", "[[Science Fiction]]"] };
 		expect(checkRules(app, linkToSFFilter, file, fm)).toBe(true);
 	});
@@ -1307,14 +1319,14 @@ describe("cross-vault: 'file links to Science Fiction'", () => {
 			linkDestMap: VAULT_LINK_MAP,
 			cacheFrontmatter: { categories: ["[[Songs]]"] }
 		});
-		const file = mockFile({ basename: "Belinda Says", path: "Music/Belinda Says.md", parent: { path: "Music" } });
+		const file = mockFile({ basename: "Belinda Says", path: "Music/Belinda Says.md", parent: folder("Music") });
 		const fm = { categories: ["[[Songs]]"] };
 		expect(checkRules(app, linkToSFFilter, file, fm)).toBe(false);
 	});
 
 	it("does NOT match Empty Note.md (no links at all)", () => {
 		const app = mockApp({ bodyLinks: [], linkDestMap: VAULT_LINK_MAP });
-		const file = mockFile({ basename: "Empty Note", path: "Empty Note.md", parent: { path: "" } });
+		const file = mockFile({ basename: "Empty Note", path: "Empty Note.md", parent: folder("") });
 		expect(checkRules(app, linkToSFFilter, file)).toBe(false);
 	});
 
@@ -1323,7 +1335,7 @@ describe("cross-vault: 'file links to Science Fiction'", () => {
 			bodyLinks: [{ link: "In a Row" }],
 			linkDestMap: VAULT_LINK_MAP,
 		});
-		const file = mockFile({ basename: "Science Fiction", path: "Science Fiction.md", parent: { path: "" } });
+		const file = mockFile({ basename: "Science Fiction", path: "Science Fiction.md", parent: folder("") });
 		expect(checkRules(app, linkToSFFilter, file)).toBe(false);
 	});
 });
