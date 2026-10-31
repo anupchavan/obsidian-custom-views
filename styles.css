@@ -174,12 +174,9 @@
     padding: 0;
 }
 
-/* Native Bases supplies the filter rows, pickers, chips, and formula editor. */
-.cv-native-filter-host {
-    padding: var(--size-4-2);
-    border: var(--border-width) solid var(--background-modifier-border);
-    border-radius: var(--radius-m);
-}
+/* Native Bases supplies the filter rows, pickers, chips, and formula editor.
+   The host is a setting-item row for the group's padding and divider, stacked instead of flex. */
+.cv-native-filter-host { display: block; }
 
 .modal.cv-template-modal {
     --dialog-width: calc(var(--setting-group-max-width) + 2 * var(--size-4-4) + 2 * var(--modal-border-width));

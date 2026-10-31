@@ -51,3 +51,11 @@ HTMLElement.prototype.createSpan = function(this: HTMLElement, options, callback
 	this.appendChild(span);
 	return span;
 };
+
+Element.prototype.setText = function(this: Element, value: string | DocumentFragment) {
+	this.textContent = "";
+	this.appendChild(typeof value === "string" ? this.ownerDocument.createTextNode(value) : value);
+};
+Element.prototype.toggleClass = function(this: Element, classes: string | string[], value: boolean) {
+	for (const cls of [classes].flat()) this.classList.toggle(cls, value);
+};
