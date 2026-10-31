@@ -1,4 +1,4 @@
-import type { App, TFile } from "obsidian";
+import { getLinkpath, type App, type TFile } from "obsidian";
 
 /** Retain unresolved links so creating their destination can refresh an open template. */
 export class TemplateDependencies extends Set<TFile> {
@@ -10,7 +10,7 @@ export class TemplateDependencies extends Set<TFile> {
 	override has(file: TFile): boolean {
 		if (super.has(file)) return true;
 		for (const { target, sourcePath } of this.missingLinks.values()) {
-			if (this.app.metadataCache.getFirstLinkpathDest(target, sourcePath) === file) return true;
+			if (this.app.metadataCache.getFirstLinkpathDest(getLinkpath(target), sourcePath) === file) return true;
 		}
 		return false;
 	}

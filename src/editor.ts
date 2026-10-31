@@ -26,7 +26,6 @@ import {
 	ViewPlugin,
 	ViewUpdate,
 } from "@codemirror/view";
-import type { KeyBinding } from "@codemirror/view";
 import { createDetachedEl } from "./dom";
 import { Extension, EditorState, Transaction } from "@codemirror/state";
 import {
@@ -55,7 +54,6 @@ import {
 	completeFromList,
 } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { lintKeymap } from "@codemirror/lint";
 import { diagnosticsExtension } from "./editor-diagnostics";
 import { analyzeCss, analyzeJavaScript, analyzeTemplate, type TemplateDiagnostic } from "./template-diagnostics";
 import { tags as t } from "@lezer/highlight";
@@ -955,7 +953,6 @@ export function buildEditorExtensions(lang: EditorLanguage = "html", extraTempla
 			...searchKeymap,
 			...historyKeymap,
 			indentWithTab,
-			...(lintKeymap as KeyBinding[]),
 		]),
 	];
 }
