@@ -87,19 +87,24 @@ describe("theme", () => {
 // createTemplateEditor
 // ---------------------------------------------------------------------------
 
+const accessibleName = (view: EditorView) =>
+	view.dom.querySelector(`[id="${view.contentDOM.getAttribute("aria-labelledby")}"]`)?.textContent;
+
 describe("createTemplateEditor", () => {
 	it.each([
 		["html", "HTML template"], ["css", "CSS styles"], ["javascript", "JavaScript code"],
 	] as const)("gives the %s editing surface an accessible name", (language, label) => {
 		const view = createAndTrack({ initialContent: "", language });
 		expect(view.contentDOM.getAttribute("role")).toBe("textbox");
-		expect(view.contentDOM.getAttribute("aria-label")).toBe(label);
+		expect(accessibleName(view)).toBe(label);
+		// No aria-label: Obsidian would show it as a tooltip on hover.
+		expect(view.contentDOM.hasAttribute("aria-label")).toBe(false);
 		view.dispatch({ changes: { from: 0, insert: "Updated" } });
-		expect(view.contentDOM.getAttribute("aria-label")).toBe(label);
+		expect(accessibleName(view)).toBe(label);
 	});
 	it("labels the default HTML editor", () => {
 		const view = createAndTrack({ initialContent: "" });
-		expect(view.contentDOM.getAttribute("aria-label")).toBe("HTML template");
+		expect(accessibleName(view)).toBe("HTML template");
 	});
 
 	it.each([

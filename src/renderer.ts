@@ -363,6 +363,10 @@ export function getTemplateDependencies(container: HTMLElement): ReadonlySet<TFi
  * @param sourceContent - Optional already-loaded note text from Obsidian's active view
  * @param basesProvider - Optional provider for embedded Obsidian Bases results
  */
+/** Where a thrown script error came from: the view's JavaScript field or a template `<script>`. */
+export type ScriptErrorSource = { kind: "view" } | { kind: "inline"; code: string };
+export type ScriptErrorHandler = (error: unknown, source: ScriptErrorSource) => void;
+
 export async function renderTemplate(
 	app: App,
 	template: string,
@@ -377,6 +381,7 @@ export async function renderTemplate(
 	basesProvider?: BasesDataProvider,
 	signal?: AbortSignal,
 	beforeScripts?: () => void,
+	onScriptError?: ScriptErrorHandler,
 ) {
 	signal?.throwIfAborted();
 	const dependencies = new TemplateDependencies(app);
@@ -546,7 +551,7 @@ export async function renderTemplate(
 			const scriptContext = createScriptContext(app, file, container, frontmatter, bodyContent, viewConfig);
 
 			signal?.throwIfAborted();
-			await executeScripts(scripts, scriptContext, signal);
+			await executeScripts(scripts, scriptContext, signal, onScriptError);
 			signal?.throwIfAborted();
 
 			if (viewJs) {
@@ -554,6 +559,7 @@ export async function renderTemplate(
 					await executeCustomViewJavaScript(viewJs, scriptContext);
 				} catch (e) {
 					console.error('[Custom Views] Error executing view JS:', e);
+					onScriptError?.(e, { kind: "view" });
 				}
 			}
 		} else {
@@ -1049,6 +1055,7 @@ async function executeScripts(
 	scripts: HTMLScriptElement[],
 	scriptContext: CustomViewScriptContext,
 	signal?: AbortSignal,
+	onScriptError?: ScriptErrorHandler,
 ): Promise<void> {
 	for (const script of scripts) {
 		signal?.throwIfAborted();
@@ -1060,6 +1067,7 @@ async function executeScripts(
 					await executeCustomViewJavaScript(code, scriptContext);
 				} catch (e) {
 					console.error('[Custom Views] Error executing template script:', e);
+					onScriptError?.(e, { kind: "inline", code });
 				}
 			}
 		}
