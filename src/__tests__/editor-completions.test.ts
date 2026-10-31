@@ -19,3 +19,15 @@ it("uses host icons for template and language suggestions without replacing labe
 		}
 	} finally { view.destroy(); }
 });
+
+it("shows the detail the way Obsidian does, since its CSS hides CodeMirror's own", () => {
+	const view = new EditorView({ state: EditorState.create({ doc: "" }) });
+	try {
+		const render = completionAppearance.addToOptions![1].render;
+		const node = render({ label: "upper", detail: "UPPERCASE" }, view.state, view) as HTMLElement;
+		expect(node.className).toBe("suggestion-aux");
+		expect(node.firstElementChild?.className).toBe("suggestion-flair u-small");
+		expect(node.textContent).toBe("UPPERCASE");
+		expect(render({ label: "plain" }, view.state, view)).toBeNull();
+	} finally { view.destroy(); }
+});

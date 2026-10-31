@@ -26,5 +26,15 @@ export const completionAppearance: NonNullable<Parameters<typeof autocompletion>
 			setIcon(flair, icons[completion.type?.split(" ")[0] ?? ""] ?? "code");
 			return icon;
 		},
+	}, {
+		// Obsidian hides CodeMirror's own detail element and draws it this way instead.
+		position: 80,
+		render(completion, _state, view) {
+			if (!completion.detail) return null;
+			const aux = createDetachedEl(view.dom.ownerDocument, "div");
+			aux.className = "suggestion-aux";
+			aux.createDiv({ cls: "suggestion-flair u-small", text: completion.detail });
+			return aux;
+		},
 	}],
 };
