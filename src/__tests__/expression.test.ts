@@ -127,111 +127,16 @@ describe("tokenize", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseExpression", () => {
-	it("parses a number literal", () => {
-		const ast = parseExpression("42");
-		expect(ast).toEqual({ type: "number", value: 42 });
-	});
-
-	it("parses a string literal", () => {
-		const ast = parseExpression('"hello"');
-		expect(ast).toEqual({ type: "string", value: "hello" });
-	});
-
-	it("parses a boolean literal", () => {
-		expect(parseExpression("true")).toEqual({ type: "boolean", value: true });
-		expect(parseExpression("false")).toEqual({ type: "boolean", value: false });
-	});
-
-	it("parses null", () => {
-		expect(parseExpression("null")).toEqual({ type: "null" });
-	});
-
-	it("parses an identifier", () => {
-		const ast = parseExpression("foo");
-		expect(ast).toEqual({ type: "identifier", name: "foo" });
-	});
-
-	it("parses a function call", () => {
-		const ast = parseExpression("min(1, 2)");
-		expect(ast.type).toBe("functionCall");
-		if (ast.type === "functionCall") {
-			expect(ast.name).toBe("min");
-			expect(ast.args).toHaveLength(2);
-		}
-	});
-
-	it("parses method chaining", () => {
-		const ast = parseExpression("foo.bar().baz()");
-		expect(ast.type).toBe("methodCall");
-	});
-
-	it("parses property access", () => {
-		const ast = parseExpression("foo.bar");
-		expect(ast).toEqual({
-			type: "propertyAccess",
-			object: { type: "identifier", name: "foo" },
-			property: "bar",
-		});
-	});
-
-	it("parses array access", () => {
-		const ast = parseExpression("foo[0]");
-		expect(ast.type).toBe("arrayAccess");
-	});
-
-	it("parses binary operations", () => {
-		const ast = parseExpression("1 + 2");
-		expect(ast.type).toBe("binaryOp");
-		if (ast.type === "binaryOp") {
-			expect(ast.op).toBe("+");
-		}
-	});
-
-	it("parses unary negation", () => {
-		const ast = parseExpression("-5");
-		expect(ast.type).toBe("unaryOp");
-	});
-
-	it("parses unary not", () => {
-		const ast = parseExpression("!true");
-		expect(ast.type).toBe("unaryOp");
-	});
-
-	it("parses array literal", () => {
-		const ast = parseExpression("[1, 2, 3]");
-		expect(ast.type).toBe("arrayLiteral");
-	});
-
-	it("parses grouped expressions", () => {
-		const ast = parseExpression("(1 + 2) * 3");
-		expect(ast.type).toBe("binaryOp");
-	});
-
-	it("parses complex chain: link(x).asFile().content()", () => {
-		const ast = parseExpression('link("test").asFile().content()');
-		expect(ast.type).toBe("methodCall");
-		if (ast.type === "methodCall") {
-			expect(ast.method).toBe("content");
-			expect(ast.object.type).toBe("methodCall");
-		}
-	});
-
-	it("parses identifier with array access then property access", () => {
-		const ast = parseExpression("cast[0].name");
-		expect(ast.type).toBe("propertyAccess");
-		if (ast.type === "propertyAccess") {
-			expect(ast.property).toBe("name");
-			expect(ast.object.type).toBe("arrayAccess");
-		}
-	});
-
-	it("respects operator precedence", () => {
-		const ast = parseExpression("1 + 2 * 3");
-		expect(ast.type).toBe("binaryOp");
-		if (ast.type === "binaryOp") {
-			expect(ast.op).toBe("+");
-			expect(ast.right.type).toBe("binaryOp");
-		}
+	it.each([
+		["42", { type: "number", value: 42 }],
+		['"hello"', { type: "string", value: "hello" }],
+		["true", { type: "boolean", value: true }],
+		["false", { type: "boolean", value: false }],
+		["null", { type: "null" }],
+		["foo", { type: "identifier", name: "foo" }],
+		["foo.bar", { type: "propertyAccess", object: { type: "identifier", name: "foo" }, property: "bar" }],
+	])("parses %s", (expression, ast) => {
+		expect(parseExpression(expression)).toEqual(ast);
 	});
 });
 
@@ -240,25 +145,18 @@ describe("parseExpression", () => {
 // ---------------------------------------------------------------------------
 
 describe("evaluate", () => {
-	it("evaluates number literals", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("42"), ctx)).toBe(42);
-	});
-
-	it("evaluates string literals", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('"hello"'), ctx)).toBe("hello");
-	});
-
-	it("evaluates boolean literals", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("true"), ctx)).toBe(true);
-		expect(await evaluate(parseExpression("false"), ctx)).toBe(false);
-	});
-
-	it("evaluates null", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("null"), ctx)).toBe(null);
+	it.each([
+		["42", 42],
+		['"hello"', "hello"],
+		["true", true],
+		["false", false],
+		["null", null],
+		["content", "This is the body content"],
+		["name", "test.md"],
+		["basename", "test"],
+		["[1, 2, 3]", [1, 2, 3]],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), makeContext())).toEqual(expected);
 	});
 
 	it("evaluates identifiers from frontmatter", async () => {
@@ -277,18 +175,6 @@ describe("evaluate", () => {
 			variables: { x: "from-var" },
 		});
 		expect(await evaluate(parseExpression("x"), ctx)).toBe("from-var");
-	});
-
-	it("evaluates built-in file properties", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("content"), ctx)).toBe("This is the body content");
-		expect(await evaluate(parseExpression("name"), ctx)).toBe("test.md");
-		expect(await evaluate(parseExpression("basename"), ctx)).toBe("test");
-	});
-
-	it("evaluates array literal", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("[1, 2, 3]"), ctx)).toEqual([1, 2, 3]);
 	});
 
 	it("evaluates array access", async () => {
@@ -310,44 +196,21 @@ describe("evaluate", () => {
 describe("evaluate — arithmetic", () => {
 	const ctx = makeContext();
 
-	it("addition", async () => {
-		expect(await evaluate(parseExpression("3 + 4"), ctx)).toBe(7);
-	});
-
-	it("subtraction", async () => {
-		expect(await evaluate(parseExpression("10 - 3"), ctx)).toBe(7);
-	});
-
-	it("multiplication", async () => {
-		expect(await evaluate(parseExpression("6 * 7"), ctx)).toBe(42);
-	});
-
-	it("division", async () => {
-		expect(await evaluate(parseExpression("10 / 4"), ctx)).toBe(2.5);
-	});
-
-	it("division still works after regex literal support", async () => {
-		expect(await evaluate(parseExpression("10/2"), ctx)).toBe(5);
-	});
-
-	it("division by zero returns null", async () => {
-		expect(await evaluate(parseExpression("10 / 0"), ctx)).toBe(null);
-	});
-
-	it("modulo", async () => {
-		expect(await evaluate(parseExpression("10 % 3"), ctx)).toBe(1);
-	});
-
-	it("power", async () => {
-		expect(await evaluate(parseExpression("2 ** 10"), ctx)).toBe(1024);
-	});
-
-	it("string concatenation with +", async () => {
-		expect(await evaluate(parseExpression('"hello" + " " + "world"'), ctx)).toBe("hello world");
-	});
-
-	it("unary negation", async () => {
-		expect(await evaluate(parseExpression("-5"), ctx)).toBe(-5);
+	it.each([
+		["3 + 4", 7],
+		["10 - 3", 7],
+		["6 * 7", 42],
+		["10 / 4", 2.5],
+		["10/2", 5],
+		["10 / 0", null],
+		["10 % 3", 1],
+		["2 ** 10", 1024],
+		['"hello" + " " + "world"', "hello world"],
+		["-5", -5],
+		["1 + 2 * 3", 7],
+		["(1 + 2) * 3", 9],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), ctx)).toEqual(expected);
 	});
 });
 
@@ -358,40 +221,24 @@ describe("evaluate — arithmetic", () => {
 describe("evaluate — comparison & logic", () => {
 	const ctx = makeContext();
 
-	it("==", async () => {
-		expect(await evaluate(parseExpression("1 == 1"), ctx)).toBe(true);
-		expect(await evaluate(parseExpression("1 == 2"), ctx)).toBe(false);
-	});
-
-	it("!=", async () => {
-		expect(await evaluate(parseExpression("1 != 2"), ctx)).toBe(true);
-	});
-
-	it("supports strict equality aliases", async () => {
-		expect(await evaluate(parseExpression("1 === 1"), ctx)).toBe(true);
-		expect(await evaluate(parseExpression("1 !== 2"), ctx)).toBe(true);
-	});
-
-	it("< > <= >=", async () => {
-		expect(await evaluate(parseExpression("1 < 2"), ctx)).toBe(true);
-		expect(await evaluate(parseExpression("2 > 1"), ctx)).toBe(true);
-		expect(await evaluate(parseExpression("2 <= 2"), ctx)).toBe(true);
-		expect(await evaluate(parseExpression("3 >= 2"), ctx)).toBe(true);
-	});
-
-	it("&&", async () => {
-		expect(await evaluate(parseExpression("true && true"), ctx)).toBe(true);
-		expect(await evaluate(parseExpression("true && false"), ctx)).toBe(false);
-	});
-
-	it("||", async () => {
-		expect(await evaluate(parseExpression("false || true"), ctx)).toBe(true);
-		expect(await evaluate(parseExpression("false || false"), ctx)).toBe(false);
-	});
-
-	it("! (not)", async () => {
-		expect(await evaluate(parseExpression("!true"), ctx)).toBe(false);
-		expect(await evaluate(parseExpression("!false"), ctx)).toBe(true);
+	it.each([
+		["1 == 1", true],
+		["1 == 2", false],
+		["1 != 2", true],
+		["1 === 1", true],
+		["1 !== 2", true],
+		["1 < 2", true],
+		["2 > 1", true],
+		["2 <= 2", true],
+		["3 >= 2", true],
+		["true && true", true],
+		["true && false", false],
+		["false || true", true],
+		["false || false", false],
+		["!true", false],
+		["!false", true],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), ctx)).toEqual(expected);
 	});
 });
 
@@ -400,24 +247,34 @@ describe("evaluate — comparison & logic", () => {
 // ---------------------------------------------------------------------------
 
 describe("global functions", () => {
-	it("if() — truthy condition", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('if(true, "yes", "no")'), ctx)).toBe("yes");
-	});
-
-	it("if() — falsy condition", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('if(false, "yes", "no")'), ctx)).toBe("no");
+	it.each([
+		['if(true, "yes", "no")', "yes"],
+		['if(false, "yes", "no")', "no"],
+		['if(false, "yes")', null],
+		["min(5, 3, 8, 1)", 1],
+		["max(5, 3, 8, 1)", 8],
+		["list(1, 2, 3)", [1, 2, 3]],
+		['number("42")', 42],
+		['escapeHTML("<b>hi</b>")', "&lt;b&gt;hi&lt;/b&gt;"],
+		['concat("hello", " ", "world")', "hello world"],
+		['length("hello")', 5],
+		['length(list(1,2,3))', 3],
+		['date("not-a-date")', null],
+		['image("pic.png", "My pic")', "![My pic](pic.png)"],
+		['image("test 1.png")', "![](<test 1.png>)"],
+		['typeof(42)', "number"],
+		['typeof("hi")', "string"],
+		['typeof(true)', "boolean"],
+		['typeof(null)', "null"],
+		['typeof(list(1,2))', "list"],
+		["unknownFn(1)", null],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), makeContext())).toEqual(expected);
 	});
 
 	it("if() — with expression condition", async () => {
 		const ctx = makeContext({ frontmatter: { rating: 9 } });
 		expect(await evaluate(parseExpression('if(rating > 8, "Great", "OK")'), ctx)).toBe("Great");
-	});
-
-	it("if() — without else value returns null", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('if(false, "yes")'), ctx)).toBe(null);
 	});
 
 	it("for() — iterates over list", async () => {
@@ -435,31 +292,6 @@ describe("global functions", () => {
 		expect(await evaluate(parseExpression('for(items, "{{index}}")'), ctx)).toBe("0, 1");
 	});
 
-	it("min()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("min(5, 3, 8, 1)"), ctx)).toBe(1);
-	});
-
-	it("max()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("max(5, 3, 8, 1)"), ctx)).toBe(8);
-	});
-
-	it("list()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("list(1, 2, 3)"), ctx)).toEqual([1, 2, 3]);
-	});
-
-	it("number()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('number("42")'), ctx)).toBe(42);
-	});
-
-	it("escapeHTML()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('escapeHTML("<b>hi</b>")'), ctx)).toBe("&lt;b&gt;hi&lt;/b&gt;");
-	});
-
 	it("link() — creates a link", async () => {
 		const ctx = makeContext();
 		const result = await evaluate(parseExpression('link("My Note")'), ctx);
@@ -470,17 +302,6 @@ describe("global functions", () => {
 		const ctx = makeContext();
 		const result = await evaluate(parseExpression('link("My Note", "Click here")'), ctx);
 		expect(result).toEqual({ __type: "link", target: "My Note", display: "Click here" });
-	});
-
-	it("concat()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('concat("hello", " ", "world")'), ctx)).toBe("hello world");
-	});
-
-	it("length()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('length("hello")'), ctx)).toBe(5);
-		expect(await evaluate(parseExpression('length(list(1,2,3))'), ctx)).toBe(3);
 	});
 
 	it("now() — returns a date", async () => {
@@ -504,21 +325,6 @@ describe("global functions", () => {
 		expect((result as ExprDate).__type).toBe("date");
 	});
 
-	it("date() — returns null for invalid date", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('date("not-a-date")'), ctx)).toBe(null);
-	});
-
-	it("image()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('image("pic.png", "My pic")'), ctx)).toBe("![My pic](pic.png)");
-	});
-
-	it("image() wraps destinations with spaces", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('image("test 1.png")'), ctx)).toBe("![](<test 1.png>)");
-	});
-
 	it("random() — no args returns 0-1", async () => {
 		const ctx = makeContext();
 		const result = await evaluate(parseExpression("random()"), ctx) as number;
@@ -532,20 +338,6 @@ describe("global functions", () => {
 		expect(result).toBeGreaterThanOrEqual(1);
 		expect(result).toBeLessThanOrEqual(10);
 	});
-
-	it("typeof()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('typeof(42)'), ctx)).toBe("number");
-		expect(await evaluate(parseExpression('typeof("hi")'), ctx)).toBe("string");
-		expect(await evaluate(parseExpression('typeof(true)'), ctx)).toBe("boolean");
-		expect(await evaluate(parseExpression('typeof(null)'), ctx)).toBe("null");
-		expect(await evaluate(parseExpression('typeof(list(1,2))'), ctx)).toBe("list");
-	});
-
-	it("unknown function returns null", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("unknownFn(1)"), ctx)).toBe(null);
-	});
 });
 
 // ---------------------------------------------------------------------------
@@ -555,12 +347,25 @@ describe("global functions", () => {
 describe("string methods", () => {
 	const ctx = makeContext({ frontmatter: { title: "Hello World" } });
 
-	it(".upper()", async () => {
-		expect(await evaluate(parseExpression("title.upper()"), ctx)).toBe("HELLO WORLD");
-	});
-
-	it(".lower()", async () => {
-		expect(await evaluate(parseExpression("title.lower()"), ctx)).toBe("hello world");
+	it.each([
+		["title.upper()", "HELLO WORLD"],
+		["title.lower()", "hello world"],
+		['title.contains("World")', true],
+		['title.contains("xyz")', false],
+		['title.startsWith("Hello")', true],
+		['title.endsWith("World")', true],
+		['title.replace("World", "There")', "Hello There"],
+		["title.slice(0, 5)", "Hello"],
+		['title.split(" ")', ["Hello", "World"]],
+		["title.length", 11],
+		['title.containsAll("Hello", "World")', true],
+		['title.containsAll("Hello", "xyz")', false],
+		['title.containsAny("Hello", "xyz")', true],
+		['title.containsAny("abc", "xyz")', false],
+		["title.toString()", "Hello World"],
+		["title.isTruthy()", true],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), ctx)).toEqual(expected);
 	});
 
 	it(".title()", async () => {
@@ -578,27 +383,10 @@ describe("string methods", () => {
 		expect(await evaluate(parseExpression("title.trim()"), ctx2)).toBe("hello");
 	});
 
-	it(".contains()", async () => {
-		expect(await evaluate(parseExpression('title.contains("World")'), ctx)).toBe(true);
-		expect(await evaluate(parseExpression('title.contains("xyz")'), ctx)).toBe(false);
-	});
-
-	it(".startsWith()", async () => {
-		expect(await evaluate(parseExpression('title.startsWith("Hello")'), ctx)).toBe(true);
-	});
-
-	it(".endsWith()", async () => {
-		expect(await evaluate(parseExpression('title.endsWith("World")'), ctx)).toBe(true);
-	});
-
 	it(".isEmpty()", async () => {
 		expect(await evaluate(parseExpression("title.isEmpty()"), ctx)).toBe(false);
 		const ctx2 = makeContext({ frontmatter: { title: "" } });
 		expect(await evaluate(parseExpression("title.isEmpty()"), ctx2)).toBe(true);
-	});
-
-	it(".replace()", async () => {
-		expect(await evaluate(parseExpression('title.replace("World", "There")'), ctx)).toBe("Hello There");
 	});
 
 	it(".replace() with regex literal", async () => {
@@ -620,36 +408,6 @@ describe("string methods", () => {
 		const ctx2 = makeContext({ frontmatter: { x: "abc" } });
 		expect(await evaluate(parseExpression("x.reverse()"), ctx2)).toBe("cba");
 	});
-
-	it(".slice()", async () => {
-		expect(await evaluate(parseExpression("title.slice(0, 5)"), ctx)).toBe("Hello");
-	});
-
-	it(".split()", async () => {
-		expect(await evaluate(parseExpression('title.split(" ")'), ctx)).toEqual(["Hello", "World"]);
-	});
-
-	it(".length", async () => {
-		expect(await evaluate(parseExpression("title.length"), ctx)).toBe(11);
-	});
-
-	it(".containsAll()", async () => {
-		expect(await evaluate(parseExpression('title.containsAll("Hello", "World")'), ctx)).toBe(true);
-		expect(await evaluate(parseExpression('title.containsAll("Hello", "xyz")'), ctx)).toBe(false);
-	});
-
-	it(".containsAny()", async () => {
-		expect(await evaluate(parseExpression('title.containsAny("Hello", "xyz")'), ctx)).toBe(true);
-		expect(await evaluate(parseExpression('title.containsAny("abc", "xyz")'), ctx)).toBe(false);
-	});
-
-	it(".toString()", async () => {
-		expect(await evaluate(parseExpression("title.toString()"), ctx)).toBe("Hello World");
-	});
-
-	it(".isTruthy()", async () => {
-		expect(await evaluate(parseExpression("title.isTruthy()"), ctx)).toBe(true);
-	});
 });
 
 // ---------------------------------------------------------------------------
@@ -659,29 +417,19 @@ describe("string methods", () => {
 describe("number methods", () => {
 	const ctx = makeContext({ frontmatter: { val: 3.7, neg: -5.2 } });
 
-	it(".abs()", async () => {
-		expect(await evaluate(parseExpression("neg.abs()"), ctx)).toBe(5.2);
-	});
-
-	it(".ceil()", async () => {
-		expect(await evaluate(parseExpression("val.ceil()"), ctx)).toBe(4);
-	});
-
-	it(".floor()", async () => {
-		expect(await evaluate(parseExpression("val.floor()"), ctx)).toBe(3);
-	});
-
-	it(".round()", async () => {
-		expect(await evaluate(parseExpression("val.round()"), ctx)).toBe(4);
+	it.each([
+		["neg.abs()", 5.2],
+		["val.ceil()", 4],
+		["val.floor()", 3],
+		["val.round()", 4],
+		["val.toFixed(1)", "3.7"],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), ctx)).toEqual(expected);
 	});
 
 	it(".round() with decimals", async () => {
 		const ctx2 = makeContext({ frontmatter: { val: 3.14159 } });
 		expect(await evaluate(parseExpression("val.round(2)"), ctx2)).toBe(3.14);
-	});
-
-	it(".toFixed()", async () => {
-		expect(await evaluate(parseExpression("val.toFixed(1)"), ctx)).toBe("3.7");
 	});
 });
 
@@ -692,53 +440,29 @@ describe("number methods", () => {
 describe("list methods", () => {
 	const ctx = makeContext({ frontmatter: { items: ["c", "a", "b", "a"] } });
 
-	it(".contains()", async () => {
-		expect(await evaluate(parseExpression('items.contains("a")'), ctx)).toBe(true);
-		expect(await evaluate(parseExpression('items.contains("z")'), ctx)).toBe(false);
-	});
-
-	it(".join()", async () => {
-		expect(await evaluate(parseExpression('items.join(", ")'), ctx)).toBe("c, a, b, a");
-	});
-
-	it(".join() default separator", async () => {
-		expect(await evaluate(parseExpression("items.join()"), ctx)).toBe("c, a, b, a");
-	});
-
-	it(".sort()", async () => {
-		expect(await evaluate(parseExpression("items.sort()"), ctx)).toEqual(["a", "a", "b", "c"]);
+	it.each([
+		['items.contains("a")', true],
+		['items.contains("z")', false],
+		['items.join(", ")', "c, a, b, a"],
+		["items.join()", "c, a, b, a"],
+		["items.sort()", ["a", "a", "b", "c"]],
+		["items.unique()", ["c", "a", "b"]],
+		["items.reverse()", ["a", "b", "a", "c"]],
+		["items.first()", "c"],
+		["items.last()", "a"],
+		["items.slice(1, 3)", ["a", "b"]],
+		["items.length", 4],
+		["items.isEmpty()", false],
+		['items.containsAll("a", "b")', true],
+		['items.containsAll("a", "z")', false],
+		['items.containsAny("z", "a")', true],
+		['items.containsAny("x", "z")', false],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), ctx)).toEqual(expected);
 	});
 
 	it('.sort("desc")', async () => {
 		expect(await evaluate(parseExpression('items.sort("desc")'), ctx)).toEqual(["c", "b", "a", "a"]);
-	});
-
-	it(".unique()", async () => {
-		expect(await evaluate(parseExpression("items.unique()"), ctx)).toEqual(["c", "a", "b"]);
-	});
-
-	it(".reverse()", async () => {
-		expect(await evaluate(parseExpression("items.reverse()"), ctx)).toEqual(["a", "b", "a", "c"]);
-	});
-
-	it(".first()", async () => {
-		expect(await evaluate(parseExpression("items.first()"), ctx)).toBe("c");
-	});
-
-	it(".last()", async () => {
-		expect(await evaluate(parseExpression("items.last()"), ctx)).toBe("a");
-	});
-
-	it(".slice()", async () => {
-		expect(await evaluate(parseExpression("items.slice(1, 3)"), ctx)).toEqual(["a", "b"]);
-	});
-
-	it(".length", async () => {
-		expect(await evaluate(parseExpression("items.length"), ctx)).toBe(4);
-	});
-
-	it(".isEmpty() — non-empty", async () => {
-		expect(await evaluate(parseExpression("items.isEmpty()"), ctx)).toBe(false);
 	});
 
 	it(".isEmpty() — empty", async () => {
@@ -756,16 +480,6 @@ describe("list methods", () => {
 		const ctx2 = makeContext({ frontmatter: { nums: [1, 2, 3, 4] } });
 		expect(await evaluate(parseExpression("nums.reduce()"), ctx2)).toBe(10);
 	});
-
-	it(".containsAll()", async () => {
-		expect(await evaluate(parseExpression('items.containsAll("a", "b")'), ctx)).toBe(true);
-		expect(await evaluate(parseExpression('items.containsAll("a", "z")'), ctx)).toBe(false);
-	});
-
-	it(".containsAny()", async () => {
-		expect(await evaluate(parseExpression('items.containsAny("z", "a")'), ctx)).toBe(true);
-		expect(await evaluate(parseExpression('items.containsAny("x", "z")'), ctx)).toBe(false);
-	});
 });
 
 // ---------------------------------------------------------------------------
@@ -773,6 +487,16 @@ describe("list methods", () => {
 // ---------------------------------------------------------------------------
 
 describe("date methods", () => {
+	it.each([
+		['date("2024-01-15").year', 2024],
+		['date("2024-01-15").month', 1],
+		['date("2024-01-15").day', 15],
+		['date("2024-01-15").date()', "2024-01-15"],
+		['date("2024-01-15").isEmpty()', false],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), makeContext())).toEqual(expected);
+	});
+
 	it(".format()", async () => {
 		const ctx = makeContext();
 		const result = await evaluate(parseExpression('date("2024-01-15").format("YYYY-MM-DD")'), ctx);
@@ -785,35 +509,10 @@ describe("date methods", () => {
 		expect(result).toBe("15/01/2024");
 	});
 
-	it(".year", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('date("2024-01-15").year'), ctx)).toBe(2024);
-	});
-
-	it(".month", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('date("2024-01-15").month'), ctx)).toBe(1);
-	});
-
-	it(".day", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('date("2024-01-15").day'), ctx)).toBe(15);
-	});
-
-	it(".date()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('date("2024-01-15").date()'), ctx)).toBe("2024-01-15");
-	});
-
 	it(".time()", async () => {
 		const ctx = makeContext();
 		const result = await evaluate(parseExpression('date("2024-01-15T14:30:00").time()'), ctx);
 		expect(result).toBe("14:30:00");
-	});
-
-	it(".isEmpty()", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression('date("2024-01-15").isEmpty()'), ctx)).toBe(false);
 	});
 });
 
@@ -1042,8 +741,8 @@ describe("splitExpressionAndPipes", () => {
 describe("evaluateExpression", () => {
 	it("evaluates expression with trailing pipe filter", async () => {
 		const ctx = makeContext({ frontmatter: { title: "hello world" } });
-		const result = await evaluateExpression("title.upper()", ctx);
-		expect(result).toBe("HELLO WORLD");
+		expect(await evaluateExpression("title.upper()", ctx)).toBe("HELLO WORLD");
+		expect(await evaluateExpression('title.upper() | replace:"WORLD","THERE"', ctx)).toBe("HELLO THERE");
 	});
 
 	it("returns null for errors", async () => {
@@ -1271,14 +970,16 @@ describe("processLogicBlocks", () => {
 // ---------------------------------------------------------------------------
 
 describe("complex expressions", () => {
+	it.each([
+		["min(max(1, 2), 3)", 2],
+		["missing.property", null],
+	] as const)("evaluates %s → %j", async (expression, expected) => {
+		expect(await evaluate(parseExpression(expression), makeContext())).toEqual(expected);
+	});
+
 	it("chained method calls", async () => {
 		const ctx = makeContext({ frontmatter: { title: "Hello World" } });
 		expect(await evaluate(parseExpression('title.upper().slice(0, 5)'), ctx)).toBe("HELLO");
-	});
-
-	it("nested function calls", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("min(max(1, 2), 3)"), ctx)).toBe(2);
 	});
 
 	it("arithmetic with frontmatter", async () => {
@@ -1295,11 +996,6 @@ describe("complex expressions", () => {
 		const ctx = makeContext({ frontmatter: { tags: ["b", "a", "c", "a"] } });
 		const result = await evaluate(parseExpression('tags.unique().sort().join(" ")'), ctx);
 		expect(result).toBe("a b c");
-	});
-
-	it("property access on null returns null", async () => {
-		const ctx = makeContext();
-		expect(await evaluate(parseExpression("missing.property"), ctx)).toBe(null);
 	});
 
 	it("method call on null falls through to string conversion", async () => {
