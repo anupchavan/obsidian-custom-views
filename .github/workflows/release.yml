@@ -3,6 +3,12 @@ on:
     push:
         tags:
             - "*"
+    # Run from the Actions tab (or the API) to tag the chosen branch and release it in one go.
+    workflow_dispatch:
+        inputs:
+            version:
+                description: "Version to release; it becomes the tag (no v prefix)"
+                required: true
 jobs:
     build:
         runs-on: ubuntu-latest
@@ -12,6 +18,17 @@ jobs:
             attestations: write
         steps:
             - uses: actions/checkout@v3
+            - name: Resolve the tag
+              id: tag
+              env:
+                  INPUT_VERSION: ${{ inputs.version }}
+              run: |
+                  if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+                      tag="$INPUT_VERSION"
+                  else
+                      tag="${GITHUB_REF#refs/tags/}"
+                  fi
+                  echo "tag=$tag" >> "$GITHUB_OUTPUT"
             - name: Use Node.js
               uses: actions/setup-node@v3
               with:
@@ -25,13 +42,14 @@ jobs:
                   npm run build
             - name: Choose the manifest
               id: manifest
+              env:
+                  TAG: ${{ steps.tag.outputs.tag }}
               run: |
                   # A tag matching manifest-beta.json ships as a beta pre-release (installable
                   # with BRAT); manifest.json stays on the stable version so the community
                   # store keeps offering it to everyone else.
-                  tag="${GITHUB_REF#refs/tags/}"
                   mkdir -p dist
-                  if [ -f manifest-beta.json ] && [ "$(node -p 'require("./manifest-beta.json").version')" = "$tag" ]; then
+                  if [ -f manifest-beta.json ] && [ "$(node -p 'require("./manifest-beta.json").version')" = "$TAG" ]; then
                       cp manifest-beta.json dist/manifest.json
                       echo "prerelease=true" >> "$GITHUB_OUTPUT"
                   else
@@ -39,6 +57,24 @@ jobs:
                       echo "prerelease=false" >> "$GITHUB_OUTPUT"
                   fi
                   cp main.js styles.css dist/
+            - name: Check the versions
+              env:
+                  TAG: ${{ steps.tag.outputs.tag }}
+              run: |
+                  node -e 'const m = require("./dist/manifest.json"); if (m.version !== process.env.TAG || require("./package.json").version !== m.version || require("./versions.json")[m.version] !== m.minAppVersion) process.exit(1)'
+                  test -s ".github/release-notes/$TAG.md"
+            - name: Push the tag
+              if: github.event_name == 'workflow_dispatch'
+              env:
+                  TAG: ${{ steps.tag.outputs.tag }}
+              run: |
+                  # A tag pushed with the workflow token doesn't start another run of this workflow.
+                  if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+                      echo "Tag $TAG already exists; push it to release it, or pick a new version." >&2
+                      exit 1
+                  fi
+                  git tag "$TAG"
+                  git push origin "refs/tags/$TAG"
             - name: Generate artifact attestation
               uses: actions/attest-build-provenance@v2
               with:
@@ -50,18 +86,16 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   PRERELEASE: ${{ steps.manifest.outputs.prerelease }}
+                  TAG: ${{ steps.tag.outputs.tag }}
               run: |
-                  tag="${GITHUB_REF#refs/tags/}"
-                  node -e 'const m = require("./dist/manifest.json"); if (m.version !== process.env.GITHUB_REF_NAME || require("./package.json").version !== m.version || require("./versions.json")[m.version] !== m.minAppVersion) process.exit(1)'
-                  test -s ".github/release-notes/$tag.md"
                   if [ "$PRERELEASE" = "true" ]; then
                       kind="--prerelease"
                   else
                       kind="--draft"
                   fi
-                  gh release create "$tag" \
-                    --title="$tag" \
+                  gh release create "$TAG" \
+                    --title="$TAG" \
                     "$kind" \
                     --verify-tag \
-                    --notes-file=".github/release-notes/$tag.md" \
+                    --notes-file=".github/release-notes/$TAG.md" \
                     dist/main.js dist/manifest.json dist/styles.css
