@@ -13,6 +13,7 @@ import { mountContextTemplateEditors } from "./context-template-editor";
 import type { EditorView } from "@codemirror/view";
 import { closeCompletion } from "@codemirror/autocomplete";
 import { closeSearchPanel } from "@codemirror/search";
+import { describeTally, MatchCounter, showCountLine, type CountLine, type CounterHost } from "./match-counts";
 
 
 function editableContentDescription(): DocumentFragment {
@@ -33,6 +34,20 @@ function javaScriptDescription(): DocumentFragment {
 
 
 
+
+const RULE_SETTLE_MS = 300;
+
+/** Counting needs the vault and the rule engine; test doubles may have neither. */
+function counterHost(plugin: CustomViewsPlugin): CounterHost | null {
+	const { app, nativeRules } = plugin;
+	if (!app?.vault || !app.metadataCache || !nativeRules) return null;
+	return {
+		app,
+		views: () => plugin.settings.views,
+		compile: view => nativeRules.compile(view),
+		retry: () => nativeRules.prepare(),
+	};
+}
 
 export interface CustomViewsSettings {
 	/** Original malformed configuration, retained for manual recovery. */
@@ -72,6 +87,10 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 	private nameRows = new Map<string, Setting>();
 	private cancelRename?: () => void;
 	private renameAfterRender?: string;
+	private counter?: MatchCounter;
+	/** The last line shown per view, so a re-rendered row starts with it instead of blank. */
+	private countLines = new Map<string, CountLine>();
+	private countSlots = new Map<string, HTMLElement>();
 
 	constructor(app: App, plugin: CustomViewsPlugin) {
 		super(app, plugin);
@@ -173,6 +192,9 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		this.cancelRename?.();
 		this.cancelRename = undefined;
 		this.nameRows.clear();
+		this.counter?.dispose();
+		this.counter = undefined;
+		this.countSlots.clear();
 		super.hide();
 	}
 
@@ -248,9 +270,32 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		});
 	}
 
+	private requestCounts(delay = 0) {
+		const host = counterHost(this.plugin);
+		if (!host) return;
+		this.counter ??= new MatchCounter(host, (tallies, views) => {
+			const ids = new Set<string>();
+			views.forEach((view, index) => {
+				const line = describeTally(tallies[index], views);
+				ids.add(view.id);
+				this.countLines.set(view.id, line);
+				const slot = this.countSlots.get(view.id);
+				if (slot?.isConnected) showCountLine(slot, line);
+			});
+			for (const id of this.countLines.keys()) if (!ids.has(id)) this.countLines.delete(id);
+		});
+		this.counter.request(delay);
+	}
+
 	private addViewActions(setting: Setting, view: ViewConfig) {
 		this.nameRows.set(view.id, setting);
 		setting.settingEl.setAttribute("data-cv-view-id", view.id);
+		if (setting.descEl) {
+			const slot = setting.descEl.querySelector<HTMLElement>(":scope > .cv-view-count") ?? setting.descEl.createDiv("cv-view-count");
+			showCountLine(slot, this.countLines.get(view.id));
+			this.countSlots.set(view.id, slot);
+			this.requestCounts();
+		}
 		setting.addExtraButton(button => button.setIcon("ellipsis").setTooltip("View actions").onClick(() => {
 			const menu = new Menu();
 			menu.addItem(item => item.setTitle("Edit view").setIcon("square-pen").onClick(() => this.openEditModal(view)));
@@ -271,6 +316,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 			.onChange(enabled => {
 				view.enabled = enabled;
 				this.plugin.refreshAllViews();
+				this.requestCounts();
 				void this.plugin.saveSettings().catch(() => {});
 			}));
 		const remove = () => this.confirmDeleteView(view);
@@ -357,6 +403,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 	private refreshSettingsTab() {
 		this.cancelRename?.();
 		this.cancelRename = undefined;
+		if (this.counter) this.requestCounts();
 		if (requireApiVersion("1.13.0")) {
 			this.update();
 		} else {
@@ -461,6 +508,7 @@ export class EditViewModal extends Modal {
 	view: ViewConfig;
 	onClose_cb: () => void;
 	private disposeFilters: (() => void) | undefined;
+	private counter?: MatchCounter;
 	private cancelNameSelection: (() => void) | undefined;
 	private templateEditor: EditorView | null = null;
 	private cssEditor: EditorView | null = null;
@@ -505,6 +553,7 @@ export class EditViewModal extends Modal {
 			.addToggle(toggle => toggle.setValue(this.view.enabled !== false).onChange(enabled => {
 				this.view.enabled = enabled;
 				this.plugin.refreshAllViews();
+				this.counter?.request();
 				autoSave();
 			}));
 		new Setting(identity)
@@ -560,9 +609,24 @@ export class EditViewModal extends Modal {
 			}
 		}
 
-		const rulesContainer = settingsGroup(contentEl, "Rules").createDiv({ cls: "cv-native-filter-host" });
+		const rulesGroup = settingsGroup(contentEl, "Rules");
+		const host = counterHost(this.plugin);
+		if (host) {
+			const slot = rulesGroup.createDiv("cv-view-count cv-rules-count");
+			showCountLine(slot, undefined);
+			this.counter = new MatchCounter(host, (tallies, views) => {
+				const index = views.indexOf(this.view);
+				if (index >= 0 && !this.closed) showCountLine(slot, describeTally(tallies[index], views));
+			});
+			this.counter.request();
+		}
+		const rulesContainer = rulesGroup.createDiv({ cls: "cv-native-filter-host" });
 
-		this.disposeFilters = mountNativeFilters(this.app, rulesContainer, this.view, autoSave);
+		// Recount once typing in a rule pauses, not on every keystroke.
+		this.disposeFilters = mountNativeFilters(this.app, rulesContainer, this.view, () => {
+			this.counter?.request(RULE_SETTLE_MS);
+			autoSave();
+		});
 
 
 		if (!this.plugin.settings.allowJavaScript) contentEl.createEl("p", { text: "JavaScript execution is disabled in the plugin settings." });
@@ -592,6 +656,8 @@ export class EditViewModal extends Modal {
 		this.closed = true;
 		this.cancelNameSelection?.();
 		this.cancelNameSelection = undefined;
+		this.counter?.dispose();
+		this.counter = undefined;
 		this.plugin.unloadSignal.removeEventListener("abort", this.closeOnUnload);
 		const cleanups = [
 			this.disposeFilters,
