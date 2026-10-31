@@ -698,3 +698,10 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
     overflow: hidden;
     white-space: nowrap;
 }
+
+/* Match counts: a second line under each view's name, and under the edit modal's Rules heading.
+   The slot always holds a line (a no-break space until counted), so rows never change height. */
+.cv-view-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cv-view-count[data-cv-tone="warning"] { color: var(--text-warning); }
+.cv-view-count[data-cv-tone="faint"] { color: var(--text-faint); }
+.cv-rules-count { padding: var(--size-4-2) var(--size-4-3) 0; font-size: var(--font-ui-small); }
