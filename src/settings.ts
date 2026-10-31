@@ -291,7 +291,7 @@ export class CustomViewsSettingTab extends PluginSettingTab {
 		this.nameRows.set(view.id, setting);
 		setting.settingEl.setAttribute("data-cv-view-id", view.id);
 		if (setting.descEl) {
-			const slot = setting.descEl.querySelector<HTMLElement>(":scope > .cv-view-count") ?? setting.descEl.createDiv("cv-view-count");
+			const slot = setting.descEl;
 			showCountLine(slot, this.countLines.get(view.id));
 			this.countSlots.set(view.id, slot);
 			this.requestCounts();
@@ -612,7 +612,7 @@ export class EditViewModal extends Modal {
 		const rulesGroup = settingsGroup(contentEl, "Rules");
 		const host = counterHost(this.plugin);
 		if (host) {
-			const slot = rulesGroup.createDiv("cv-view-count cv-rules-count");
+			const slot = new Setting(rulesGroup).setName("Matching notes").descEl;
 			showCountLine(slot, undefined);
 			this.counter = new MatchCounter(host, (tallies, views) => {
 				const index = views.indexOf(this.view);
@@ -620,7 +620,7 @@ export class EditViewModal extends Modal {
 			});
 			this.counter.request();
 		}
-		const rulesContainer = rulesGroup.createDiv({ cls: "cv-native-filter-host" });
+		const rulesContainer = rulesGroup.createDiv({ cls: "setting-item cv-native-filter-host" });
 
 		// Recount once typing in a rule pauses, not on every keystroke.
 		this.disposeFilters = mountNativeFilters(this.app, rulesContainer, this.view, () => {
