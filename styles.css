@@ -517,11 +517,12 @@
    under Obsidian's suggestion popover, which sits at a lower layer than CodeMirror's 300. */
 .cv-codemirror-container .cm-panels { z-index: 1; }
 .cv-diagnostics-pinned { height: var(--cv-diagnostics-height); overflow: hidden; }
-.cv-diagnostics-pinned.cv-diagnostics-collapsing {
+/* The extra .cm-editor step outranks the bottom-panel margin and border rules, ours and CodeMirror's theme. */
+.cv-codemirror-container .cm-editor .cv-diagnostics-pinned.cv-diagnostics-collapsing {
     height: 0;
     padding-block: 0;
-    margin-block: 0 !important;
-    border-color: transparent !important;
+    margin-block: 0;
+    border-color: transparent;
     opacity: 0;
     transition: height 160ms cubic-bezier(0.2, 0, 0, 1), margin 160ms cubic-bezier(0.2, 0, 0, 1), padding 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms linear;
 }
@@ -586,9 +587,18 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
     font-family: var(--font-monospace);
     font-size: 0.92em;
 }
-.cv-diagnostic-mark.is-error { text-decoration: wavy underline var(--text-error); }
-.cv-diagnostic-mark.is-warning { text-decoration: wavy underline var(--text-warning); }
-.cv-diagnostic-mark { text-decoration-thickness: 1px; text-decoration-skip-ink: none; text-underline-offset: 3px; }
+/* A squiggle drawn from two crossed gradients, so it takes any theme color. */
+.cv-diagnostic-mark {
+    --cv-squiggle: var(--text-error);
+    padding-bottom: 2px;
+    background-image:
+        linear-gradient(45deg, transparent 65%, var(--cv-squiggle) 80%, transparent 90%),
+        linear-gradient(135deg, transparent 5%, var(--cv-squiggle) 15%, transparent 35%);
+    background-size: 6px 3px;
+    background-repeat: repeat-x;
+    background-position: left bottom;
+}
+.cv-diagnostic-mark.is-warning { --cv-squiggle: var(--text-warning); }
 
 .cv-issue-line.is-error { background-color: color-mix(in srgb, var(--text-error) 7%, transparent); }
 .cv-issue-line.is-warning { background-color: color-mix(in srgb, var(--text-warning) 7%, transparent); }
@@ -682,7 +692,9 @@ button.cv-diagnostic-title:focus-visible { box-shadow: 0 0 0 2px var(--backgroun
     position: absolute;
     width: 1px;
     height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
     overflow: hidden;
-    clip-path: inset(50%);
     white-space: nowrap;
 }
