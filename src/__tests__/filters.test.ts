@@ -1,9 +1,10 @@
 /**
- * Tests for src/filters.ts — applyFilterChain and every built-in filter.
+ * Tests for src/filters.ts — applyFilterChain and every built-in filter,
+ * including the Clipper-style ones.
  *
  * Run with:  npm test
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { applyFilterChain } from "../filters";
 
 // ---------------------------------------------------------------------------
@@ -34,306 +35,165 @@ describe("applyFilterChain — basics", () => {
 });
 
 // ---------------------------------------------------------------------------
-// String-case filters
+// Built-in filters: one row per input → output contract
 // ---------------------------------------------------------------------------
 
-describe("upper", () => {
-	it("uppercases a string", () => expect(apply("hello", "upper")).toBe("HELLO"));
-	it("handles already-uppercase input", () => expect(apply("HELLO", "upper")).toBe("HELLO"));
-	it("handles mixed case", () => expect(apply("HeLLo", "upper")).toBe("HELLO"));
-});
-
-describe("lower", () => {
-	it("lowercases a string", () => expect(apply("HELLO", "lower")).toBe("hello"));
-	it("handles already-lowercase input", () => expect(apply("hello", "lower")).toBe("hello"));
-});
-
-describe("capitalize", () => {
-	it("uppercases first char, lowercases rest", () => expect(apply("hello world", "capitalize")).toBe("Hello world"));
-	it("handles all-caps input", () => expect(apply("HELLO", "capitalize")).toBe("Hello"));
-});
-
-describe("title", () => {
-	it("title-cases each word", () => expect(apply("hello world", "title")).toBe("Hello World"));
-	it("handles mixed-case words", () => expect(apply("hELLo WoRLD", "title")).toBe("Hello World"));
-});
-
-describe("camel", () => {
-	it("converts space-separated to camelCase", () => expect(apply("hello world", "camel")).toBe("helloWorld"));
-	it("handles hyphen-separated input", () => expect(apply("foo-bar-baz", "camel")).toBe("fooBarBaz"));
-});
-
-describe("kebab", () => {
-	it("converts PascalCase to kebab-case", () => expect(apply("HelloWorld", "kebab")).toBe("hello-world"));
-	it("converts space-separated to kebab-case", () => expect(apply("hello world", "kebab")).toBe("hello-world"));
-});
-
-describe("snake", () => {
-	it("converts PascalCase to snake_case", () => expect(apply("HelloWorld", "snake")).toBe("hello_world"));
-	it("converts space-separated to snake_case", () => expect(apply("hello world", "snake")).toBe("hello_world"));
-});
-
-describe("trim", () => {
-	it("removes leading and trailing whitespace", () => expect(apply("  hello  ", "trim")).toBe("hello"));
-	it("returns unchanged string if no whitespace", () => expect(apply("hello", "trim")).toBe("hello"));
-});
-
-// ---------------------------------------------------------------------------
-// replace
-// ---------------------------------------------------------------------------
-
-describe("replace", () => {
-	it("replaces a literal substring (all occurrences)", () => {
-		expect(apply("hello world world", 'replace:"world","there"')).toBe("hello there there");
+describe("built-in filters", () => {
+	it.each([
+		// case
+		["hello", "upper", "HELLO"],
+		["HeLLo", "upper", "HELLO"],
+		["HELLO", "lower", "hello"],
+		["hello world", "capitalize", "Hello world"],
+		["HELLO", "capitalize", "Hello"],
+		["hello world", "title", "Hello World"],
+		["hELLo WoRLD", "title", "Hello World"],
+		["hello world", "camel", "helloWorld"],
+		["foo-bar-baz", "camel", "fooBarBaz"],
+		["HelloWorld", "kebab", "hello-world"],
+		["hello world", "kebab", "hello-world"],
+		["HelloWorld", "snake", "hello_world"],
+		["hello world", "snake", "hello_world"],
+		["  hello  ", "trim", "hello"],
+		["hello", "trim", "hello"],
+		// replace
+		["hello world world", 'replace:"world","there"', "hello there there"],
+		["1+1=2", 'replace:"+","plus"', "1plus1=2"],
+		["hello123", 'replace:"/[0-9]+/g",""', "hello"],
+		["Hello HELLO hello", 'replace:"/hello/gi","hi"', "hi hi hi"],
+		["hello world", 'replace:"world"', "hello "],
+		["Movies/Album", 'replace:"/"," - "', "Movies - Album"],
+		["don't stop", 'replace:"don\'t","do"', "do stop"],
+		// wikilink / link / image
+		["My Note", "wikilink", "[[My Note]]"],
+		["My Note", 'wikilink:"alias"', "[[My Note|alias]]"],
+		[["A", "B"], "wikilink", "[[A]], [[B]]"],
+		[["A", "B"], 'wikilink:"x"', "[[A|x]], [[B|x]]"],
+		["https://example.com", "link", "[link](https://example.com)"],
+		["https://example.com", 'link:"Click here"', "[Click here](https://example.com)"],
+		["Music/Love and Machines.md", "link", "[link](<Music/Love and Machines.md>)"],
+		[["https://a.com", "https://b.com"], "link", "[link](https://a.com), [link](https://b.com)"],
+		["photo.png", "image", "![](photo.png)"],
+		["photo.png", 'image:"My Photo"', "![My Photo](photo.png)"],
+		["test 1.png", "image", "![](<test 1.png>)"],
+		[["a.png", "b.png"], "image", "![](a.png)\n![](b.png)"],
+		// blockquote
+		["line1\nline2\nline3", "blockquote", "> line1\n> line2\n> line3"],
+		["quote", "blockquote", "> quote"],
+		// arrays
+		["a,b,c", "split", ["a", "b", "c"]],
+		["a|b|c", 'split:"|"', ["a", "b", "c"]],
+		["hello", "split", ["hello"]],
+		[["a", "b", "c"], "join", "a,b,c"],
+		[["a", "b", "c"], 'join:" | "', "a | b | c"],
+		["hello", "join", "hello"],
+		[["x", "y", "z"], "first", "x"],
+		["hello", "first", "hello"],
+		[["x", "y", "z"], "last", "z"],
+		["hello", "last", "hello"],
+		["hello", "slice:1,3", "el"],
+		[["a", "b", "c", "d"], "slice:1,3", ["b", "c"]],
+		["hello", "slice:2", "llo"],
+		[42, "slice:1", 42],
+		[["a", "b", "c"], "count", 3],
+		["hello", "count", 5],
+		[[], "count", 0],
+		// calc
+		[10, 'calc:"+5"', 15],
+		[10, 'calc:"-3"', 7],
+		[4, 'calc:"*3"', 12],
+		[10, 'calc:"/2"', 5],
+		[2, 'calc:"^10"', 1024],
+		[2, 'calc:"**10"', 1024],
+		["hello", 'calc:"+1"', "hello"],
+		[5, 'calc:"%2"', 5],
+		// date / date_modify
+		["2024-03-25", 'date:"MMM D YYYY"', "Mar 25 2024"],
+		["not-a-date", "date", "not-a-date"],
+		["2024-01-01", 'date_modify:"1 day"', "2024-01-02"],
+		["2024-01-05", 'date_modify:"-4 days"', "2024-01-01"],
+		["2024-01-31", 'date_modify:"1 month"', "2024-02-29"],
+		["2023-03-15", 'date_modify:"1 year"', "2024-03-15"],
+		["not-a-date", 'date_modify:"1 day"', "not-a-date"],
+		// strip_tags (DOMParser via jsdom)
+		["<b>hello</b> <i>world</i>", "strip_tags", "hello world"],
+		["hello world", "strip_tags", "hello world"],
+		["<<script>alert(1)</script>", "strip_tags", "alert(1)"],
+		["&lt;img src=x onerror=alert(1)&gt;", "strip_tags", "&lt;img src=x onerror=alert(1)&gt;"],
+		// chains
+		["  hello world  ", "trim | upper", "HELLO WORLD"],
+		["a,b,c", 'split | join:" "', "a b c"],
+		["  hello world  ", 'trim | capitalize | replace:"world","there"', "Hello there"],
+		["foo|bar", 'replace:"|","-"', "foo-bar"],
+		[["b", "a"], 'sort | join:", "', "a, b"],
+		["cat dog", 'replace:/cat|dog/g,"pet" | upper', "PET PET"],
+		// Clipper-style filters
+		["hello world", "pascal", "HelloWorld"],
+		["my-variable-name", "pascal", "MyVariableName"],
+		["myVariableName", "uncamel", "my variable name"],
+		["MyVariableName", "uncamel", "my variable name"],
+		[["a", "b", "a", "c", "b"], "unique", ["a", "b", "c"]],
+		["hello", "unique", "hello"],
+		["hello", "list", ["hello"]],
+		[["a", "b"], "list", ["a", "b"]],
+		[["a", "b", "c"], "nth:1", "b"],
+		[["x", "y", "z"], "nth", "x"],
+		[["a"], "nth:5", null],
+		[["a", "b"], 'merge:"c"', ["a", "b", "c"]],
+		[["a", "b", "c"], "reverse", ["c", "b", "a"]],
+		["hello", "reverse", "olleh"],
+		[["a", "b", "c"], "length", 3],
+		["hello", "length", 5],
+		[3.7, "round", 4],
+		[3.14159, "round:2", 3.14],
+		[1234567, "number_format:0", "1,234,567"],
+		[1234.5, "number_format:2", "1,234.50"],
+		[3661000, "duration", "1h 1m 1s"],
+		[0, "duration", "0s"],
+		["Important note", 'callout:"warning","Attention"', "> [!warning] Attention\n> Important note"],
+		["Note text", "callout", "> [!info]\n> Note text"],
+		["This is a footnote", 'footnote:"1"', "[^1]: This is a footnote"],
+		["My Note", 'fragment_link:"Section 1"', "[[My Note#Section 1]]"],
+		["My Note", "fragment_link", "[[My Note]]"],
+		["<strong>bold</strong>", "markdown", "**bold**"],
+		['<a href="https://example.com">Example</a>', "markdown", "[Example](https://example.com)"],
+		['<a href="https://example.com/a b">Example</a>', "markdown", "[Example](<https://example.com/a b>)"],
+		["<em>italic</em>", "markdown", "*italic*"],
+		["## Heading", "strip_md", "Heading"],
+		["**bold** text", "strip_md", "bold text"],
+		["*italic* text", "strip_md", "italic text"],
+		["See [[My Note]]", "strip_md", "See My Note"],
+		["See [[My Note|click here]]", "strip_md", "See click here"],
+		["[text](url)", "strip_md", "text"],
+		["hello", "table", "hello"],
+		["<p>Hello <b>world</b></p>", "remove_html", "Hello world"],
+		["<<script>alert(1)</script>", "remove_html", "alert(1)"],
+		["<p>Keep</p><script>remove</script>", 'remove_tags:"script"', "<p>Keep</p>"],
+		['<p class="test" id="p1">Hello</p>', "strip_attr", "<p>Hello</p>"],
+		['<p class="test" id="p1">Hello</p>', 'strip_attr:"class"', '<p id="p1">Hello</p>'],
+		["<b>bold</b>", 'replace_tags:"b","strong"', "<strong>bold</strong>"],
+		["&lt;p&gt;Hello &amp; world&lt;/p&gt;", "unescape", "<p>Hello & world</p>"],
+		["&quot;hello&quot;", "unescape", '"hello"'],
+		["&amp;lt;script&amp;gt;", "unescape", "&lt;script&gt;"],
+		["world", 'template:"Hello {{value}}!"', "Hello world!"],
+		['My File: "test" <2>', "safe_name", "My File- -test- -2-"],
+		["  hello  ", "safe_name", "hello"],
+		["hello", "reverse | upper", "OLLEH"],
+		["a,b,a,c", 'split:"," | unique | join:"-"', "a-b-c"],
+		["My: File", "upper | safe_name", "MY- FILE"],
+	] as const)("%j | %s → %j", (value, chain, expected) => {
+		expect(apply(value, chain)).toEqual(expected);
 	});
 
-	it("escapes regex meta-characters in the search string", () => {
-		expect(apply("1+1=2", 'replace:"+","plus"')).toBe("1plus1=2");
+	it("markdown removes malformed nested HTML without exposing a new tag", () => {
+		expect(apply("<p>Hello</p><scr<script>ipt>alert</script>", "markdown")).not.toContain("<script");
 	});
 
-	it("uses regex when search starts with /", () => {
-		expect(apply("hello123", 'replace:"/[0-9]+/g",""')).toBe("hello");
-	});
-
-	it("supports regex flags (case-insensitive)", () => {
-		expect(apply("Hello HELLO hello", 'replace:"/hello/gi","hi"')).toBe("hi hi hi");
-	});
-
-	it("replaces with empty string when replacement arg is omitted", () => {
-		expect(apply("hello world", 'replace:"world"')).toBe("hello ");
-	});
-	it("treats a slash without a closing slash as literal text", () => {
-		expect(apply("Movies/Album", 'replace:"/"," - "')).toBe("Movies - Album");
-	});
-	it("parses apostrophes inside double-quoted arguments", () => {
-		expect(apply("don't stop", 'replace:"don\'t","do"')).toBe("do stop");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// wikilink / link / image
-// ---------------------------------------------------------------------------
-
-describe("wikilink", () => {
-	it("wraps value in [[ ]]", () => expect(apply("My Note", "wikilink")).toBe("[[My Note]]"));
-	it("adds alias with pipe", () => expect(apply("My Note", 'wikilink:"alias"')).toBe("[[My Note|alias]]"));
-	it("maps over an array", () => {
-		expect(apply(["A", "B"], "wikilink")).toBe("[[A]], [[B]]");
-	});
-	it("array with alias", () => {
-		expect(apply(["A", "B"], 'wikilink:"x"')).toBe("[[A|x]], [[B|x]]");
-	});
-});
-
-describe("link", () => {
-	it("creates markdown link with default label 'link'", () => {
-		expect(apply("https://example.com", "link")).toBe("[link](https://example.com)");
-	});
-	it("uses custom label when provided", () => {
-		expect(apply("https://example.com", 'link:"Click here"')).toBe("[Click here](https://example.com)");
-	});
-	it("wraps link destinations that contain spaces", () => {
-		expect(apply("Music/Love and Machines.md", "link")).toBe("[link](<Music/Love and Machines.md>)");
-	});
-	it("maps over an array", () => {
-		expect(apply(["https://a.com", "https://b.com"], "link")).toBe(
-			"[link](https://a.com), [link](https://b.com)"
-		);
-	});
-});
-
-describe("image", () => {
-	it("creates markdown image with empty alt by default", () => {
-		expect(apply("photo.png", "image")).toBe("![](photo.png)");
-	});
-	it("uses custom alt text", () => {
-		expect(apply("photo.png", 'image:"My Photo"')).toBe("![My Photo](photo.png)");
-	});
-	it("wraps image destinations that contain spaces", () => {
-		expect(apply("test 1.png", "image")).toBe("![](<test 1.png>)");
-	});
-	it("maps over an array (newline-separated)", () => {
-		expect(apply(["a.png", "b.png"], "image")).toBe("![](a.png)\n![](b.png)");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// blockquote
-// ---------------------------------------------------------------------------
-
-describe("blockquote", () => {
-	it("prefixes each line with '> '", () => {
-		expect(apply("line1\nline2\nline3", "blockquote")).toBe("> line1\n> line2\n> line3");
-	});
-	it("handles single-line input", () => {
-		expect(apply("quote", "blockquote")).toBe("> quote");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Array helpers
-// ---------------------------------------------------------------------------
-
-describe("split", () => {
-	it("splits on comma by default", () => {
-		expect(apply("a,b,c", "split")).toEqual(["a", "b", "c"]);
-	});
-	it("splits on a custom separator", () => {
-		expect(apply("a|b|c", 'split:"|"')).toEqual(["a", "b", "c"]);
-	});
-	it("returns single-element array when separator not found", () => {
-		expect(apply("hello", "split")).toEqual(["hello"]);
-	});
-});
-
-describe("join", () => {
-	it("joins array with comma by default", () => {
-		expect(apply(["a", "b", "c"], "join")).toBe("a,b,c");
-	});
-	it("joins with a custom separator", () => {
-		expect(apply(["a", "b", "c"], 'join:" | "')).toBe("a | b | c");
-	});
-	it("returns non-array value unchanged", () => {
-		expect(apply("hello", "join")).toBe("hello");
-	});
-});
-
-describe("first", () => {
-	it("returns first element of an array", () => expect(apply(["x", "y", "z"], "first")).toBe("x"));
-	it("returns non-array value unchanged", () => expect(apply("hello", "first")).toBe("hello"));
-});
-
-describe("last", () => {
-	it("returns last element of an array", () => expect(apply(["x", "y", "z"], "last")).toBe("z"));
-	it("returns non-array value unchanged", () => expect(apply("hello", "last")).toBe("hello"));
-});
-
-describe("slice", () => {
-	it("slices a string", () => expect(apply("hello", "slice:1,3")).toBe("el"));
-	it("slices an array", () => expect(apply(["a", "b", "c", "d"], "slice:1,3")).toEqual(["b", "c"]));
-	it("slices from index to end when end omitted", () => expect(apply("hello", "slice:2")).toBe("llo"));
-	it("returns non-sliceable value unchanged", () => expect(apply(42, "slice:1")).toBe(42));
-});
-
-describe("count", () => {
-	it("returns array length", () => expect(apply(["a", "b", "c"], "count")).toBe(3));
-	it("returns string length", () => expect(apply("hello", "count")).toBe(5));
-	it("returns 0 for empty array", () => expect(apply([], "count")).toBe(0));
-});
-
-// ---------------------------------------------------------------------------
-// calc
-// ---------------------------------------------------------------------------
-
-describe("calc", () => {
-	it("adds", () => expect(apply(10, "calc:\"+5\"")).toBe(15));
-	it("subtracts", () => expect(apply(10, "calc:\"-3\"")).toBe(7));
-	it("multiplies", () => expect(apply(4, "calc:\"*3\"")).toBe(12));
-	it("divides", () => expect(apply(10, "calc:\"/2\"")).toBe(5));
-	it("raises to power with ^", () => expect(apply(2, "calc:\"^10\"")).toBe(1024));
-	it("raises to power with **", () => expect(apply(2, "calc:\"**10\"")).toBe(1024));
-	it("returns original value for non-numeric input", () => {
-		expect(apply("hello", "calc:\"+1\"")).toBe("hello");
-	});
-	it("returns original value for unrecognised operator", () => {
-		expect(apply(5, "calc:\"%2\"")).toBe(5);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// date / date_modify
-// ---------------------------------------------------------------------------
-
-describe("date", () => {
-	it("formats a unix timestamp (ms) to YYYY-MM-DD by default", () => {
-		const ts = new Date("2024-06-15").getTime(); // UTC midnight
-		const result = apply(ts, "date");
-		// Accept either 2024-06-14 or 2024-06-15 depending on timezone offset
-		expect(result).toMatch(/^2024-06-1[45]$/);
-	});
-
-	it("formats with a custom format string", () => {
-		const ts = new Date("2024-01-05T00:00:00Z").getTime();
-		const result = String(apply(ts, 'date:"DD/MM/YYYY"'));
-		// The day part may shift ±1 from timezone; just check month/year
-		expect(result).toMatch(/^\d{2}\/01\/2024$/);
-	});
-
-	it("parses a YYYY-MM-DD string and reformats it", () => {
-		expect(apply("2024-03-25", 'date:"MMM D YYYY"')).toBe("Mar 25 2024");
-	});
-
-	it("returns original value when input is invalid", () => {
-		expect(apply("not-a-date", "date")).toBe("not-a-date");
-	});
-});
-
-describe("date_modify", () => {
-	it("adds days", () => {
-		expect(apply("2024-01-01", 'date_modify:"1 day"')).toBe("2024-01-02");
-	});
-	it("subtracts days", () => {
-		expect(apply("2024-01-05", 'date_modify:"-4 days"')).toBe("2024-01-01");
-	});
-	it("adds months", () => {
-		expect(apply("2024-01-31", 'date_modify:"1 month"')).toBe("2024-02-29"); // 2024 is leap year
-	});
-	it("adds years", () => {
-		expect(apply("2023-03-15", 'date_modify:"1 year"')).toBe("2024-03-15");
-	});
-	it("returns original value for invalid date input", () => {
-		expect(apply("not-a-date", 'date_modify:"1 day"')).toBe("not-a-date");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// strip_tags (requires DOMParser via jsdom)
-// ---------------------------------------------------------------------------
-
-describe("strip_tags", () => {
-	it("removes HTML tags from a string", () => {
-		expect(apply("<b>hello</b> <i>world</i>", "strip_tags")).toBe("hello world");
-	});
-	it("returns plain text unchanged", () => {
-		expect(apply("hello world", "strip_tags")).toBe("hello world");
-	});
-	it("removes malformed nested tag fragments without exposing a new tag", () => {
-		expect(apply("<<script>alert(1)</script>", "strip_tags")).toBe("alert(1)");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Filter chaining
-// ---------------------------------------------------------------------------
-
-describe("filter chaining", () => {
-	it("applies filters left to right", () => {
-		expect(apply("  hello world  ", "trim | upper")).toBe("HELLO WORLD");
-	});
-
-	it("split then join with different separator", () => {
-		expect(apply("a,b,c", 'split | join:" "')).toBe("a b c");
-	});
-
-	it("handles three-step chain", () => {
-		// capitalize lowercases everything after the first char, so "world" stays lowercase
-		expect(apply("  hello world  ", 'trim | capitalize | replace:"world","there"')).toBe("Hello there");
-	});
-
-	it("handles quoted pipes inside filter arguments (does not split on them)", () => {
-		// The | inside quotes must NOT be treated as a step separator
-		expect(apply("foo|bar", 'replace:"|","-"')).toBe("foo-bar");
-	});
-});
-
-describe("Knap integration", () => {
-	it("supports Knap filters alongside legacy typed filters", () => {
-		expect(apply(["b", "a"], 'sort | join:", "')).toBe("a, b");
-	});
-	it("does not split a regex alternation into separate filters", () => {
-		expect(apply("cat dog", 'replace:/cat|dog/g,"pet" | upper')).toBe("PET PET");
-	});
-	it("keeps encoded HTML encoded when removing tags", () => {
-		expect(apply("&lt;img src=x onerror=alert(1)&gt;", "strip_tags")).toBe("&lt;img src=x onerror=alert(1)&gt;");
+	it("formats timestamps in the local calendar day", () => {
+		vi.stubEnv("TZ", "UTC");
+		try {
+			expect(apply(new Date("2024-06-15").getTime(), "date")).toBe("2024-06-15");
+			expect(apply(new Date("2024-01-05T00:00:00Z").getTime(), 'date:"DD/MM/YYYY"')).toBe("05/01/2024");
+		} finally { vi.unstubAllEnvs(); }
 	});
 });
