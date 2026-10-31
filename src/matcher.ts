@@ -1,5 +1,5 @@
 import { localDateKey } from "./matcher-dates";
-import { App, TFile, FrontMatterCache } from "obsidian";
+import { App, TFile, FrontMatterCache, getLinkpath } from "obsidian";
 import { FilterGroup, Filter } from "./types";
 
 /** Regex for extracting [[wikilink]] targets from strings */
@@ -77,7 +77,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 			case "links to":
 			case "does not link to": {
 				// Find the target file by path
-				const targetFile = app.metadataCache.getFirstLinkpathDest(filterValue, file.path);
+				const targetFile = app.metadataCache.getFirstLinkpathDest(getLinkpath(filterValue), file.path);
 				if (!targetFile) {
 					return filter.operator === "does not link to";
 				}
@@ -86,7 +86,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 				const cache = app.metadataCache.getFileCache(file);
 				const links = cache?.links || [];
 				const linkPaths = links.map(link => {
-					const resolvedPath = app.metadataCache.getFirstLinkpathDest(link.link, file.path);
+					const resolvedPath = app.metadataCache.getFirstLinkpathDest(getLinkpath(link.link), file.path);
 					return resolvedPath?.path;
 				}).filter(Boolean) as string[];
 
@@ -95,7 +95,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 					const frontmatterRecord = frontmatter as Record<string, string | number | boolean | string[] | undefined>;
 					for (const key of Object.keys(frontmatterRecord)) {
 						for (const linkText of extractFrontmatterLinks(frontmatterRecord[key])) {
-							const resolvedPath = app.metadataCache.getFirstLinkpathDest(linkText, file.path);
+							const resolvedPath = app.metadataCache.getFirstLinkpathDest(getLinkpath(linkText), file.path);
 							if (resolvedPath?.path) {
 								linkPaths.push(resolvedPath.path);
 							}
@@ -168,7 +168,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 		if (filter.field === "file.name") targetValue = file.name;
 		else if (filter.field === "file.basename") targetValue = file.basename;
 		else if (filter.field === "file.path") targetValue = file.path;
-		else if (filter.field === "file.folder") targetValue = file.parent?.path || "";
+		else if (filter.field === "file.folder") targetValue = file.parent && !file.parent.isRoot() ? file.parent.path : "";
 		else if (filter.field === "file.size") targetValue = file.stat.size;
 		else if (filter.field === "file.ctime") targetValue = file.stat.ctime;
 		else if (filter.field === "file.mtime") targetValue = file.stat.mtime;
@@ -177,7 +177,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 		// Gather all resolved outgoing link paths (without .md extension)
 		const cache = app.metadataCache.getFileCache(file);
 		const bodyLinks = (cache?.links || []).map(link => {
-			const resolved = app.metadataCache.getFirstLinkpathDest(link.link, file.path);
+			const resolved = app.metadataCache.getFirstLinkpathDest(getLinkpath(link.link), file.path);
 			return resolved ? resolved.path.replace(/\.md$/, "") : null;
 		}).filter(Boolean) as string[];
 
@@ -186,7 +186,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 			const fmRecord = frontmatter as Record<string, string | number | boolean | string[] | undefined>;
 			for (const key of Object.keys(fmRecord)) {
 				for (const linkTarget of extractFrontmatterLinks(fmRecord[key])) {
-					const resolved = app.metadataCache.getFirstLinkpathDest(linkTarget, file.path);
+					const resolved = app.metadataCache.getFirstLinkpathDest(getLinkpath(linkTarget), file.path);
 					if (resolved) bodyLinks.push(resolved.path.replace(/\.md$/, ""));
 				}
 			}

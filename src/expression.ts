@@ -13,7 +13,7 @@ import { recordLinkDependency } from "./template-dependencies";
  * (since file reads are async).
  */
 
-import { App, TFile } from "obsidian";
+import { App, TFile, getIcon, getLinkpath } from "obsidian";
 import { moment, type Moment } from "./host-moment";
 import { buildBasesCollection } from "./bases/access";
 import { stripFrontmatter } from "./frontmatter";
@@ -762,7 +762,7 @@ function extractLinkTarget(value: string): string | null {
 
 /** Resolve a TFile from a link target or filename */
 async function resolveToFile(app: App, target: string, sourcePath: string, dependencies?: Set<TFile>): Promise<TFile | null> {
-	const file = app.metadataCache.getFirstLinkpathDest(target, sourcePath);
+	const file = app.metadataCache.getFirstLinkpathDest(getLinkpath(target), sourcePath);
 	recordLinkDependency(dependencies, target, sourcePath, file);
 	return file;
 }
@@ -791,7 +791,7 @@ async function buildExprFile(app: App, tfile: TFile, bases?: ExprValueArray): Pr
 		}
 	}
 
-	const folder = tfile.path.includes('/') ? tfile.path.substring(0, tfile.path.lastIndexOf('/')) : '';
+	const folder = tfile.parent && !tfile.parent.isRoot() ? tfile.parent.path : "";
 
 	const exprFile: ExprFile = {
 		__type: "file",
@@ -925,8 +925,8 @@ export const globalFunctions: Record<string, GlobalFn> = {
 	},
 
 	icon: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {
-		const name = exprToString(args[0]);
-		return `<span class="icon">${name}</span>`;
+		const svg = getIcon(exprToString(args[0]));
+		return svg ? `<span class="cv-icon">${svg.outerHTML}</span>` : "";
 	},
 
 	html: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {
