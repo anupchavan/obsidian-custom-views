@@ -289,6 +289,10 @@ function describeSyntaxError(error: ExpressionSyntaxError, tokens: Token[], expr
 	if (expected === TokenType.Identifier && previous?.type === TokenType.Dot) {
 		return { ...at(previous.pos, 1), message: "Expected a name after `.`", hint: "Write a property or method name, like `.length` or `.asFile()`." };
 	}
+	// Conditions and `{% set %}` values can't take filters, only placeholders can.
+	if (token.type === TokenType.Pipe) {
+		return { ...at(token.pos, 1), message: "A filter can't go here", hint: "Filters go at the end of a placeholder, like `{{ title | upper }}`. Inside conditions, use methods such as `title.upper()`." };
+	}
 	if (expected === TokenType.EOF) {
 		const message = `Unexpected ${shown(token)} after the expression`;
 		if (token.type === TokenType.RParen || token.type === TokenType.RBracket) {
@@ -317,9 +321,6 @@ function describeSyntaxError(error: ExpressionSyntaxError, tokens: Token[], expr
 			message: "The expression ends too early",
 			hint: operator ? `Add a value after ${shown(last)}.` : "Something is missing at the end.",
 		};
-	}
-	if (token.type === TokenType.Pipe) {
-		return { ...at(token.pos, 1), message: "A filter can't go here", hint: "Filters go at the end of a placeholder, like `{{ title | upper }}`. Inside conditions, use methods such as `title.upper()`." };
 	}
 	return { ...at(token.pos, tokenLength(token, expression)), message: `Unexpected ${shown(token)}`, hint: "A value, a name or `(` was expected here." };
 }

@@ -87,6 +87,18 @@ describe("template diagnostics", () => {
 		expect(check("{% if %}{% endif %}")[0].message).toBe("`{% if %}` needs a condition");
 	});
 
+	it.each([
+		["{% elif rating %}", "`{% elif %}` is outside an `{% if %}` block"],
+		["{% if cover %}{% else %}{% elif rating %}{% endif %}", "`{% elif %}` comes after `{% else %}`"],
+		["{% set = 3 %}", "`{% set %}` isn't written the way it expects"],
+		["{% %}", "This tag is empty"],
+		["{% 123 %}", "`123` isn't a tag name"],
+		["{{ title.() }}", "Expected a name after `.`"],
+		["{% if title | upper %}x{% endif %}", "A filter can't go here"],
+	])("explains %s", (source, message) => {
+		expect(check(source)[0].message).toBe(message);
+	});
+
 	it("reports unclosed delimiters", () => {
 		expect(check("{{ cover")[0].message).toBe("This placeholder is never closed");
 		expect(check("{% if cover")[0].message).toBe("This `{%` tag is never closed");
@@ -109,8 +121,9 @@ describe("expression engine compatibility", () => {
 });
 
 describe("CSS diagnostics", () => {
-	it("finds unclosed and stray braces", () => {
+	it("finds unclosed, stray and mismatched brackets", () => {
 		expect(analyzeCss(".a { color: red", cssParser)[0]).toMatchObject({ from: 3, message: "This `{` is never closed" });
+		expect(analyzeCss(".a { color: red; )", cssParser)[0]).toMatchObject({ from: 17, message: "Expected `}` but found `)`" });
 		expect(analyzeCss(".a {} }", cssParser)[0]).toMatchObject({ from: 6, message: "Unexpected `}`" });
 	});
 
