@@ -209,29 +209,28 @@ describe("nested groups", () => {
 // ---------------------------------------------------------------------------
 
 describe("file.name", () => {
-	it("is — exact match", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.name", "is", "note.md")), mockFile())).toBe(true));
-	it("is not — mismatch returns true", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.name", "is not", "other.md")), mockFile())).toBe(true));
-	it("contains", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.name", "contains", "note")), mockFile())).toBe(true));
-	it("does not contain", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.name", "does not contain", "xyz")), mockFile())).toBe(true));
-	it("starts with", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.name", "starts with", "note")), mockFile())).toBe(true));
-	it("ends with", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.name", "ends with", ".md")), mockFile())).toBe(true));
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file.name", "is", "note.md", true],
+		["file.name", "is not", "other.md", true],
+		["file.name", "contains", "note", true],
+		["file.name", "does not contain", "xyz", true],
+		["file.name", "starts with", "note", true],
+		["file.name", "ends with", ".md", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter(field, operator, value)), mockFile())).toBe(expected);
+	});
 });
 
 describe("file.basename", () => {
-	it("is", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.basename", "is", "note")), mockFile())).toBe(true));
-	it("is not", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.basename", "is not", "note")), mockFile())).toBe(false));
-	it("is empty — false when non-empty", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.basename", "is empty")), mockFile())).toBe(false));
-	it("is not empty — true when non-empty", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.basename", "is not empty")), mockFile())).toBe(true));
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file.basename", "is", "note", true],
+		["file.basename", "is not", "note", false],
+		["file.basename", "is empty", undefined, false],
+		["file.basename", "is not empty", undefined, true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter(field, operator, value)), mockFile())).toBe(expected);
+	});
+
 	it("is empty — true when basename is empty string", () => {
 		expect(checkRules(mockApp(), andGroup(filter("file.basename", "is empty")), mockFile({ basename: "" }))).toBe(true);
 	});
@@ -239,12 +238,13 @@ describe("file.basename", () => {
 
 describe("file.path", () => {
 	const file = mockFile({ path: "folder/sub/note.md" });
-	it("starts with", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.path", "starts with", "folder")), file)).toBe(true));
-	it("ends with", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.path", "ends with", "note.md")), file)).toBe(true));
-	it("contains", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.path", "contains", "sub")), file)).toBe(true));
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file.path", "starts with", "folder", true],
+		["file.path", "ends with", "note.md", true],
+		["file.path", "contains", "sub", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter(field, operator, value)), file)).toBe(expected);
+	});
 });
 
 describe("file.extension", () => {
@@ -326,6 +326,7 @@ describe("has tag / does not have tag", () => {
 		expect(checkRules(app, andGroup(filter("file", "has tag", "movies/action")), mockFile())).toBe(false);
 		expect(checkRules(app, andGroup(filter("file", "does not have tag", "movies/action")), mockFile())).toBe(true);
 	});
+
 	it.each([
 		["#Movies/Action", "#movies", true],
 		["#movies/action", " MOVIES/Action ", true],
@@ -380,11 +381,13 @@ describe("has property / does not have property", () => {
 		expect(checkRules(mockApp(), andGroup(filter("file", "does not have property", name)), mockFile(), {})).toBe(true);
 		expect(checkRules(mockApp(), andGroup(filter(name, "is empty")), mockFile(), {})).toBe(true);
 	});
+
 	it("recognizes real properties even when their names shadow object members", () => {
 		const fm = { constructor: "custom" };
 		expect(checkRules(mockApp(), andGroup(filter("file", "has property", "constructor")), mockFile(), fm)).toBe(true);
 		expect(checkRules(mockApp(), andGroup(filter("constructor", "is", "custom")), mockFile(), fm)).toBe(true);
 	});
+
 	it("has property — true when property exists in frontmatter", () => {
 		const fm = { status: "done" };
 		expect(checkRules(mockApp(), andGroup(filter("file", "has property", "status")), mockFile(), fm)).toBe(true);
@@ -417,37 +420,25 @@ describe("has property / does not have property", () => {
 describe("frontmatter scalar field", () => {
 	const fm = { status: "done", priority: 3, draft: false };
 
-	it("is — string match", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "is", "done")), mockFile(), fm)).toBe(true));
-	it("is not — mismatch", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "is not", "pending")), mockFile(), fm)).toBe(true));
-	it("contains", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "contains", "don")), mockFile(), fm)).toBe(true));
-	it("does not contain", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "does not contain", "xyz")), mockFile(), fm)).toBe(true));
-	it("starts with", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "starts with", "do")), mockFile(), fm)).toBe(true));
-	it("ends with", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "ends with", "ne")), mockFile(), fm)).toBe(true));
-	it("is empty — false when value is non-empty", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "is empty")), mockFile(), fm)).toBe(false));
-	it("is not empty — true when value is non-empty", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "is not empty")), mockFile(), fm)).toBe(true));
-	it("is empty — true when field is missing", () =>
-		expect(checkRules(mockApp(), andGroup(filter("missing_field", "is empty")), mockFile(), fm)).toBe(true));
-
-	it("contains any of — matches when any value found", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "contains any of", "pending,done")), mockFile(), fm)).toBe(true));
-	it("contains any of — false when none found", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "contains any of", "pending,archived")), mockFile(), fm)).toBe(false));
-	it("contains all of — true when all values found", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "contains all of", "don,ne")), mockFile(), fm)).toBe(true));
-	it("contains all of — false when not all values found", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "contains all of", "done,xyz")), mockFile(), fm)).toBe(false));
-	it("does not contain any of — true when none found", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "does not contain any of", "pending,archived")), mockFile(), fm)).toBe(true));
-	it("does not contain all of — true when not all found", () =>
-		expect(checkRules(mockApp(), andGroup(filter("status", "does not contain all of", "done,xyz")), mockFile(), fm)).toBe(true));
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["status", "is", "done", true],
+		["status", "is not", "pending", true],
+		["status", "contains", "don", true],
+		["status", "does not contain", "xyz", true],
+		["status", "starts with", "do", true],
+		["status", "ends with", "ne", true],
+		["status", "is empty", undefined, false],
+		["status", "is not empty", undefined, true],
+		["missing_field", "is empty", undefined, true],
+		["status", "contains any of", "pending,done", true],
+		["status", "contains any of", "pending,archived", false],
+		["status", "contains all of", "don,ne", true],
+		["status", "contains all of", "done,xyz", false],
+		["status", "does not contain any of", "pending,archived", true],
+		["status", "does not contain all of", "done,xyz", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter(field, operator, value)), mockFile(), fm)).toBe(expected);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -457,37 +448,29 @@ describe("frontmatter scalar field", () => {
 describe("frontmatter array field", () => {
 	const fm = { categories: ["fiction", "thriller", "mystery"] };
 
-	it("is — checks if any element exactly matches", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "is", "thriller")), mockFile(), fm)).toBe(true));
-	it("is — false when no element matches", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "is", "biography")), mockFile(), fm)).toBe(false));
-	it("is not — true when no element matches", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "is not", "biography")), mockFile(), fm)).toBe(true));
-	it("contains — partial match within element", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "contains", "rill")), mockFile(), fm)).toBe(true));
-	it("does not contain — false when match found", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "does not contain", "rill")), mockFile(), fm)).toBe(false));
-	it("is empty — false for non-empty array", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "is empty")), mockFile(), fm)).toBe(false));
-	it("is not empty — true for non-empty array", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "is not empty")), mockFile(), fm)).toBe(true));
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["categories", "is", "thriller", true],
+		["categories", "is", "biography", false],
+		["categories", "is not", "biography", true],
+		["categories", "contains", "rill", true],
+		["categories", "does not contain", "rill", false],
+		["categories", "is empty", undefined, false],
+		["categories", "is not empty", undefined, true],
+		["categories", "contains any of", "biography,fiction", true],
+		["categories", "contains any of", "biography,horror", false],
+		["categories", "contains all of", "fiction,thriller", true],
+		["categories", "contains all of", "fiction,horror", false],
+		["categories", "does not contain any of", "biography,horror", true],
+		["categories", "does not contain all of", "fiction,horror", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter(field, operator, value)), mockFile(), fm)).toBe(expected);
+	});
+
 	it("is empty — true for empty array", () => {
 		const emptyFm = { categories: [] as string[] };
 		expect(checkRules(mockApp(), andGroup(filter("categories", "is empty")), mockFile(), emptyFm)).toBe(true);
 	});
 
-	it("contains any of — true when any filter value matches any element", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "contains any of", "biography,fiction")), mockFile(), fm)).toBe(true));
-	it("contains any of — false when nothing matches", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "contains any of", "biography,horror")), mockFile(), fm)).toBe(false));
-	it("contains all of — true when all filter values match", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "contains all of", "fiction,thriller")), mockFile(), fm)).toBe(true));
-	it("contains all of — false when one filter value missing", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "contains all of", "fiction,horror")), mockFile(), fm)).toBe(false));
-	it("does not contain any of — true when none match", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "does not contain any of", "biography,horror")), mockFile(), fm)).toBe(true));
-	it("does not contain all of — true when not all match", () =>
-		expect(checkRules(mockApp(), andGroup(filter("categories", "does not contain all of", "fiction,horror")), mockFile(), fm)).toBe(true));
 });
 
 // ---------------------------------------------------------------------------
@@ -499,28 +482,21 @@ describe("file.ctime date operators", () => {
 	const createdDate = new Date("2024-06-15T12:00:00Z");
 	const file = mockFile({ stat: { ctime: createdDate.getTime(), mtime: 0, size: 0 } });
 
-	it("on — true for same date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "on", "2024-06-15")), file)).toBe(true));
-	it("on — false for different date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "on", "2024-06-14")), file)).toBe(false));
-	it("not on — true for different date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "not on", "2024-06-14")), file)).toBe(true));
-	it("before — true for earlier date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "before", "2024-06-16")), file)).toBe(true));
-	it("before — false for same date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "before", "2024-06-15")), file)).toBe(false));
-	it("on or before — true for same date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "on or before", "2024-06-15")), file)).toBe(true));
-	it("after — true for later date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "after", "2024-06-14")), file)).toBe(true));
-	it("after — false for same date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "after", "2024-06-15")), file)).toBe(false));
-	it("on or after — true for same date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "on or after", "2024-06-15")), file)).toBe(true));
-	it("is not empty — true for non-zero timestamp", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "is not empty")), file)).toBe(true));
-	it("is empty — false for non-zero timestamp", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "is empty")), file)).toBe(false));
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file.ctime", "on", "2024-06-15", true],
+		["file.ctime", "on", "2024-06-14", false],
+		["file.ctime", "not on", "2024-06-14", true],
+		["file.ctime", "before", "2024-06-16", true],
+		["file.ctime", "before", "2024-06-15", false],
+		["file.ctime", "on or before", "2024-06-15", true],
+		["file.ctime", "after", "2024-06-14", true],
+		["file.ctime", "after", "2024-06-15", false],
+		["file.ctime", "on or after", "2024-06-15", true],
+		["file.ctime", "is not empty", undefined, true],
+		["file.ctime", "is empty", undefined, false],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter(field, operator, value)), file)).toBe(expected);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -743,16 +719,15 @@ describe("frontmatter date field operators", () => {
 describe("number operators (= ≠ < ≤ > ≥)", () => {
 	const fm = { rating: 8 };
 
-	it("= — equal", () =>
-		expect(checkRules(mockApp(), andGroup(filter("rating", "is", "8")), mockFile(), fm)).toBe(true));
-	it("= — not equal returns false", () =>
-		expect(checkRules(mockApp(), andGroup(filter("rating", "is", "5")), mockFile(), fm)).toBe(false));
-	it("≠ — not equal", () =>
-		expect(checkRules(mockApp(), andGroup(filter("rating", "is not", "5")), mockFile(), fm)).toBe(true));
-	it("is empty — false for existing number", () =>
-		expect(checkRules(mockApp(), andGroup(filter("rating", "is empty")), mockFile(), fm)).toBe(false));
-	it("is not empty — true for existing number", () =>
-		expect(checkRules(mockApp(), andGroup(filter("rating", "is not empty")), mockFile(), fm)).toBe(true));
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["rating", "is", "8", true],
+		["rating", "is", "5", false],
+		["rating", "is not", "5", true],
+		["rating", "is empty", undefined, false],
+		["rating", "is not empty", undefined, true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter(field, operator, value)), mockFile(), fm)).toBe(expected);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -808,18 +783,16 @@ describe("file.mtime date operators", () => {
 	const modifiedDate = new Date("2025-01-10T08:00:00Z");
 	const file = mockFile({ stat: { ctime: 0, mtime: modifiedDate.getTime(), size: 0 } });
 
-	it("on — true for same date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.mtime", "on", "2025-01-10")), file)).toBe(true));
-	it("on — false for different date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.mtime", "on", "2025-01-09")), file)).toBe(false));
-	it("before — true for later date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.mtime", "before", "2025-01-11")), file)).toBe(true));
-	it("after — true for earlier date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.mtime", "after", "2025-01-09")), file)).toBe(true));
-	it("on or before — true for same date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.mtime", "on or before", "2025-01-10")), file)).toBe(true));
-	it("on or after — true for same date", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.mtime", "on or after", "2025-01-10")), file)).toBe(true));
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file.mtime", "on", "2025-01-10", true],
+		["file.mtime", "on", "2025-01-09", false],
+		["file.mtime", "before", "2025-01-11", true],
+		["file.mtime", "after", "2025-01-09", true],
+		["file.mtime", "on or before", "2025-01-10", true],
+		["file.mtime", "on or after", "2025-01-10", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(mockApp(), andGroup(filter(field, operator, value)), file)).toBe(expected);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -971,85 +944,29 @@ describe("vault scenario: Books/Dune.md", () => {
 		});
 	}
 
-	// links to
-	it("file links to 'Science Fiction' — true (body link)", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "links to", "Science Fiction")), file, fm)).toBe(true);
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file", "links to", "Science Fiction", true],
+		["file", "links to", "Frank Herbert", true],
+		["file", "links to", "Books", true],
+		["file", "does not link to", "Movies", true],
+		["file", "in folder", "Books", true],
+		["file", "in folder", "Movies", false],
+		["file", "has tag", "scifi", true],
+		["file", "has tag", "classics", true],
+		["file", "has tag", "music", false],
+		["file", "has property", "rating", true],
+		["file", "has property", "cuisine", false],
+		["status", "is", "read", true],
+		["status", "is not", "unread", true],
+		["rating", "is", "9", true],
+		["published", "is", "1965-08-01", true],
+		["categories", "contains any of", "[[Books]],[[Movies]]", true],
+		["categories", "contains all of", "[[Books]],[[Science Fiction]]", true],
+		["categories", "does not contain any of", "[[Movies]],[[Recipes]]", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(duneApp(), andGroup(filter(field, operator, value)), file, fm)).toBe(expected);
 	});
 
-	it("file links to 'Frank Herbert' — true (body link)", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "links to", "Frank Herbert")), file, fm)).toBe(true);
-	});
-
-	it("file links to 'Books' — true (frontmatter wikilink [[Books]])", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "links to", "Books")), file, fm)).toBe(true);
-	});
-
-	it("file does not link to 'Movies' — true", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "does not link to", "Movies")), file, fm)).toBe(true);
-	});
-
-	// in folder
-	it("file in folder 'Books' — true", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "in folder", "Books")), file)).toBe(true);
-	});
-
-	it("file in folder 'Movies' — false", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "in folder", "Movies")), file)).toBe(false);
-	});
-
-	// has tag (frontmatter tags)
-	it("file has tag 'scifi' — true", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "has tag", "scifi")), file, fm)).toBe(true);
-	});
-
-	it("file has tag 'classics' — true", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "has tag", "classics")), file, fm)).toBe(true);
-	});
-
-	it("file has tag 'music' — false", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "has tag", "music")), file, fm)).toBe(false);
-	});
-
-	// has property
-	it("file has property 'rating' — true", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "has property", "rating")), file, fm)).toBe(true);
-	});
-
-	it("file has property 'cuisine' — false", () => {
-		expect(checkRules(duneApp(), andGroup(filter("file", "has property", "cuisine")), file, fm)).toBe(false);
-	});
-
-	// frontmatter values
-	it("status is 'read'", () => {
-		expect(checkRules(duneApp(), andGroup(filter("status", "is", "read")), file, fm)).toBe(true);
-	});
-
-	it("status is not 'unread'", () => {
-		expect(checkRules(duneApp(), andGroup(filter("status", "is not", "unread")), file, fm)).toBe(true);
-	});
-
-	it("rating is '9'", () => {
-		expect(checkRules(duneApp(), andGroup(filter("rating", "is", "9")), file, fm)).toBe(true);
-	});
-
-	it("published is '1965-08-01'", () => {
-		expect(checkRules(duneApp(), andGroup(filter("published", "is", "1965-08-01")), file, fm)).toBe(true);
-	});
-
-	// categories array — contains any of
-	it("categories contains any of '[[Books]],[[Movies]]' — true", () => {
-		expect(checkRules(duneApp(), andGroup(filter("categories", "contains any of", "[[Books]],[[Movies]]")), file, fm)).toBe(true);
-	});
-
-	it("categories contains all of '[[Books]],[[Science Fiction]]' — true", () => {
-		expect(checkRules(duneApp(), andGroup(filter("categories", "contains all of", "[[Books]],[[Science Fiction]]")), file, fm)).toBe(true);
-	});
-
-	it("categories does not contain any of '[[Movies]],[[Recipes]]' — true", () => {
-		expect(checkRules(duneApp(), andGroup(filter("categories", "does not contain any of", "[[Movies]],[[Recipes]]")), file, fm)).toBe(true);
-	});
-
-	// combined
 	it("AND: in folder Books AND has tag scifi AND status read", () => {
 		const group = andGroup(
 			filter("file", "in folder", "Books"),
@@ -1095,48 +1012,20 @@ describe("vault scenario: Movies/Interstellar.md", () => {
 		});
 	}
 
-	it("file links to 'Science Fiction' via frontmatter genres — true", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("file", "links to", "Science Fiction")), file, fm)).toBe(true);
-	});
-
-	it("file links to 'Christopher Nolan' via frontmatter directors — true", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("file", "links to", "Christopher Nolan")), file, fm)).toBe(true);
-	});
-
-	it("file links to 'Frank Herbert' — false (no such link)", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("file", "links to", "Frank Herbert")), file, fm)).toBe(false);
-	});
-
-	it("file in folder 'Movies' — true", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("file", "in folder", "Movies")), file)).toBe(true);
-	});
-
-	it("genres contains '[[Drama]]'", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("genres", "contains", "[[Drama]]")), file, fm)).toBe(true);
-	});
-
-	it("genres contains any of '[[Horror]],[[Drama]]' — true", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("genres", "contains any of", "[[Horror]],[[Drama]]")), file, fm)).toBe(true);
-	});
-
-	it("genres does not contain all of '[[Horror]],[[Drama]]' — true (no Horror)", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("genres", "does not contain all of", "[[Horror]],[[Drama]]")), file, fm)).toBe(true);
-	});
-
-	it("year is '2014'", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("year", "is", "2014")), file, fm)).toBe(true);
-	});
-
-	it("rating contains '7'", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("rating", "contains", "7")), file, fm)).toBe(true);
-	});
-
-	it("created is empty — true (empty string)", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("created", "is empty")), file, fm)).toBe(true);
-	});
-
-	it("published is not empty — true", () => {
-		expect(checkRules(interstellarApp(), andGroup(filter("published", "is not empty")), file, fm)).toBe(true);
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file", "links to", "Science Fiction", true],
+		["file", "links to", "Christopher Nolan", true],
+		["file", "links to", "Frank Herbert", false],
+		["file", "in folder", "Movies", true],
+		["genres", "contains", "[[Drama]]", true],
+		["genres", "contains any of", "[[Horror]],[[Drama]]", true],
+		["genres", "does not contain all of", "[[Horror]],[[Drama]]", true],
+		["year", "is", "2014", true],
+		["rating", "contains", "7", true],
+		["created", "is empty", undefined, true],
+		["published", "is not empty", undefined, true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(interstellarApp(), andGroup(filter(field, operator, value)), file, fm)).toBe(expected);
 	});
 });
 
@@ -1175,44 +1064,19 @@ describe("vault scenario: Music/Belinda Says.md", () => {
 		});
 	}
 
-	it("file in folder 'Music' — true", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("file", "in folder", "Music")), file)).toBe(true);
-	});
-
-	it("file has tag 'music' (frontmatter) — true", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("file", "has tag", "music")), file, fm)).toBe(true);
-	});
-
-	it("file has tag 'songs' (frontmatter) — true", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("file", "has tag", "songs")), file, fm)).toBe(true);
-	});
-
-	it("file has tag 'books' — false", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("file", "has tag", "books")), file, fm)).toBe(false);
-	});
-
-	it("categories contains '[[Songs]]'", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("categories", "contains", "[[Songs]]")), file, fm)).toBe(true);
-	});
-
-	it("track is '11'", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("track", "is", "11")), file, fm)).toBe(true);
-	});
-
-	it("file has property 'album' — true", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("file", "has property", "album")), file, fm)).toBe(true);
-	});
-
-	it("file has property 'rating' — false (missing)", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("file", "has property", "rating")), file, fm)).toBe(false);
-	});
-
-	it("file links to 'Songs' via frontmatter categories — true", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("file", "links to", "Songs")), file, fm)).toBe(true);
-	});
-
-	it("writers contains any of '[[Alec O\\'Hanley]],[[Molly Rankin]]' — true", () => {
-		expect(checkRules(belindaApp(), andGroup(filter("writers", "contains any of", "[[Alec O'Hanley]],[[Molly Rankin]]")), file, fm)).toBe(true);
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file", "in folder", "Music", true],
+		["file", "has tag", "music", true],
+		["file", "has tag", "songs", true],
+		["file", "has tag", "books", false],
+		["categories", "contains", "[[Songs]]", true],
+		["track", "is", "11", true],
+		["file", "has property", "album", true],
+		["file", "has property", "rating", false],
+		["file", "links to", "Songs", true],
+		["writers", "contains any of", "[[Alec O'Hanley]],[[Molly Rankin]]", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(belindaApp(), andGroup(filter(field, operator, value)), file, fm)).toBe(expected);
 	});
 });
 
@@ -1248,40 +1112,18 @@ describe("vault scenario: Recipes/Pasta Aglio e Olio.md", () => {
 		});
 	}
 
-	it("cuisine is 'Italian'", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("cuisine", "is", "Italian")), file, fm)).toBe(true);
-	});
-
-	it("cuisine starts with 'Ital'", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("cuisine", "starts with", "Ital")), file, fm)).toBe(true);
-	});
-
-	it("cuisine ends with 'ian'", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("cuisine", "ends with", "ian")), file, fm)).toBe(true);
-	});
-
-	it("difficulty is not 'hard'", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("difficulty", "is not", "hard")), file, fm)).toBe(true);
-	});
-
-	it("vegetarian is 'true'", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("vegetarian", "is", "true")), file, fm)).toBe(true);
-	});
-
-	it("file has tag 'quick-meals' — true", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("file", "has tag", "quick-meals")), file, fm)).toBe(true);
-	});
-
-	it("file does not have tag 'music' — true", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("file", "does not have tag", "music")), file, fm)).toBe(true);
-	});
-
-	it("file.basename contains 'Pasta'", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("file.basename", "contains", "Pasta")), file)).toBe(true);
-	});
-
-	it("file.basename contains 'aglio' — false (case-sensitive)", () => {
-		expect(checkRules(recipeApp(), andGroup(filter("file.basename", "contains", "aglio")), file)).toBe(false);
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["cuisine", "is", "Italian", true],
+		["cuisine", "starts with", "Ital", true],
+		["cuisine", "ends with", "ian", true],
+		["difficulty", "is not", "hard", true],
+		["vegetarian", "is", "true", true],
+		["file", "has tag", "quick-meals", true],
+		["file", "does not have tag", "music", true],
+		["file.basename", "contains", "Pasta", true],
+		["file.basename", "contains", "aglio", false],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(recipeApp(), andGroup(filter(field, operator, value)), file, fm)).toBe(expected);
 	});
 });
 
@@ -1305,24 +1147,14 @@ describe("vault scenario: Empty Note.md", () => {
 		});
 	}
 
-	it("file does not have property 'anything' — true", () => {
-		expect(checkRules(emptyApp(), andGroup(filter("file", "does not have property", "status")), file)).toBe(true);
-	});
-
-	it("file does not link to anything — true", () => {
-		expect(checkRules(emptyApp(), andGroup(filter("file", "does not link to", "Science Fiction")), file)).toBe(true);
-	});
-
-	it("file is not in folder 'Books' — true (root level)", () => {
-		expect(checkRules(emptyApp(), andGroup(filter("file", "is not in folder", "Books")), file)).toBe(true);
-	});
-
-	it("file does not have tag 'anything' — true", () => {
-		expect(checkRules(emptyApp(), andGroup(filter("file", "does not have tag", "books")), file)).toBe(true);
-	});
-
-	it("file.basename is 'Empty Note'", () => {
-		expect(checkRules(emptyApp(), andGroup(filter("file.basename", "is", "Empty Note")), file)).toBe(true);
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file", "does not have property", "status", true],
+		["file", "does not link to", "Science Fiction", true],
+		["file", "is not in folder", "Books", true],
+		["file", "does not have tag", "books", true],
+		["file.basename", "is", "Empty Note", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(emptyApp(), andGroup(filter(field, operator, value)), file)).toBe(expected);
 	});
 });
 
@@ -1357,24 +1189,14 @@ describe("vault scenario: Projects/Plugin Development.md", () => {
 		});
 	}
 
-	it("status contains 'activ'", () => {
-		expect(checkRules(projectApp(), andGroup(filter("status", "contains", "activ")), file, fm)).toBe(true);
-	});
-
-	it("priority is 'high'", () => {
-		expect(checkRules(projectApp(), andGroup(filter("priority", "is", "high")), file, fm)).toBe(true);
-	});
-
-	it("collaborators contains '[[Anup]]'", () => {
-		expect(checkRules(projectApp(), andGroup(filter("collaborators", "contains", "[[Anup]]")), file, fm)).toBe(true);
-	});
-
-	it("file links to 'Anup' via frontmatter collaborators — true", () => {
-		expect(checkRules(projectApp(), andGroup(filter("file", "links to", "Anup")), file, fm)).toBe(true);
-	});
-
-	it("file has tag 'obsidian' — true", () => {
-		expect(checkRules(projectApp(), andGroup(filter("file", "has tag", "obsidian")), file, fm)).toBe(true);
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["status", "contains", "activ", true],
+		["priority", "is", "high", true],
+		["collaborators", "contains", "[[Anup]]", true],
+		["file", "links to", "Anup", true],
+		["file", "has tag", "obsidian", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(projectApp(), andGroup(filter(field, operator, value)), file, fm)).toBe(expected);
 	});
 
 	it("NOR: none of these match → true", () => {
@@ -1426,28 +1248,15 @@ describe("vault scenario: Movies/Homebound.md", () => {
 		});
 	}
 
-	it("file links to 'Neeraj Ghaywan' via frontmatter directors — true", () => {
-		expect(checkRules(homeboundApp(), andGroup(filter("file", "links to", "Neeraj Ghaywan")), file, fm)).toBe(true);
-	});
-
-	it("description contains 'police' — true", () => {
-		expect(checkRules(homeboundApp(), andGroup(filter("description", "contains", "police")), file, fm)).toBe(true);
-	});
-
-	it("description does not contain 'wormhole' — true", () => {
-		expect(checkRules(homeboundApp(), andGroup(filter("description", "does not contain", "wormhole")), file, fm)).toBe(true);
-	});
-
-	it("writers contains all of '[[Neeraj Ghaywan]],[[Basharat Peer]]' — true", () => {
-		expect(checkRules(homeboundApp(), andGroup(filter("writers", "contains all of", "[[Neeraj Ghaywan]],[[Basharat Peer]]")), file, fm)).toBe(true);
-	});
-
-	it("writers does not contain all of '[[Neeraj Ghaywan]],[[Christopher Nolan]]' — true", () => {
-		expect(checkRules(homeboundApp(), andGroup(filter("writers", "does not contain all of", "[[Neeraj Ghaywan]],[[Christopher Nolan]]")), file, fm)).toBe(true);
-	});
-
-	it("year is not '2014' — true", () => {
-		expect(checkRules(homeboundApp(), andGroup(filter("year", "is not", "2014")), file, fm)).toBe(true);
+	it.each<[string, Filter["operator"], string | undefined, boolean]>([
+		["file", "links to", "Neeraj Ghaywan", true],
+		["description", "contains", "police", true],
+		["description", "does not contain", "wormhole", true],
+		["writers", "contains all of", "[[Neeraj Ghaywan]],[[Basharat Peer]]", true],
+		["writers", "does not contain all of", "[[Neeraj Ghaywan]],[[Christopher Nolan]]", true],
+		["year", "is not", "2014", true],
+	])("%s %s %s → %s", (field, operator, value, expected) => {
+		expect(checkRules(homeboundApp(), andGroup(filter(field, operator, value)), file, fm)).toBe(expected);
 	});
 });
 
@@ -1519,7 +1328,6 @@ describe("cross-vault: 'file links to Science Fiction'", () => {
 	});
 });
 
-
 describe("numeric comparison controls", () => {
 	it.each([
 		["=", "3", true], ["=", "4", false], ["≠", "3", false], ["≠", "4", true],
@@ -1528,25 +1336,28 @@ describe("numeric comparison controls", () => {
 	] as const)("evaluates 3 %s %s", (operator, value, expected) => {
 		expect(checkRules(mockApp(), andGroup(filter("rating", operator, value)), mockFile(), { rating: 3 })).toBe(expected);
 	});
+
 	it("supports file size and zero", () => {
 		expect(checkRules(mockApp(), andGroup(filter("file.size", ">", "0")), mockFile())).toBe(true);
 		expect(checkRules(mockApp(), andGroup(filter("rating", "=", "0")), mockFile(), { rating: 0 })).toBe(true);
 	});
+
 	it.each([undefined, "", " ", "\t\n", "\u00a0", "banana", false, []])("does not coerce invalid property %s to zero", rating => {
 		expect(checkRules(mockApp(), andGroup(filter("rating", "=", "0")), mockFile(), { rating })).toBe(false);
 		expect(checkRules(mockApp(), andGroup(filter("rating", "≠", "1")), mockFile(), { rating })).toBe(false);
 	});
+
 	it.each(["", "Infinity", "3foo"])("rejects invalid numeric input %s", value => {
 		expect(checkRules(mockApp(), andGroup(filter("rating", "≠", value)), mockFile(), { rating: 3 })).toBe(false);
 	});
 });
-
 
 describe("empty property checks", () => {
 	it.each([0, false])("treats %s as a populated value", value => {
 		expect(checkRules(mockApp(), andGroup(filter("value", "is empty")), mockFile(), { value })).toBe(false);
 		expect(checkRules(mockApp(), andGroup(filter("value", "is not empty")), mockFile(), { value })).toBe(true);
 	});
+
 	it.each([null, undefined, "", []])("treats missing or empty value %s as empty", value => {
 		expect(checkRules(mockApp(), andGroup(filter("value", "is empty")), mockFile(), { value })).toBe(true);
 		expect(checkRules(mockApp(), andGroup(filter("value", "is not empty")), mockFile(), { value })).toBe(false);
@@ -1568,7 +1379,6 @@ describe("exact list comparison", () => {
 	});
 });
 
-
 describe("calendar date filtering", () => {
 	it.each([
 		["on", "2024-06-15", true], ["not on", "2024-06-15", false],
@@ -1577,9 +1387,11 @@ describe("calendar date filtering", () => {
 	] as const)("supports note dates: %s %s", (operator, value, expected) => {
 		expect(checkRules(mockApp(), andGroup(filter("published", operator, value)), mockFile(), { published: "2024-06-15" })).toBe(expected);
 	});
+
 	it.each(["2024-02-30", "not a date", "", undefined])("rejects invalid dates even with negative comparisons: %s", published => {
 		expect(checkRules(mockApp(), andGroup(filter("published", "not on", "2024-06-15")), mockFile(), { published })).toBe(false);
 	});
+
 	it("uses the local day at the UTC boundary", () => {
 		vi.stubEnv("TZ", "Asia/Kolkata");
 		try {
@@ -1588,6 +1400,7 @@ describe("calendar date filtering", () => {
 			expect(checkRules(mockApp(), andGroup(filter("file.ctime", "on", "2024-06-15")), file)).toBe(true);
 		} finally { vi.unstubAllEnvs(); }
 	});
+
 	it("accepts the Unix epoch as a populated timestamp", () => {
 		expect(checkRules(mockApp(), andGroup(filter("file.ctime", "is not empty")), mockFile())).toBe(true);
 	});
