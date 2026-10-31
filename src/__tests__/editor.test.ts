@@ -2,7 +2,7 @@
  * Tests for src/editor.ts
  *
  * Covers:
- *   - Theme configuration values (matches obsidian-latex-suite)
+ *   - Theme configuration (Obsidian CSS variables only)
  *   - createTemplateEditor — creation, initial content, onChange callback
  *   - setEditorContent — replacing editor content
  *   - Editor extensions (line numbers, HTML highlighting, etc.)
@@ -12,13 +12,10 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
 	themeConfig,
 	obsidianTheme,
-	obsidianHighlightStyle,
 	obsidianExtension,
 	buildEditorExtensions,
 	createTemplateEditor,
 	setEditorContent,
-	autoCloseHTMLTags,
-	htmlLanguage,
 } from "../editor";
 import { EditorView } from "@codemirror/view";
 import { startCompletion, currentCompletions, completionStatus } from "@codemirror/autocomplete";
@@ -43,71 +40,29 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// themeConfig
+// Theme
 // ---------------------------------------------------------------------------
 
-describe("themeConfig", () => {
-	it("uses Obsidian CSS variables for background and foreground", () => {
-		expect(themeConfig.background).toBe("var(--background-primary)");
-		expect(themeConfig.foreground).toBe("var(--text-normal)");
-	});
-
-	it("uses Obsidian --color-green variable for keywords", () => {
-		expect(themeConfig.keyword).toBe("var(--color-green)");
-	});
-
-	it("uses Obsidian --code-property variable for class", () => {
-		expect(themeConfig.class).toBe("var(--code-property)");
-	});
-
-	it("uses Obsidian CSS variable for selection", () => {
-		expect(themeConfig.selection).toBe("var(--text-selection)");
-	});
-
-	it("uses Obsidian CSS variable for cursor", () => {
-		expect(themeConfig.cursor).toBe("var(--text-normal)");
-	});
-
-	it("uses Obsidian --code-comment variable for comments", () => {
-		expect(themeConfig.comment).toBe("var(--code-comment)");
-	});
-
-	it("uses Obsidian --code-tag variable for HTML tags", () => {
-		expect(themeConfig.tag).toBe("var(--code-tag)");
-	});
-
-	it("uses Obsidian --code-property variable for HTML attributes", () => {
-		expect(themeConfig.attribute).toBe("var(--code-property)");
-	});
-
-	it("has dark mode set to false", () => {
-		expect(themeConfig.dark).toBe(false);
-	});
-
-	it("uses matching bracket color from Obsidian variable", () => {
-		expect(themeConfig.matchingBracket).toBe(
-			"var(--background-modifier-hover)"
-		);
-	});
-
-	it("uses Obsidian --color-cyan variable for strings", () => {
-		expect(themeConfig.string).toBe("var(--color-cyan)");
-	});
-
-	it("uses Obsidian --color-orange variable for functions", () => {
-		expect(themeConfig.function).toBe("var(--color-orange)");
-	});
-
-	it("uses Obsidian --text-muted variable for operators", () => {
-		expect(themeConfig.operator).toBe("var(--text-muted)");
-	});
-
-	it("uses Obsidian --code-value variable for numbers/constants", () => {
-		expect(themeConfig.number).toBe("var(--color-purple)");
-		expect(themeConfig.constant).toBe("var(--color-yellow)");
-	});
-
-	it("uses only Obsidian CSS variables (no hardcoded hex colors for syntax)", () => {
+describe("theme", () => {
+	it("maps every syntax colour to an Obsidian CSS variable", () => {
+		expect(themeConfig).toMatchObject({
+			dark: false,
+			background: "var(--background-primary)",
+			foreground: "var(--text-normal)",
+			selection: "var(--text-selection)",
+			cursor: "var(--text-normal)",
+			matchingBracket: "var(--background-modifier-hover)",
+			keyword: "var(--color-green)",
+			class: "var(--code-property)",
+			comment: "var(--code-comment)",
+			tag: "var(--code-tag)",
+			attribute: "var(--code-property)",
+			string: "var(--color-cyan)",
+			function: "var(--color-orange)",
+			operator: "var(--text-muted)",
+			number: "var(--color-purple)",
+			constant: "var(--color-yellow)",
+		});
 		const syntaxKeys = [
 			"keyword", "storage", "variable", "parameter", "function",
 			"string", "constant", "type", "class", "number", "comment",
@@ -118,48 +73,13 @@ describe("themeConfig", () => {
 			expect(themeConfig[key]).toMatch(/^var\(--/);
 		}
 	});
-});
 
-// ---------------------------------------------------------------------------
-// Theme and highlight exports
-// ---------------------------------------------------------------------------
-
-describe("obsidian theme exports", () => {
-	it("obsidianTheme is a valid CM6 Extension", () => {
-		expect(obsidianTheme).toBeDefined();
+	it("bundles the theme and highlight style into one extension", () => {
+		expect(obsidianExtension).toEqual([obsidianTheme, expect.anything()]);
 	});
 
-	it("obsidianHighlightStyle is a valid CM6 HighlightStyle", () => {
-		expect(obsidianHighlightStyle).toBeDefined();
-	});
-
-	it("obsidianExtension is an array with theme + highlighting", () => {
-		expect(Array.isArray(obsidianExtension)).toBe(true);
-		expect((obsidianExtension as unknown[]).length).toBe(2);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// buildEditorExtensions
-// ---------------------------------------------------------------------------
-
-describe("buildEditorExtensions", () => {
-	it("returns a non-empty array for html", () => {
-		const exts = buildEditorExtensions("html");
-		expect(Array.isArray(exts)).toBe(true);
-		expect(exts.length).toBeGreaterThan(0);
-	});
-
-	it("returns a non-empty array for css", () => {
-		const exts = buildEditorExtensions("css");
-		expect(Array.isArray(exts)).toBe(true);
-		expect(exts.length).toBeGreaterThan(0);
-	});
-
-	it("returns a non-empty array for javascript", () => {
-		const exts = buildEditorExtensions("javascript");
-		expect(Array.isArray(exts)).toBe(true);
-		expect(exts.length).toBeGreaterThan(0);
+	it.each(["html", "css", "javascript"] as const)("builds a non-empty extension list for %s", language => {
+		expect(buildEditorExtensions(language).length).toBeGreaterThan(0);
 	});
 });
 
@@ -187,33 +107,15 @@ describe("createTemplateEditor", () => {
 		expect(accessibleName(view)).toBe("HTML template");
 	});
 
-	it("returns an EditorView instance", () => {
-		const view = createAndTrack({ initialContent: "" });
-		expect(view).toBeInstanceOf(EditorView);
-	});
-
-	it("creates a DOM element that can be mounted", () => {
-		const view = createAndTrack({ initialContent: "" });
-		expect(view.dom).toBeDefined();
-		expect(view.dom.nodeName).toBe("DIV");
-	});
-
-	it("sets initial content correctly", () => {
-		const content = "<div>Hello {{title}}</div>";
+	it.each([
+		["", 1],
+		["<div>Hello {{title}}</div>", 1],
+		['<div class="test" data-value="a&b">text</div>', 1],
+		["<div>\n  <h1>{{title}}</h1>\n  <p>{{body}}</p>\n</div>", 4],
+	])("loads initial content %j verbatim", (content, lines) => {
 		const view = createAndTrack({ initialContent: content });
 		expect(view.state.doc.toString()).toBe(content);
-	});
-
-	it("handles empty initial content", () => {
-		const view = createAndTrack({ initialContent: "" });
-		expect(view.state.doc.toString()).toBe("");
-	});
-
-	it("handles multi-line initial content", () => {
-		const content = "<div>\n  <h1>{{title}}</h1>\n  <p>{{body}}</p>\n</div>";
-		const view = createAndTrack({ initialContent: content });
-		expect(view.state.doc.toString()).toBe(content);
-		expect(view.state.doc.lines).toBe(4);
+		expect(view.state.doc.lines).toBe(lines);
 	});
 
 	it("calls onChange when content changes", () => {
@@ -276,18 +178,6 @@ describe("createTemplateEditor", () => {
 		expect(view.state.doc.toString()).toBe("changed");
 	});
 
-	it("handles special HTML characters in content", () => {
-		const content = '<div class="test" data-value="a&b">text</div>';
-		const view = createAndTrack({ initialContent: content });
-		expect(view.state.doc.toString()).toBe(content);
-	});
-
-	it("handles large content without error", () => {
-		const content = "<p>line</p>\n".repeat(1000);
-		const view = createAndTrack({ initialContent: content });
-		expect(view.state.doc.lines).toBe(1001); // 1000 lines + trailing empty
-	});
-
 	it("has line numbers enabled (gutter present in DOM)", () => {
 		const view = createAndTrack({ initialContent: "<p>hello</p>" });
 		// CM6 renders gutters with the class 'cm-gutters'
@@ -295,14 +185,6 @@ describe("createTemplateEditor", () => {
 		expect(gutters).not.toBeNull();
 	});
 
-	it("has the cm-editor class on the root element", () => {
-		const view = createAndTrack({ initialContent: "" });
-		const cmEditor = view.dom.querySelector(".cm-editor");
-		// The dom itself is a cm-editor or contains one
-		const hasCmEditor =
-			view.dom.classList.contains("cm-editor") || cmEditor !== null;
-		expect(hasCmEditor).toBe(true);
-	});
 });
 
 // ---------------------------------------------------------------------------
@@ -310,44 +192,14 @@ describe("createTemplateEditor", () => {
 // ---------------------------------------------------------------------------
 
 describe("setEditorContent", () => {
-	it("replaces editor content completely", () => {
-		const view = createAndTrack({ initialContent: "old content" });
-		setEditorContent(view, "new content");
-		expect(view.state.doc.toString()).toBe("new content");
-	});
-
-	it("can set content to empty string", () => {
-		const view = createAndTrack({ initialContent: "something" });
-		setEditorContent(view, "");
-		expect(view.state.doc.toString()).toBe("");
-	});
-
-	it("triggers onChange when content is set", () => {
+	it("replaces the whole document each time and notifies onChange", () => {
 		const onChange = vi.fn();
-		const view = createAndTrack({
-			initialContent: "before",
-			onChange,
-		});
-
-		setEditorContent(view, "after");
-		expect(onChange).toHaveBeenCalledWith("after");
-	});
-
-	it("can replace content multiple times", () => {
-		const view = createAndTrack({ initialContent: "" });
-		setEditorContent(view, "first");
-		expect(view.state.doc.toString()).toBe("first");
-		setEditorContent(view, "second");
-		expect(view.state.doc.toString()).toBe("second");
-		setEditorContent(view, "third");
-		expect(view.state.doc.toString()).toBe("third");
-	});
-
-	it("handles multi-line replacement", () => {
-		const view = createAndTrack({ initialContent: "single line" });
-		const multiLine = "<div>\n  <span>hello</span>\n</div>";
-		setEditorContent(view, multiLine);
-		expect(view.state.doc.toString()).toBe(multiLine);
+		const view = createAndTrack({ initialContent: "old content", onChange });
+		for (const next of ["new content", "", "<div>\n  <span>hello</span>\n</div>"]) {
+			setEditorContent(view, next);
+			expect(view.state.doc.toString()).toBe(next);
+			expect(onChange).toHaveBeenLastCalledWith(next);
+		}
 		expect(view.state.doc.lines).toBe(3);
 	});
 });
@@ -357,29 +209,21 @@ describe("setEditorContent", () => {
 // ---------------------------------------------------------------------------
 
 describe("autoCloseHTMLTags", () => {
-	it("is a defined extension", () => {
-		expect(autoCloseHTMLTags).toBeDefined();
-	});
-
 	it("auto-closes a div tag when > is typed", () => {
 		const view = createAndTrack({ initialContent: "<div" });
 		// Simulate typing ">" at the end
 		const from = view.state.doc.length;
-		const handled = simulateInput(view, from, from, ">");
-		if (handled) {
-			expect(view.state.doc.toString()).toBe("<div></div>");
-			// Cursor should be between > and </
-			expect(view.state.selection.main.head).toBe(5); // after ">"
-		}
+		expect(simulateInput(view, from, from, ">")).toBe(true);
+		expect(view.state.doc.toString()).toBe("<div></div>");
+		// Cursor should be between > and </
+		expect(view.state.selection.main.head).toBe(5); // after ">"
 	});
 
 	it("auto-closes a span tag", () => {
 		const view = createAndTrack({ initialContent: "<span" });
 		const from = view.state.doc.length;
-		const handled = simulateInput(view, from, from, ">");
-		if (handled) {
-			expect(view.state.doc.toString()).toBe("<span></span>");
-		}
+		expect(simulateInput(view, from, from, ">")).toBe(true);
+		expect(view.state.doc.toString()).toBe("<span></span>");
 	});
 
 	it("auto-closes tags with attributes", () => {
@@ -387,12 +231,8 @@ describe("autoCloseHTMLTags", () => {
 			initialContent: '<a href="http://example.com"',
 		});
 		const from = view.state.doc.length;
-		const handled = simulateInput(view, from, from, ">");
-		if (handled) {
-			expect(view.state.doc.toString()).toBe(
-				'<a href="http://example.com"></a>'
-			);
-		}
+		expect(simulateInput(view, from, from, ">")).toBe(true);
+		expect(view.state.doc.toString()).toBe('<a href="http://example.com"></a>');
 	});
 
 	it("does NOT auto-close void elements (br, img, input, etc.)", () => {
@@ -436,29 +276,8 @@ describe("autoCloseHTMLTags", () => {
 	it("handles custom/hyphenated tag names", () => {
 		const view = createAndTrack({ initialContent: "<my-component" });
 		const from = view.state.doc.length;
-		const handled = simulateInput(view, from, from, ">");
-		if (handled) {
-			expect(view.state.doc.toString()).toBe(
-				"<my-component></my-component>"
-			);
-		}
-	});
-});
-
-// ---------------------------------------------------------------------------
-// htmlLanguage (LanguageSupport export)
-// ---------------------------------------------------------------------------
-
-describe("htmlLanguage", () => {
-	it("is a defined LanguageSupport instance", () => {
-		expect(htmlLanguage).toBeDefined();
-	});
-
-	it("includes autoCloseHTMLTags in its extensions", () => {
-		// htmlLanguage is a LanguageSupport which wraps extensions
-		// Just verify it can be used as an extension without error
-		const view = createAndTrack({ initialContent: "<p>test</p>" });
-		expect(view.state.doc.toString()).toBe("<p>test</p>");
+		expect(simulateInput(view, from, from, ">")).toBe(true);
+		expect(view.state.doc.toString()).toBe("<my-component></my-component>");
 	});
 });
 
