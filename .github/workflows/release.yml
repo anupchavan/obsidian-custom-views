@@ -23,23 +23,45 @@ jobs:
                   npm run typecheck
                   npm test
                   npm run build
+            - name: Choose the manifest
+              id: manifest
+              run: |
+                  # A tag matching manifest-beta.json ships as a beta pre-release (installable
+                  # with BRAT); manifest.json stays on the stable version so the community
+                  # store keeps offering it to everyone else.
+                  tag="${GITHUB_REF#refs/tags/}"
+                  mkdir -p dist
+                  if [ -f manifest-beta.json ] && [ "$(node -p 'require("./manifest-beta.json").version')" = "$tag" ]; then
+                      cp manifest-beta.json dist/manifest.json
+                      echo "prerelease=true" >> "$GITHUB_OUTPUT"
+                  else
+                      cp manifest.json dist/manifest.json
+                      echo "prerelease=false" >> "$GITHUB_OUTPUT"
+                  fi
+                  cp main.js styles.css dist/
             - name: Generate artifact attestation
               uses: actions/attest-build-provenance@v2
               with:
                   subject-path: |
-                      main.js
-                      styles.css
-                      manifest.json
+                      dist/main.js
+                      dist/styles.css
+                      dist/manifest.json
             - name: Create release
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  PRERELEASE: ${{ steps.manifest.outputs.prerelease }}
               run: |
                   tag="${GITHUB_REF#refs/tags/}"
-                  node -e 'const m = require("./manifest.json"); if (m.version !== process.env.GITHUB_REF_NAME || require("./package.json").version !== m.version || require("./versions.json")[m.version] !== m.minAppVersion) process.exit(1)'
+                  node -e 'const m = require("./dist/manifest.json"); if (m.version !== process.env.GITHUB_REF_NAME || require("./package.json").version !== m.version || require("./versions.json")[m.version] !== m.minAppVersion) process.exit(1)'
                   test -s ".github/release-notes/$tag.md"
+                  if [ "$PRERELEASE" = "true" ]; then
+                      kind="--prerelease"
+                  else
+                      kind="--draft"
+                  fi
                   gh release create "$tag" \
                     --title="$tag" \
-                    --draft \
+                    "$kind" \
                     --verify-tag \
                     --notes-file=".github/release-notes/$tag.md" \
-                    main.js manifest.json styles.css
+                    dist/main.js dist/manifest.json dist/styles.css
