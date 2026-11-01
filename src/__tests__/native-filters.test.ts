@@ -337,6 +337,24 @@ describe("legacy filter conversion", () => {
 	it.each(["", " ", "bad", "Infinity", "-Infinity", "1e999"])("does not convert invalid numeric input %j into a matching condition", value => {
 		expect(convert({ type: "filter", field: "rating", operator: "≠", value })).toEqual({ and: ["false"] });
 	});
+	it("never matches a date rule whose value isn't a calendar date, as legacy rules didn't", () => {
+		for (const value of ["", "x", "2014", "[[2014-04-16]]", "2023-02-30"]) {
+			expect(convert({ type: "filter", field: "published", operator: "not on", value })).toEqual({ and: ["false"] });
+		}
+	});
+
+	it("compares dates only when the property holds one, so a missing date is not 'not on' any day", () => {
+		const [expression] = (convert({ type: "filter", field: "published", operator: "not on", value: "2014-04-16T10:00" }) as { and: string[] }).and;
+		expect(expression).toBe('(note["published"].isType("date") || (note["published"].isType("string") && /^\\d{4}-\\d{2}-\\d{2}(T|$)/.matches(note["published"]))) && date(note["published"]).date() != date("2014-04-16")');
+	});
+
+	it("compares a tags property without the # Bases puts on each tag", () => {
+		const typedApp = { metadataTypeManager: { getAssignedWidget: () => "tags" } } as unknown as App;
+		const [expression] = (toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "tags", operator: "is", value: "recipes" }] }) as { and: string[] }).and;
+		expect(expression).toContain('if(note["tags"].isType("list"), note["tags"].map(value.toString().replace("#", "")), note["tags"])');
+		expect(expression).toContain('.contains("recipes")');
+	});
+
 	it("converts numeric symbols without quoting numbers", () => {
 		expect(convert({ type: "filter", field: "rating", operator: "≥", value: "3.5" })).toEqual({ and: [expect.stringContaining('note["rating"] >= 3.5')] });
 	});
