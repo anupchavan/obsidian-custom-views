@@ -344,6 +344,9 @@ export function inferTypeBeforeDot(textBeforeDot: string): InferredType {
 	if (trimmed.endsWith(".format()") || /\.format\([^)]*\)$/.test(trimmed)) return "string";
 	if (trimmed.endsWith(".date()") || trimmed.endsWith(".time()") || trimmed.endsWith(".relative()")) return "string";
 
+	// The bare name `file` is the current note.
+	if (/(^|[^\w.])file$/.test(trimmed)) return "file";
+
 	// Check for global function calls that return known types
 	if (/\blink\([^)]*\)$/.test(trimmed)) return "link";
 	if (/\bfile\([^)]*\)$/.test(trimmed)) return "file";
@@ -910,6 +913,12 @@ export function analyzeEditorSource(lang: EditorLanguage, source: string, proper
 	return found.sort((a, b) => (a.from ?? -1) - (b.from ?? -1));
 }
 
+/** Show each suggestion's description the way Bases does: in the info tooltip beside the list, not inline. */
+export function detailAsInfo(result: CompletionResult): CompletionResult {
+	return { ...result, options: result.options.map(({ detail, ...option }) =>
+		detail && option.info === undefined ? { ...option, info: detail } : { ...option, detail }) };
+}
+
 export function buildEditorExtensions(lang: EditorLanguage = "html", extraTemplateVars: TemplateVariable[] = []): Extension[] {
 	const templateSource = templateCompletionSource(extraTemplateVars);
 	const properties = extraTemplateVars.map(variable => variable.name);
@@ -923,14 +932,14 @@ export function buildEditorExtensions(lang: EditorLanguage = "html", extraTempla
 		autoCloseTemplateBraces,
 		autocompletion({ ...completionAppearance, override: [context => {
 			const template = templateSource(context);
-			if (template) return template;
+			if (template) return detailAsInfo(template);
 			const sources = context.state.languageDataAt<CompletionSource | readonly Completion[]>("autocomplete", context.pos);
 			return Promise.all(sources.map(async source =>
 				(typeof source === "function" ? source : completeFromList(source))(context)
 			)).then(results => {
 				const first = results.find(result => result !== null);
-				return first ? { from: first.from, to: first.to, options: results.flatMap(result =>
-					result?.from === first.from && result.to === first.to ? result.options : []) } : null;
+				return first ? detailAsInfo({ from: first.from, to: first.to, options: results.flatMap(result =>
+					result?.from === first.from && result.to === first.to ? result.options : []) }) : null;
 			});
 		}] }),
 		javascriptLanguage.data.of({ autocomplete: scopeCompletionSource(window) }),
