@@ -2,7 +2,7 @@ import { createDetachedEl } from "../dom";
 import type { App } from "obsidian";
 import type { ViewConfig } from "../types";
 import { getNativeBasesApi } from "./api";
-import { toBasesFilter } from "./convert";
+import { viewFilters } from "./engine";
 
 /** Own the native widget for exactly the lifetime of its settings modal. */
 export function mountNativeFilters(app: App, host: HTMLElement, view: ViewConfig, save: () => void, popover = false): () => void {
@@ -15,7 +15,7 @@ export function mountNativeFilters(app: App, host: HTMLElement, view: ViewConfig
 		host.textContent = "Loading filters…";
 		void getNativeBasesApi(app).then(api => {
 			if (closed) return;
-			const filters = view.basesFilters === undefined ? toBasesFilter(app, view.rules) : view.basesFilters;
+			const filters = viewFilters(app, view);
 			dispose = api.createEditor(host, filters, value => {
 				if (closed) return;
 				view.basesFilters = value;
