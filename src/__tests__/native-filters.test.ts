@@ -227,6 +227,17 @@ describe("native Bases integration", () => {
 		expect(engine.matches(view("throw"), yes)).toBe(false);
 		expect(engine.matches(view(null), no)).toBe(true);
 	});
+	it("matches legacy rules through Bases without rewriting the view", async () => {
+		const s = setup(); const engine = new NativeRuleEngine(s.app); await engine.prepare();
+		const legacy: ViewConfig = { ...view(), rules: { type: "group", operator: "AND", conditions: [{ type: "filter", field: "file.name", operator: "is", value: "match.md" }] } };
+		const before = JSON.stringify(legacy);
+		const yes = new TFile(); yes.path = "match.md"; const no = new TFile(); no.path = "other.md";
+		Query.parse.mockClear();
+		expect(engine.matches(legacy, yes)).toBe(true);
+		expect(engine.matches(legacy, no)).toBe(false);
+		expect(Query.parse).toHaveBeenCalledWith(expect.objectContaining({ filters: toBasesFilter(s.app, legacy.rules) }));
+		expect(JSON.stringify(legacy)).toBe(before);
+	});
 	it("recovers matching and refreshes views after Bases is enabled without reloading the plugin", async () => {
 		const s = setup(); const ready = vi.fn(); const engine = new NativeRuleEngine(s.app, ready);
 		const registry = (s.app as unknown as { embedRegistry: { embedByExtension: { base?: unknown } } }).embedRegistry.embedByExtension;
