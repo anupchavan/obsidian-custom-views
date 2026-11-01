@@ -14,7 +14,7 @@ import { Events, Plugin, TFile, MarkdownView, Keymap, Menu, Notice, WorkspaceLea
 import { Compartment, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { CustomViewsSettings, CustomViewsSettingTab, EditViewModal } from "./settings";
-import { NativeRuleEngine } from "./native-filters/engine";
+import { NativeRuleEngine, viewFilters } from "./native-filters/engine";
 import { getTemplateDependencies, renderTemplate, templateHasEditableContent, EDITABLE_PLACEHOLDER_ATTR } from "./renderer";
 import { createEditableContentExtensions } from "./editable-content";
 import type { ViewConfig } from "./types";
@@ -205,7 +205,7 @@ export default class CustomViewsPlugin extends Plugin {
 			if (!this.unloaded) this.refreshAllViews();
 		});
 		try { await this.nativeRules.prepare(); } catch (error) {
-			if (this.settings.views.some(view => view.basesFilters != null)) {
+			if (this.settings.views.some(view => viewFilters(this.app, view) !== null)) {
 				new Notice(error instanceof Error ? error.message : "Native view filters are unavailable.");
 			}
 		}
@@ -968,9 +968,8 @@ export default class CustomViewsPlugin extends Plugin {
 	}
 
 	findMatchingView(file: TFile, includeDisabled = false): ViewConfig | null {
-		const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		return this.settings.views.find(config => this.nativeRules.matches(
-			includeDisabled ? { ...config, enabled: true } : config, file, metadata
+			includeDisabled ? { ...config, enabled: true } : config, file
 		)) ?? null;
 	}
 
@@ -1035,7 +1034,7 @@ export default class CustomViewsPlugin extends Plugin {
 		let matchedConfig: ViewConfig | null = null;
 
 		for (const viewConfig of this.settings.views) {
-			const isMatch = this.nativeRules.matches(viewConfig, file, cache?.frontmatter);
+			const isMatch = this.nativeRules.matches(viewConfig, file);
 			if (isMatch) {
 				matchedConfig = viewConfig;
 				break;
