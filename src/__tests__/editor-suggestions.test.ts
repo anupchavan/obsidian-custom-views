@@ -16,6 +16,7 @@ import {
 	inferTypeBeforeDot,
 	getSuggestionsForType,
 	templateCompletionSource,
+	detailAsInfo,
 } from "../editor";
 import type { TemplateVariable } from "../editor";
 import type { CompletionContext } from "@codemirror/autocomplete";
@@ -636,5 +637,27 @@ describe("templateCompletionSource integration", () => {
 		const text = "{{rating >= ";
 		const result = source(mockCompletionContext(text));
 		expect(result).not.toBeNull();
+	});
+});
+
+describe("Bases-style suggestions", () => {
+	it("treats the bare name file as the current note", () => {
+		expect(inferTypeBeforeDot("file")).toBe("file");
+		expect(inferTypeBeforeDot("x + file")).toBe("file");
+		expect(inferTypeBeforeDot("profile")).toBe("unknown");
+		expect(inferTypeBeforeDot("note.file")).toBe("unknown");
+	});
+
+	it("moves each description into the info tooltip, as Bases shows it", () => {
+		const result = detailAsInfo({ from: 0, options: [
+			{ label: "abs()", detail: "absolute value" },
+			{ label: "kept", detail: "inline", info: "own info" },
+			{ label: "plain" },
+		] });
+		expect(result.options).toEqual([
+			{ label: "abs()", info: "absolute value" },
+			{ label: "kept", detail: "inline", info: "own info" },
+			{ label: "plain", detail: undefined },
+		]);
 	});
 });

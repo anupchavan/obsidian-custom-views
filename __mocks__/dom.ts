@@ -51,3 +51,9 @@ HTMLElement.prototype.createSpan = function(this: HTMLElement, options, callback
 	this.appendChild(span);
 	return span;
 };
+
+HTMLElement.prototype.createDiv = function(this: HTMLElement, options, callback) {
+	const div = this.ownerDocument.adoptNode(createEl("div", options, callback));
+	this.appendChild(div);
+	return div;
+};

@@ -167,6 +167,15 @@ export class Menu {
 }
 export const Keymap = { isModEvent: () => false };
 export function setIcon() { }
+export function getIcon(name: string) {
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.setAttribute("class", `svg-icon lucide-${name}`);
+	return svg;
+}
+export function getLinkpath(linktext: string) {
+	const hash = linktext.indexOf("#");
+	return hash === -1 ? linktext : linktext.slice(0, hash);
+}
 export function getAllTags() { return []; }
 export function prepareFuzzySearch() { return () => null; }
 export function renderResults() { }

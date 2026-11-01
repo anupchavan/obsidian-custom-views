@@ -272,6 +272,10 @@ describe("global functions", () => {
 		expect(await evaluate(parseExpression(expression), makeContext())).toEqual(expected);
 	});
 
+	it("icon() draws the named icon", async () => {
+		expect(await evaluate(parseExpression('icon("star")'), makeContext())).toBe('<span class="cv-icon"><svg class="svg-icon lucide-star"></svg></span>');
+	});
+
 	it("if() — with expression condition", async () => {
 		const ctx = makeContext({ frontmatter: { rating: 9 } });
 		expect(await evaluate(parseExpression('if(rating > 8, "Great", "OK")'), ctx)).toBe("Great");
