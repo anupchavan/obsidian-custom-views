@@ -176,7 +176,25 @@ export function getLinkpath(linktext: string) {
 	const hash = linktext.indexOf("#");
 	return hash === -1 ? linktext : linktext.slice(0, hash);
 }
-export function getAllTags() { return []; }
+// Mirrors Obsidian: the key matches case-insensitively, a value is a string or a list,
+// and only trimmed, non-empty strings are kept.
+function frontMatterStrings(frontmatter: Record<string, unknown> | null | undefined, key: RegExp): string[] | null {
+	if (!frontmatter) return null;
+	const entry = Object.entries(frontmatter).find(([name]) => key.test(name));
+	if (!entry || entry[1] == null) return null;
+	const values: unknown[] = Array.isArray(entry[1]) ? entry[1] : [entry[1]];
+	return values.filter((value): value is string => typeof value === "string").map(value => value.trim()).filter(Boolean);
+}
+// Obsidian drops tag values that contain a space, such as "a, b".
+export function parseFrontMatterTags(frontmatter: Record<string, unknown> | null) {
+	return frontMatterStrings(frontmatter, /^tags$/i)?.filter(tag => !/\s/.test(tag)).map(tag => tag.startsWith("#") ? tag : `#${tag}`) ?? null;
+}
+export function parseFrontMatterAliases(frontmatter: Record<string, unknown> | null) {
+	return frontMatterStrings(frontmatter, /^aliases$/i);
+}
+export function getAllTags(cache: { tags?: { tag: string }[]; frontmatter?: Record<string, unknown> }) {
+	return [...(parseFrontMatterTags(cache.frontmatter ?? null) ?? []), ...(cache.tags ?? []).map(tag => tag.tag)];
+}
 export function prepareFuzzySearch() { return () => null; }
 export function renderResults() { }
 export function parsePropertyId(propertyId: string) {

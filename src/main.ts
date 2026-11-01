@@ -177,6 +177,10 @@ export default class CustomViewsPlugin extends Plugin {
 
 	private registerNoteRefreshEvents(): void {
 		this.registerEvent(this.app.metadataCache.on("changed", file => this.queueNoteRefresh(file)));
+		// Link rules read resolvedLinks, which Obsidian fills in after "changed". Wait for it.
+		this.registerEvent(this.app.metadataCache.on("resolve", file => {
+			if (this.noteRefreshTimers.has(file)) this.queueNoteRefresh(file);
+		}));
 		this.registerEvent(this.app.vault.on("rename", file => {
 			if (file instanceof TFile) this.queueNoteRefresh(file);
 		}));

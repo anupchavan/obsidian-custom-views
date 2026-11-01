@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { CachedMetadata } from "obsidian";
-import { stripFrontmatter } from "../frontmatter";
+import { hasTag, noteTags, stripFrontmatter } from "../frontmatter";
 
 describe("stripFrontmatter", () => {
 	const fm = "---\nfoo: bar\n---";
@@ -76,5 +76,35 @@ describe("stripFrontmatter", () => {
 
 	it("handles an offset of 0 (no frontmatter) without treating it as missing", () => {
 		expect(stripFrontmatter(makeCache({ official: 0 }), "body only")).toBe("body only");
+	});
+});
+
+describe("noteTags", () => {
+	it("joins property and body tags through getAllTags, without duplicates", () => {
+		const cache = { frontmatter: { tags: ["books", "#scifi"] }, tags: [{ tag: "#scifi" }, { tag: "#todo" }] } as unknown as CachedMetadata;
+		expect(noteTags(cache)).toEqual(["#books", "#scifi", "#todo"]);
+	});
+
+	it("skips values Obsidian rejects, such as a comma string", () => {
+		const cache = { frontmatter: { tags: "a, b" } } as unknown as CachedMetadata;
+		expect(noteTags(cache)).toEqual([]);
+	});
+
+	it("uses the frontmatter it is given over the cached one", () => {
+		const cache = { frontmatter: { tags: ["old"] } } as unknown as CachedMetadata;
+		expect(noteTags(cache, { tags: ["new"] })).toEqual(["#new"]);
+	});
+});
+
+describe("hasTag", () => {
+	const tags = ["#Project/Alpha", "#books"];
+	it("ignores case and the leading #", () => {
+		expect(hasTag(tags, "#BOOKS")).toBe(true);
+		expect(hasTag(tags, "project/alpha")).toBe(true);
+	});
+	it("matches a parent tag but not a prefix of a name", () => {
+		expect(hasTag(tags, "project")).toBe(true);
+		expect(hasTag(tags, "proj")).toBe(false);
+		expect(hasTag(tags, "")).toBe(false);
 	});
 });
