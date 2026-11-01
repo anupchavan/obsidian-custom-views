@@ -168,7 +168,7 @@ function evaluateFilter(app: App, filter: Filter, file: TFile, frontmatter?: Fro
 		if (filter.field === "file.name") targetValue = file.name;
 		else if (filter.field === "file.basename") targetValue = file.basename;
 		else if (filter.field === "file.path") targetValue = file.path;
-		else if (filter.field === "file.folder") targetValue = file.parent && !file.parent.isRoot() ? file.parent.path : "";
+		else if (filter.field === "file.folder") targetValue = file.parent?.path ?? "/";
 		else if (filter.field === "file.size") targetValue = file.stat.size;
 		else if (filter.field === "file.ctime") targetValue = file.stat.ctime;
 		else if (filter.field === "file.mtime") targetValue = file.stat.mtime;

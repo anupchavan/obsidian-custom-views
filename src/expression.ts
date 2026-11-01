@@ -791,7 +791,8 @@ async function buildExprFile(app: App, tfile: TFile, bases?: ExprValueArray): Pr
 		}
 	}
 
-	const folder = tfile.parent && !tfile.parent.isRoot() ? tfile.parent.path : "";
+	// The vault root is "/", as in Bases.
+	const folder = tfile.parent?.path ?? "/";
 
 	const exprFile: ExprFile = {
 		__type: "file",
