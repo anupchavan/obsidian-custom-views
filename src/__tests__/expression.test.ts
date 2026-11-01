@@ -589,6 +589,36 @@ describe("file methods — via file() function", () => {
 		expect(result).toBe(true);
 	});
 
+	it("file().hasTag() matches nested tags and ignores case, like rules", async () => {
+		const targetFile = makeMockFile();
+		const ctx = makeContext();
+		(ctx.app.metadataCache.getFirstLinkpathDest as ReturnType<typeof vi.fn>).mockReturnValue(targetFile);
+		(ctx.app.metadataCache.getFileCache as ReturnType<typeof vi.fn>).mockReturnValue({
+			frontmatter: { tags: ["Project/Alpha"] },
+		});
+
+		expect(await evaluate(parseExpression('file("test").hasTag("project")'), ctx)).toBe(true);
+		expect(await evaluate(parseExpression('file("test").hasTag("#PROJECT/alpha")'), ctx)).toBe(true);
+		expect(await evaluate(parseExpression('file("test").hasTag("proj")'), ctx)).toBe(false);
+	});
+
+	it("file().hasLink() checks Obsidian's resolved links, so headings and folders don't matter", async () => {
+		const note = makeMockFile({ path: "Movies/Dune.md", basename: "Dune" });
+		const target = makeMockFile({ path: "Genres/Science Fiction.md", basename: "Science Fiction" });
+		const ctx = makeContext();
+		Object.assign(ctx.app.metadataCache, {
+			resolvedLinks: { "Movies/Dune.md": { "Genres/Science Fiction.md": 1 } },
+			unresolvedLinks: { "Movies/Dune.md": { "Missing": 1 } },
+		});
+		(ctx.app.metadataCache.getFirstLinkpathDest as ReturnType<typeof vi.fn>).mockImplementation((path: string) =>
+			path === "Dune" ? note : path === "Science Fiction" ? target : null);
+		(ctx.app.metadataCache.getFileCache as ReturnType<typeof vi.fn>).mockReturnValue({ frontmatter: {} });
+
+		expect(await evaluate(parseExpression('file("Dune").hasLink("Science Fiction#Plot")'), ctx)).toBe(true);
+		expect(await evaluate(parseExpression('file("Dune").hasLink("[[Missing]]")'), ctx)).toBe(true);
+		expect(await evaluate(parseExpression('file("Dune").hasLink("Westerns")'), ctx)).toBe(false);
+	});
+
 	it("file().hasProperty()", async () => {
 		const targetFile = makeMockFile();
 		const ctx = makeContext();

@@ -16,7 +16,8 @@ import { recordLinkDependency } from "./template-dependencies";
 import { App, TFile, getIcon, getLinkpath } from "obsidian";
 import { moment, type Moment } from "./host-moment";
 import { buildBasesCollection } from "./bases/access";
-import { stripFrontmatter } from "./frontmatter";
+import { hasTag, noteTags, stripFrontmatter } from "./frontmatter";
+import { linksTo } from "./note-links";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -771,15 +772,7 @@ async function resolveToFile(app: App, target: string, sourcePath: string, depen
 async function buildExprFile(app: App, tfile: TFile, bases?: ExprValueArray): Promise<ExprFile> {
 	const cache = app.metadataCache.getFileCache(tfile);
 	const fm = cache?.frontmatter;
-	const tags = (cache?.tags?.map(t => t.tag) ?? []);
-	// Also include frontmatter tags
-	if (fm?.tags) {
-		const fmTags = Array.isArray(fm.tags) ? fm.tags : [fm.tags];
-		for (const t of fmTags) {
-			const tag = String(t).startsWith('#') ? String(t) : `#${t}`;
-			if (!tags.includes(tag)) tags.push(tag);
-		}
-	}
+	const tags = noteTags(cache);
 	const links = cache?.links?.map(l => l.link) ?? [];
 
 	const properties = Object.create(null) as Record<string, ExprValue>;
@@ -1220,12 +1213,9 @@ const linkMethods: Record<string, MethodFn> = {
 	linksTo: async (ctx, obj, args) => {
 		if (!isExprLink(obj)) return false;
 		const target = exprToString(args[0]);
-		// Resolve the link's file and check its links
 		const tfile = await resolveToFile(ctx.app, obj.target, ctx.file.path, ctx.dependencies);
 		if (!tfile) return false;
-		const cache = ctx.app.metadataCache.getFileCache(tfile);
-		const links = cache?.links?.map(l => l.link) ?? [];
-		return links.includes(target);
+		return linksTo(ctx.app, tfile, target);
 	},
 	toString: (_ctx: ExprContext, obj: ExprValue) => exprToString(obj),
 	isTruthy: (_ctx: ExprContext, obj: ExprValue) => isTruthy(obj),
@@ -1244,10 +1234,9 @@ const fileMethods: Record<string, MethodFn> = {
 		if (!isExprFile(obj)) return null;
 		return { __type: "link", target: obj.basename };
 	},
-	hasLink: (_ctx, obj, args) => {
+	hasLink: (ctx, obj, args) => {
 		if (!isExprFile(obj)) return false;
-		const target = exprToString(args[0]);
-		return obj.links.includes(target);
+		return linksTo(ctx.app, obj._tfile, exprToString(args[0]));
 	},
 	hasProperty: (_ctx, obj, args) => {
 		if (!isExprFile(obj)) return false;
@@ -1256,9 +1245,7 @@ const fileMethods: Record<string, MethodFn> = {
 	},
 	hasTag: (_ctx, obj, args) => {
 		if (!isExprFile(obj)) return false;
-		let tag = exprToString(args[0]);
-		if (!tag.startsWith('#')) tag = '#' + tag;
-		return obj.tags.includes(tag);
+		return hasTag(obj.tags, exprToString(args[0]));
 	},
 	inFolder: (_ctx, obj, args) => {
 		if (!isExprFile(obj)) return false;
