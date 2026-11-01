@@ -22,10 +22,30 @@ import {
 	evaluateExpression,
 	isExpressionMode,
 	splitExpressionAndPipes,
-	processLogicBlocks,
+	evaluateScopedOutput,
+	evaluateTagExpression,
+	isTruthy,
+	readsTemplateVariable,
 } from "../expression";
-import type { ExprContext, ExprFile, ExprLink, ExprDate } from "../expression";
+import type { ExprContext, ExprFile, ExprLink, ExprDate, ExprValue } from "../expression";
+import { renderTemplateWithKnap } from "../template-engine";
 import type { App, TFile } from "obsidian";
+
+/** Run a template's blocks, leaving {{ }} that read no template variable for the renderer. */
+async function processLogicBlocks(template: string, ctx: ExprContext): Promise<string> {
+	const unresolved = Symbol("unresolved");
+	const { output } = await renderTemplateWithKnap(template, {
+		async evaluate(slot, variables) {
+			const scoped: ExprContext = { ...ctx, variables: variables as Record<string, ExprValue> };
+			if (slot.kind !== "output") return evaluateTagExpression(slot.kind, slot.source, scoped);
+			if (readsTemplateVariable(slot.source, scoped.variables)) return evaluateScopedOutput(slot.source, scoped);
+			return unresolved;
+		},
+		isTruthy: value => isTruthy(value as ExprValue),
+		output: (value, slot) => value === unresolved ? `{{${slot.source}}}` : (value as string | null) ?? "",
+	}, ctx.variables);
+	return output;
+}
 
 // ---------------------------------------------------------------------------
 // Mock helpers
