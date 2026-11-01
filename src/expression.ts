@@ -85,17 +85,9 @@ export interface ExprContext {
 	bodyContent: string;
 	variables: Record<string, ExprValue>;
 	bases?: ExprValueArray;
-	deferredMarkdown?: DeferredMarkdownStore;
 	dependencies?: Set<TFile>;
 }
 
-export interface DeferredMarkdownStore {
-	nextId: number;
-	values: Record<string, ExprValue>;
-}
-
-const DEFERRED_MARKDOWN_PREFIX = "__cv_deferred_markdown_";
-const RENDERABLE_MARKDOWN_RE = /!?\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^)]+\)|!\[[^\]\n]*\]\([^)]+\)|(^|[\s([{])#[\w/-]+|[*_`~]/;
 
 // ---------------------------------------------------------------------------
 // Token types
@@ -698,7 +690,7 @@ export function parseExpression(input: string): ASTNode {
 // ---------------------------------------------------------------------------
 
 /** Check if a value is "truthy" in the expression engine sense */
-function isTruthy(val: ExprValue): boolean {
+export function isTruthy(val: ExprValue): boolean {
 	if (val === null || val === undefined || val === false) return false;
 	if (val === 0 || val === "") return false;
 	if (Array.isArray(val) && val.length === 0) return false;
@@ -1566,114 +1558,6 @@ export async function evaluate(node: ASTNode, ctx: ExprContext): Promise<ExprVal
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Clipper-style logic block processor
-// ---------------------------------------------------------------------------
-
-/**
- * Process Clipper-style logic blocks: {% if %}, {% for %}, {% set %}
- * This runs BEFORE expression/template resolution so that the blocks
- * can control which parts of the template are rendered.
- */
-export async function processLogicBlocks(
-	template: string,
-	ctx: ExprContext
-): Promise<string> {
-	let result = template;
-
-	// Process {% set %} blocks first
-	result = await processSetBlocks(result, ctx);
-
-	// Process {% for %} blocks (must be before if, since for can contain if)
-	result = await processForBlocks(result, ctx);
-
-	// Process {% if %} blocks
-	result = await processIfBlocks(result, ctx);
-
-	// Resolve {{ }} placeholders that reference context variables (loop vars,
-	// {% set %} vars).  This only runs when there are variables — the top-level
-	// call from renderTemplate has an empty variables map, so it won't interfere
-	// with the normal {{ }} resolution that renderTemplate does afterward.
-	if (Object.keys(ctx.variables).length > 0) {
-		result = await resolveVariablePlaceholders(result, ctx);
-	}
-
-	return result;
-}
-
-/**
- * Resolve {{ expr }} placeholders that reference context variables.
- * Uses the expression engine so that `{{image}}`, `{{image | upper}}`,
- * `{{loop.index}}`, and full expressions all work inside loop bodies.
- */
-async function resolveVariablePlaceholders(template: string, ctx: ExprContext): Promise<string> {
-	const placeholderRegex = /\{\{((?:[^{}]|\{[^{]|\}[^}])*?)\}\}/g;
-	let match;
-	const replacements: { start: number; end: number; value: string }[] = [];
-
-	while ((match = placeholderRegex.exec(template)) !== null) {
-		const inner = match[1].trim();
-		if (!inner) continue;
-
-		// Resolve when any identifier in the expression references a scoped
-		// variable. This covers simple placeholders (`{{photo}}`) and function
-		// calls using loop variables (`{{image(photo)}}`) while leaving ordinary
-		// frontmatter placeholders for renderTemplate.
-		if (!expressionReferencesVariable(inner, ctx.variables)) continue;
-
-		// Evaluate the full expression (handles pipes, methods, etc.)
-		let value: ExprValue;
-		if (isExpressionMode(inner)) {
-			value = await evaluateExpression(inner, ctx);
-		} else {
-			// Legacy pipe mode: split property from filters
-			let chain = inner;
-			let filterChain: string | undefined;
-			// Find first pipe outside quotes
-			let inQ = false;
-			let qC = '';
-			for (let i = 0; i < chain.length; i++) {
-				const ch = chain[i];
-				if (!inQ && (ch === '"' || ch === "'")) { inQ = true; qC = ch; }
-				else if (inQ && ch === qC) { inQ = false; }
-				else if (!inQ && ch === '|') {
-					filterChain = chain.substring(i + 1).trim();
-					chain = chain.substring(0, i).trim();
-					break;
-				}
-			}
-
-			// Evaluate the identifier/property through the expression engine
-			try {
-				const ast = parseExpression(chain);
-				value = await evaluate(ast, ctx);
-			} catch {
-				continue; // Can't parse — leave for renderTemplate
-			}
-
-			if (filterChain && value !== null && value !== undefined) {
-				const { applyFilterChain } = await import("./filters");
-				value = applyFilterChain(value as Parameters<typeof applyFilterChain>[0], filterChain);
-			}
-		}
-
-		const strValue = exprToString(value);
-		const replacementValue = shouldDeferMarkdown(strValue, ctx)
-			? createDeferredMarkdownPlaceholder(value, ctx)
-			: strValue;
-
-		replacements.push({ start: match.index, end: match.index + match[0].length, value: replacementValue });
-	}
-
-	// Apply replacements in reverse order to preserve offsets
-	let result = template;
-	for (let i = replacements.length - 1; i >= 0; i--) {
-		const r = replacements[i];
-		result = result.substring(0, r.start) + r.value + result.substring(r.end);
-	}
-	return result;
-}
-
 function expressionReferencesVariable(expr: string, variables: Record<string, ExprValue>): boolean {
 	const variableNames = new Set(Object.keys(variables));
 	if (variableNames.size === 0) return false;
@@ -1682,250 +1566,6 @@ function expressionReferencesVariable(expr: string, variables: Record<string, Ex
 	} catch {
 		return false;
 	}
-}
-
-function shouldDeferMarkdown(value: string, ctx: ExprContext): boolean {
-	return !!ctx.deferredMarkdown && RENDERABLE_MARKDOWN_RE.test(value);
-}
-
-function createDeferredMarkdownPlaceholder(value: ExprValue, ctx: ExprContext): string {
-	const store = ctx.deferredMarkdown;
-	if (!store) return exprToString(value);
-
-	const name = `${DEFERRED_MARKDOWN_PREFIX}${store.nextId++}`;
-	store.values[name] = value;
-	return `{{${name}}}`;
-}
-
-export function resolveDeferredMarkdownPlaceholder(
-	expr: string,
-	ctx: ExprContext,
-): { found: boolean; value: ExprValue } {
-	const name = expr.trim();
-	if (!name.startsWith(DEFERRED_MARKDOWN_PREFIX)) {
-		return { found: false, value: null };
-	}
-	if (!ctx.deferredMarkdown || !Object.prototype.hasOwnProperty.call(ctx.deferredMarkdown.values, name)) {
-		return { found: false, value: null };
-	}
-
-	return {
-		found: true,
-		value: ctx.deferredMarkdown.values[name],
-	};
-}
-
-/** Process {% set variable = expression %} */
-async function processSetBlocks(template: string, ctx: ExprContext): Promise<string> {
-	const setRegex = /\{%\s*set\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)\s*%\}/g;
-	let result = template;
-	let match;
-	while ((match = setRegex.exec(result)) !== null) {
-		const varName = match[1];
-		const exprStr = match[2];
-		try {
-			const ast = parseExpression(exprStr);
-			const value = await evaluate(ast, ctx);
-			ctx.variables[varName] = value;
-		} catch {
-			ctx.variables[varName] = exprStr;
-		}
-		// Remove the {% set %} block from output
-		result = result.substring(0, match.index) + result.substring(match.index + match[0].length);
-		setRegex.lastIndex = match.index;
-	}
-	return result;
-}
-
-/** Process {% for item in list %}...{% endfor %} */
-async function processForBlocks(template: string, ctx: ExprContext): Promise<string> {
-	let result = template;
-	let safety = 0;
-
-	while (safety < 50) {
-		safety++;
-		const block = findFirstForBlock(result);
-		if (!block) break;
-
-		const replacement = await renderForBlock(block, ctx);
-		result = result.substring(0, block.start) + replacement + result.substring(block.end);
-	}
-
-	return result;
-}
-
-interface ForBlock {
-	start: number;
-	end: number;
-	varName: string;
-	listExpr: string;
-	body: string;
-}
-
-const FOR_TAG_RE = /\{%\s*(for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^%}]*?)|endfor)\s*%\}/g;
-
-function findFirstForBlock(template: string): ForBlock | null {
-	const tagRegex = new RegExp(FOR_TAG_RE.source, "g");
-	const opening = tagRegex.exec(template);
-	if (!opening || opening[1] === "endfor") return null;
-
-	let depth = 1;
-	let closing: RegExpExecArray | null = null;
-
-	while ((closing = tagRegex.exec(template)) !== null) {
-		if (closing[1] === "endfor") {
-			depth--;
-			if (depth === 0) break;
-		} else {
-			depth++;
-		}
-	}
-
-	if (!closing || depth !== 0) return null;
-
-	return {
-		start: opening.index,
-		end: closing.index + closing[0].length,
-		varName: opening[2],
-		listExpr: opening[3].trim(),
-		body: template.substring(opening.index + opening[0].length, closing.index),
-	};
-}
-
-async function renderForBlock(block: ForBlock, ctx: ExprContext): Promise<string> {
-	const list = await evaluateForList(block.listExpr, ctx);
-	if (!Array.isArray(list)) return "";
-
-	const parts: string[] = [];
-	for (let i = 0; i < list.length; i++) {
-		const itemCtx: ExprContext = {
-			...ctx,
-			variables: {
-				...ctx.variables,
-				[block.varName]: list[i],
-				loop: {
-					index: i + 1,
-					index0: i,
-					first: i === 0,
-					last: i === list.length - 1,
-					length: list.length,
-				},
-			},
-		};
-		parts.push(await processLogicBlocks(block.body, itemCtx));
-	}
-
-	return parts.join("");
-}
-
-async function evaluateForList(listExpr: string, ctx: ExprContext): Promise<ExprValue> {
-	try {
-		const ast = parseExpression(listExpr);
-		return evaluate(ast, ctx);
-	} catch {
-		if (ctx.frontmatter && hasOwn(ctx.frontmatter, listExpr.trim())) {
-			return ctx.frontmatter[listExpr.trim()] as ExprValue;
-		}
-		return null;
-	}
-}
-
-/** Process {% if %}...{% elif %}...{% else %}...{% endif %} */
-async function processIfBlocks(template: string, ctx: ExprContext): Promise<string> {
-	// Find innermost {% if %} blocks: the body may not open another if.
-	const ifRegex = /\{%\s*if\s+((?:(?!%\}).)*?)\s*%\}((?:(?!\{%\s*if\s)[\s\S])*?)\{%\s*endif\s*%\}/g;
-	let result = template;
-	let safety = 0;
-
-	while (ifRegex.test(result) && safety < 50) {
-		safety++;
-		ifRegex.lastIndex = 0;
-		result = await replaceAsync(result, ifRegex, async (_fullMatch, condStr: string, innerBlock: string) => {
-			// Split into if/elif/else branches
-			const branches: { condition: string | null; body: string }[] = [];
-
-			// The first condition is from the if tag itself
-			// Split innerBlock by {% elif %} and {% else %}
-			const remaining = innerBlock;
-
-			// Extract elif blocks
-			const elifRegex = /\{%\s*elif\s+(.*?)\s*%\}/g;
-			const elseRegex = /\{%\s*else\s*%\}/g;
-
-			// Collect all split points
-			const splitPoints: { index: number; length: number; condition: string | null }[] = [];
-			let m2;
-			while ((m2 = elifRegex.exec(remaining)) !== null) {
-				splitPoints.push({ index: m2.index, length: m2[0].length, condition: m2[1] });
-			}
-			while ((m2 = elseRegex.exec(remaining)) !== null) {
-				splitPoints.push({ index: m2.index, length: m2[0].length, condition: null });
-			}
-			splitPoints.sort((a, b) => a.index - b.index);
-
-			if (splitPoints.length === 0) {
-				branches.push({ condition: condStr, body: remaining });
-			} else {
-				// First branch: from start to first split
-				branches.push({ condition: condStr, body: remaining.substring(0, splitPoints[0].index) });
-				for (let i = 0; i < splitPoints.length; i++) {
-					const start = splitPoints[i].index + splitPoints[i].length;
-					const end = i + 1 < splitPoints.length ? splitPoints[i + 1].index : remaining.length;
-					branches.push({ condition: splitPoints[i].condition, body: remaining.substring(start, end) });
-				}
-			}
-
-			// Evaluate branches in order
-			for (const branch of branches) {
-				if (branch.condition === null) {
-					// {% else %} branch — always true
-					return branch.body;
-				}
-				try {
-					const ast = parseExpression(branch.condition);
-					const value = await evaluate(ast, ctx);
-					if (isTruthy(value)) {
-						return branch.body;
-					}
-				} catch {
-					// If condition can't parse, skip this branch
-				}
-			}
-
-			return ""; // No branch matched
-		});
-	}
-
-	return result;
-}
-
-/** Async replace helper */
-async function replaceAsync(
-	str: string,
-	regex: RegExp,
-	asyncFn: (...args: string[]) => Promise<string>
-): Promise<string> {
-	const matches: { match: RegExpExecArray }[] = [];
-	let m;
-	const re = new RegExp(regex.source, regex.flags.replace('g', '') + 'g');
-	while ((m = re.exec(str)) !== null) {
-		matches.push({ match: m });
-	}
-
-	if (matches.length === 0) return str;
-
-	const replacements: string[] = [];
-	for (const { match: mx } of matches) {
-		replacements.push(await asyncFn(...Array.from(mx)));
-	}
-
-	// Replace in reverse order
-	let result = str;
-	for (let i = matches.length - 1; i >= 0; i--) {
-		const mx = matches[i].match;
-		result = result.substring(0, mx.index) + replacements[i] + result.substring(mx.index + mx[0].length);
-	}
-	return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -2039,4 +1679,43 @@ export function splitExpressionAndPipes(input: string): { expression: string; pi
 		expression: input.substring(0, lastPipeOutsideParens).trim(),
 		pipeFilters: input.substring(lastPipeOutsideParens + 1).trim(),
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Template slots (see template-engine.ts)
+// ---------------------------------------------------------------------------
+
+/** Whether a {{ }} expression reads a template variable from {% for %} or {% set %}. */
+export function readsTemplateVariable(expr: string, variables: Record<string, ExprValue>): boolean {
+	return expressionReferencesVariable(expr, variables);
+}
+
+/** A {{ }} expression that reads template variables, as text. Undefined when it doesn't parse. */
+export async function evaluateScopedOutput(inner: string, ctx: ExprContext): Promise<string | undefined> {
+	if (isExpressionMode(inner)) return exprToString(await evaluateExpression(inner, ctx));
+	const { expression, pipeFilters } = splitExpressionAndPipes(inner);
+	let value: ExprValue;
+	try {
+		value = await evaluate(parseExpression(expression), ctx);
+	} catch {
+		return undefined;
+	}
+	if (pipeFilters && value !== null && value !== undefined) {
+		const { applyFilterChain } = await import("./filters");
+		value = applyFilterChain(value as Parameters<typeof applyFilterChain>[0], pipeFilters);
+	}
+	return exprToString(value);
+}
+
+/** The expression of an {% if %}, {% for %} or {% set %} tag. */
+export async function evaluateTagExpression(kind: "if" | "for" | "set", source: string, ctx: ExprContext): Promise<ExprValue> {
+	try {
+		const value = await evaluate(parseExpression(source), ctx);
+		return value;
+	} catch {
+		if (kind === "if") return false;
+		if (kind === "set") return source;
+		if (ctx.frontmatter && hasOwn(ctx.frontmatter, source)) return ctx.frontmatter[source] as ExprValue;
+		return null;
+	}
 }

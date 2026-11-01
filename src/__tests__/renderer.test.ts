@@ -56,6 +56,17 @@ function renderTestWikilinks(markdown: string): Node[] {
 // templateHasEditableContent
 // ---------------------------------------------------------------------------
 
+describe("template parse errors", () => {
+	const app = { metadataCache: { getFileCache: () => null }, vault: {} } as unknown as App;
+
+	it("throws with the line and column as written, so the note keeps its normal view", async () => {
+		const file = new TFile(); file.path = "Parse error.md";
+		const template = '{% base %}\nfilters: x\n{% endbase %}\n<p>{{ title }}</p>\n{% if rating %}';
+		await expect(renderTemplate(app, template, file, window.document.createElement("div"), new Component(), false, undefined, undefined, false, ""))
+			.rejects.toMatchObject({ name: "TemplateParseError", field: "Template", line: 5 });
+	});
+});
+
 describe("templateHasEditableContent", () => {
 	it.each(["{{content}}", "{{ file.content }}"])("keeps %s editable after a filtered body value", async placeholder => {
 		const template = `<aside>{{file.content | upper}}</aside><main>${placeholder}</main>`;

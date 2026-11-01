@@ -43,6 +43,16 @@ export function stripTemplateBaseBlocks(template: string): string {
 	return result;
 }
 
+/** Where an offset in the stripped template sits in the template as written. */
+export function offsetBeforeStripping(template: string, offset: number): number {
+	let original = offset;
+	for (const block of extractTemplateBaseBlocks(template)) {
+		if (block.start > original) break;
+		original += block.end - block.start;
+	}
+	return original;
+}
+
 function parseTemplateBaseName(args: string): string | undefined {
 	const trimmed = args.trim();
 	if (!trimmed) return undefined;
