@@ -348,10 +348,10 @@ describe("legacy filter conversion", () => {
 		expect(expression).toBe('(note["published"].isType("date") || (note["published"].isType("string") && /^\\d{4}-\\d{2}-\\d{2}(T|$)/.matches(note["published"]))) && date(note["published"]).date() != date("2014-04-16")');
 	});
 
-	it("compares a tags property without the # Bases puts on each tag", () => {
+	it("compares a tags property without the # Bases puts on each tag, or an empty tag", () => {
 		const typedApp = { metadataTypeManager: { getAssignedWidget: () => "tags" } } as unknown as App;
 		const [expression] = (toBasesFilter(typedApp, { type: "group", operator: "AND", conditions: [{ type: "filter", field: "tags", operator: "is", value: "recipes" }] }) as { and: string[] }).and;
-		expect(expression).toContain('if(note["tags"].isType("list"), note["tags"].map(value.toString().replace("#", "")), note["tags"])');
+		expect(expression).toContain('if(note["tags"].isType("list"), note["tags"].map(value.toString().replace("#", "")).filter(value != ""), note["tags"])');
 		expect(expression).toContain('.contains("recipes")');
 	});
 
