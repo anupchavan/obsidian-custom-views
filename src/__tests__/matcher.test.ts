@@ -266,8 +266,8 @@ describe("file.size", () => {
 
 describe("file.folder", () => {
 	const file = mockFile({ parent: folder("projects/work") });
-	it("is empty for a note at the vault root", () =>
-		expect(checkRules(mockApp(), andGroup(filter("file.folder", "is", "")), mockFile({ parent: folder("/") }))).toBe(true));
+	it("is \"/\" for a note at the vault root, as in Bases", () =>
+		expect(checkRules(mockApp(), andGroup(filter("file.folder", "is", "/")), mockFile({ parent: folder("/") }))).toBe(true));
 	it("contains the folder name", () =>
 		expect(checkRules(mockApp(), andGroup(filter("file.folder", "contains", "work")), file)).toBe(true));
 	it("does not contain an unrelated string", () =>

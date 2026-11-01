@@ -143,7 +143,7 @@ function normalizeFile(
 	file: TFile,
 	frontmatter: Record<string, unknown> | undefined,
 ): TemplateBaseFile {
-	const folder = file.path.includes("/") ? file.path.substring(0, file.path.lastIndexOf("/")) : "";
+	const folder = file.parent?.path ?? "/";
 	const properties = normalizeFrontmatter(frontmatter);
 	const normalizedFile: TemplateBaseFile = {
 		name: file.name,
