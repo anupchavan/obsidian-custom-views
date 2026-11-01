@@ -23,7 +23,7 @@ function convertFilter(app: App, filter: Filter): string {
 		["file.name", "file.fullname"], ["file.extension", "file.ext"],
 		["file links", "file.links"], ["file tags", "file.tags"],
 	]);
-	const field = aliases.get(filter.field) ?? (filter.field === "file" || filter.field.startsWith("file.") ? filter.field : `note[${JSON.stringify(filter.field)}]`);
+	const property = aliases.get(filter.field) ?? (filter.field === "file" || filter.field.startsWith("file.") ? filter.field : `note[${JSON.stringify(filter.field)}]`);
 	const value = filter.value ?? "";
 	const manager = (app as App & { metadataTypeManager?: {
 		getAssignedWidget?(name: string): string | null;
@@ -31,6 +31,10 @@ function convertFilter(app: App, filter: Filter): string {
 	} }).metadataTypeManager;
 	const type = manager?.getAssignedWidget?.(filter.field) ??
 		Object.values(manager?.getAllProperties?.() ?? {}).find(property => property.name.toLowerCase() === filter.field.toLowerCase())?.widget;
+	// Bases reads a tags property with "#" on each tag. Legacy rules were written without it.
+	const field = type === "tags"
+		? `if(${property}.isType("list"), ${property}.map(value.toString().replace("#", "")), ${property})`
+		: property;
 	const rhs = type === "checkbox" && /^(true|false)$/.test(value) ? value : literal(value);
 	const values = value.split(",").map(v => v.trim()).filter(Boolean).map(literal).join(", ");
 	const call = (method: string, args = rhs) => `${field}.${method}(${args})`;
@@ -92,7 +96,20 @@ function convertFilter(app: App, filter: Filter): string {
 		case "does not have property": return "!" + call("hasProperty");
 		case "on": case "not on": case "before": case "on or before": case "after": case "on or after": {
 			const op = { "on": "==", "not on": "!=", "before": "<", "on or before": "<=", "after": ">", "on or after": ">=" }[filter.operator];
-			return `date(${field}).date() ${op} date(${JSON.stringify(value.split("T")[0])})`;
+			// Legacy date rules compare two calendar dates. Either side not being one never matches.
+			if (!isCalendarDate(value)) return "false";
+			const isDate = `(${field}.isType("date") || (${field}.isType("string") && /^\\d{4}-\\d{2}-\\d{2}(T|$)/.matches(${field})))`;
+			return `${isDate} && date(${field}).date() ${op} date(${JSON.stringify(value.split("T")[0])})`;
 		}
 	}
+}
+
+/** A YYYY-MM-DD date, optionally followed by a time, that exists on the calendar. */
+function isCalendarDate(value: string): boolean {
+	const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(value);
+	if (!match) return false;
+	const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+	const date = new Date(0);
+	date.setFullYear(year, month - 1, day);
+	return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
