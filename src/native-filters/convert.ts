@@ -31,9 +31,10 @@ function convertFilter(app: App, filter: Filter): string {
 	} }).metadataTypeManager;
 	const type = manager?.getAssignedWidget?.(filter.field) ??
 		Object.values(manager?.getAllProperties?.() ?? {}).find(property => property.name.toLowerCase() === filter.field.toLowerCase())?.widget;
-	// Bases reads a tags property with "#" on each tag. Legacy rules were written without it.
+	// Bases reads a tags property with "#" on each tag, and keeps an empty one. Legacy rules
+	// were written without the "#", and Obsidian's tag list has no empty tags.
 	const field = type === "tags"
-		? `if(${property}.isType("list"), ${property}.map(value.toString().replace("#", "")), ${property})`
+		? `if(${property}.isType("list"), ${property}.map(value.toString().replace("#", "")).filter(value != ""), ${property})`
 		: property;
 	const rhs = type === "checkbox" && /^(true|false)$/.test(value) ? value : literal(value);
 	const values = value.split(",").map(v => v.trim()).filter(Boolean).map(literal).join(", ");
