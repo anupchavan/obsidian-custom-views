@@ -25,6 +25,13 @@ describe("template diagnostics", () => {
 		for (const source of valid) expect(check(source), source).toEqual([]);
 	});
 
+	it("reports what Knap can't parse, where it is", () => {
+		const source = "<p>{{ title }}</p> {# unfinished note";
+		const [diagnostic] = check(source);
+		expect(diagnostic).toMatchObject({ severity: "error", message: "Unclosed comment - missing '#}'" });
+		expect(marked(source, diagnostic)).toBe("{");
+	});
+
 	it("names an unknown filter and suggests the closest one", () => {
 		const source = "{{ cover | imag }}";
 		const [diagnostic] = check(source);

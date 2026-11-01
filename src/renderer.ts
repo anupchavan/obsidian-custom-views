@@ -11,16 +11,15 @@ import {
 	isTruthy,
 	readsTemplateVariable,
 } from "./expression";
-import type { ExprValue } from "./expression";
-import { renderTemplateWithKnap, type TemplateHooks, type TemplateSlot } from "./template-engine";
-import type { ExprContext, ExprValueArray } from "./expression";
+import type { ExprContext, ExprValue, ExprValueArray } from "./expression";
+import { renderTemplateWithKnap, templateParseError, type TemplateHooks, type TemplateSlot } from "./template-engine";
 import { stripFrontmatter } from "./frontmatter";
 import type { ViewConfig } from "./types";
 import { executeCustomViewJavaScript } from "./script-engine";
 import type { CustomViewScriptContext } from "./script-engine";
 import { buildBasesCollection } from "./bases/access";
 import { templateReferencesBases } from "./bases/code-blocks";
-import { stripTemplateBaseBlocks } from "./bases/template-syntax";
+import { offsetBeforeStripping, stripTemplateBaseBlocks } from "./bases/template-syntax";
 import type { BasesDataProvider, TemplateBases } from "./bases/types";
 
 // ---------------------------------------------------------------------------
@@ -424,7 +423,7 @@ export async function renderTemplate(
 		bases: bases as unknown as ExprValueArray,
 	};
 
-	const { output: filledTemplate } = await renderTemplateWithKnap(renderTemplateContent, templateHooks(
+	const { output: filledTemplate, errors } = await renderTemplateWithKnap(renderTemplateContent, templateHooks(
 		exprCtx, app, file, frontmatter, bodyContent, bases,
 		(value, slot) => {
 			if (value === CONTENT) return `<div id="${contentPlaceholderId}" class="markdown-rendered-content markdown-preview-view markdown-rendered"></div>`;
@@ -437,6 +436,9 @@ export async function renderTemplate(
 			return `<span id="${placeholderId}"></span>`;
 		},
 	));
+	if (errors.length > 0) {
+		throw templateParseError("Template", template, { ...errors[0], offset: offsetBeforeStripping(template, errors[0].offset) });
+	}
 	signal?.throwIfAborted();
 
 	// Use DOMParser to safely parse HTML instead of innerHTML
@@ -494,7 +496,7 @@ export async function renderTemplate(
 	applyNativeInternalLinkState(app, container, file.path);
 	// Inject CSS from the separate CSS field (with template resolution)
 	if (viewConfig?.css) {
-		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
+		const resolvedCss = await resolveTemplateRaw("CSS", app, viewConfig.css, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
 		if (resolvedCss.trim()) {
 			const styleEl = createDetachedEl(container.ownerDocument, "style");
 			styleEl.textContent = resolvedCss;
@@ -511,7 +513,7 @@ export async function renderTemplate(
 		const scripts = Array.from(container.querySelectorAll("script"));
 		const hasExecutableInlineScripts = scripts.some(hasExecutableInlineScriptCode);
 		const resolvedJs = viewConfig?.js?.trim()
-			? await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent, bases, dependencies)
+			? await resolveTemplateRaw("JavaScript", app, viewConfig.js, file, frontmatter, bodyContent, bases, dependencies)
 			: "";
 		const viewJs = resolvedJs.trim();
 
@@ -890,6 +892,7 @@ function isIdentifierCharacter(ch: string): boolean {
  * Supports cross-file property chaining, expression mode, and logic blocks.
  */
 async function resolveTemplateRaw(
+	field: string,
 	app: App,
 	template: string,
 	file: TFile,
@@ -908,7 +911,7 @@ async function resolveTemplateRaw(
 		bases: bases as unknown as ExprValueArray,
 	};
 
-	const { output } = await renderTemplateWithKnap(template, templateHooks(
+	const { output, errors } = await renderTemplateWithKnap(template, templateHooks(
 		exprCtx, app, file, frontmatter, bodyContent, bases,
 		value => {
 			if (value !== CONTENT) return resultToString(value);
@@ -916,6 +919,7 @@ async function resolveTemplateRaw(
 			return bodyContent;
 		},
 	));
+	if (errors.length > 0) throw templateParseError(field, template, errors[0]);
 	return output;
 }
 
