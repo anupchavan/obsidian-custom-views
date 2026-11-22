@@ -120,12 +120,16 @@ await step("view does not render for a note outside its rules", async () => {
 // #37: the Rules editor in the view's settings modal must persist edits.
 await step("Rules edits in settings save to data.json", async () => {
 	const before = await readData();
-	await page.evaluate(id => {
+	const opened = await page.evaluate(async id => {
 		app.setting.open();
 		app.setting.openTabById(id);
-		const tab = app.setting.activeTab;
-		tab.openEditModal(app.plugins.plugins[id].settings.views[0]);
+		await new Promise(r => setTimeout(r, 300));
+		const after = { settingsConnected: Boolean(app.setting.containerEl?.isConnected), modals: document.querySelectorAll(".modal").length };
+		app.setting.activeTab.openEditModal(app.plugins.plugins[id].settings.views[0]);
+		await new Promise(r => setTimeout(r, 300));
+		return { ...after, modalsAfterEdit: document.querySelectorAll(".modal").length, bodyChildren: [...document.body.children].map(el => el.className).slice(-6) };
 	}, PLUGIN);
+	console.log(`      opened: ${JSON.stringify(opened)}`);
 	const select = ".modal-container .cv-native-filter-host .filter-group-header select";
 	await until("the native Rules editor", () => page.evaluate(sel => Boolean(document.querySelector(sel)), select), 15000);
 	const next = await page.evaluate(sel => {
