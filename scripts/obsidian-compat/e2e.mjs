@@ -28,6 +28,7 @@ async function connect() {
 }
 
 const { browser, page } = await connect();
+console.log(`CDP pages: ${JSON.stringify(browser.contexts().flatMap(c => c.pages().map(p => p.url())))}`);
 const consoleErrors = [];
 page.on("console", msg => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
 page.on("pageerror", error => consoleErrors.push(String(error)));
@@ -127,6 +128,10 @@ await step("Rules edits in settings save to data.json", async () => {
 		const after = { settingsConnected: Boolean(app.setting.containerEl?.isConnected), modals: document.querySelectorAll(".modal").length };
 		app.setting.activeTab.openEditModal(app.plugins.plugins[id].settings.views[0]);
 		await new Promise(r => setTimeout(r, 300));
+		after.sameDocument = activeDocument === document;
+		after.settingsParent = app.setting.containerEl?.parentElement?.tagName ?? null;
+		after.settingsDocTitle = app.setting.containerEl?.ownerDocument?.title ?? null;
+		after.windows = app.workspace.floatingSplit?.children?.length ?? 0;
 		return { ...after, modalsAfterEdit: document.querySelectorAll(".modal").length, bodyChildren: [...document.body.children].map(el => el.className).slice(-6) };
 	}, PLUGIN);
 	console.log(`      opened: ${JSON.stringify(opened)}`);
