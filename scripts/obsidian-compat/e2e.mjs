@@ -122,7 +122,10 @@ await step("view does not render for a note outside its rules", async () => {
 await step("Rules edits in settings save to data.json", async () => {
 	const before = await readData();
 	const opened = await page.evaluate(async id => {
-		app.setting.open();
+		const before = { isOpen: app.setting.isOpen, hasFocus: document.hasFocus(), activeTitle: activeWindow.document.title, activeIsWindow: activeWindow === window };
+		app.commands.executeCommandById("app:open-settings");
+		await new Promise(r => setTimeout(r, 300));
+		if (!app.setting.containerEl?.isConnected) app.setting.open();
 		app.setting.openTabById(id);
 		await new Promise(r => setTimeout(r, 300));
 		const after = { settingsConnected: Boolean(app.setting.containerEl?.isConnected), modals: document.querySelectorAll(".modal").length };
@@ -132,7 +135,7 @@ await step("Rules edits in settings save to data.json", async () => {
 		after.settingsParent = app.setting.containerEl?.parentElement?.tagName ?? null;
 		after.settingsDocTitle = app.setting.containerEl?.ownerDocument?.title ?? null;
 		after.windows = app.workspace.floatingSplit?.children?.length ?? 0;
-		return { ...after, modalsAfterEdit: document.querySelectorAll(".modal").length, bodyChildren: [...document.body.children].map(el => el.className).slice(-6) };
+		return { before, ...after, modalsAfterEdit: document.querySelectorAll(".modal").length, bodyChildren: [...document.body.children].map(el => el.className).slice(-6) };
 	}, PLUGIN);
 	console.log(`      opened: ${JSON.stringify(opened)}`);
 	const select = ".modal-container .cv-native-filter-host .filter-group-header select";
