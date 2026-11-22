@@ -331,6 +331,18 @@ describe("legacy filter conversion", () => {
 	});
 });
 
+/** 1.15.0 has no setGlobalFilters; it sets global and per-view filters together. */
+class Query115 extends Query {
+	static override parse = vi.fn((data: { filters?: BasesFilter }) => Object.assign(new Query115(), { filters: Query.parse(data).filters }));
+	setFilters = vi.fn((global: BasesFilter | null, viewName: string, viewFilters: BasesFilter | null) => {
+		if (viewName !== "Rules") throw new Error("Invalid view specified");
+		expect(viewFilters).toBeNull();
+		this.filters = Query.parse(global === null ? {} : { filters: global }).filters;
+		this.saveFn();
+	});
+}
+Object.defineProperty(Query115.prototype, "setGlobalFilters", { value: undefined });
+
 describe("native Bases integration on Obsidian 1.15+", () => {
 	function setup115() {
 		vi.stubGlobal("activeDocument", window.document);
@@ -344,7 +356,7 @@ describe("native Bases integration on Obsidian 1.15+", () => {
 				toolbarItem: { setOpen: vi.fn(), containerEl: document.createElement("div"), button: { setText: vi.fn() } },
 			};
 			entries.push({ filterMenu });
-			return { controller: { filterMenu, buildBasesContext: () => ({}) }, loadQuery: async () => new Query(), unload: vi.fn() };
+			return { controller: { filterMenu, buildBasesContext: () => ({}) }, loadQuery: async () => new Query115(), unload: vi.fn() };
 		});
 		return { app: { embedRegistry: { embedByExtension: { base: factory } } } as unknown as App, entries };
 	}
@@ -358,6 +370,16 @@ describe("native Bases integration on Obsidian 1.15+", () => {
 		expect(filters).toHaveLength(2); expect(filters[1]).toBeNull();
 		callback([{ and: ["rating > 3"] }, "ignored"]);
 		expect(save).toHaveBeenCalledWith({ and: ["rating > 3"] });
+	});
+	it("saves rule edits through setFilters, which replaced setGlobalFilters (#37)", async () => {
+		const s = setup115(); const api = await getNativeBasesApi(s.app);
+		const save = vi.fn();
+		api.createEditor(document.createElement("div"), "true", save);
+		const menu = s.entries[1].filterMenu;
+		const callback = menu.filterEditor.updateQuery.mock.calls[0][0] as (f: (BasesFilter | null)[]) => void;
+		callback([{ and: ["rating > 3"] }, null]);
+		callback([null, null]);
+		expect(save.mock.calls).toEqual([[{ and: ["rating > 3"] }], [null]]);
 	});
 	it("shows only the global section in the popover page", async () => {
 		const s = setup115(); const api = await getNativeBasesApi(s.app);
