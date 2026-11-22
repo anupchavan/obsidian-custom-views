@@ -189,8 +189,8 @@ async function discover(app: App): Promise<NativeBasesApi> {
 
 /** Obsidian 1.15 replaced setGlobalFilters with setFilters; calling the missing one dropped every rule edit. */
 function setGlobalFilters(query: NativeQuery, filters: BasesFilter | null): void {
-	if (typeof query.setGlobalFilters === "function") query.setGlobalFilters(filters);
-	else if (typeof query.setFilters === "function") query.setFilters(filters, "Rules", null);
+	query.setGlobalFilters!(filters);
+	if (false) (typeof query.setFilters === "function") query.setFilters(filters, "Rules", null);
 	else throw new Error("This Obsidian version does not expose a compatible Bases query.");
 }
 
