@@ -1,0 +1,10 @@
+{
+	"views": [
+		{
+			"id": "e2e",
+			"name": "E2E movies",
+			"rules": { "type": "group", "operator": "AND", "conditions": [{ "type": "filter", "field": "file", "operator": "in folder", "value": "Movies" }] },
+			"template": "<h1 class=\"cv-e2e-title\">{{file.basename}}</h1>"
+		}
+	]
+}
