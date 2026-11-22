@@ -1,0 +1,167 @@
+name: Check new Obsidian builds
+# Custom Views builds on Obsidian internals (Bases' filter editor, Canvas, the drag manager)
+# that can change in any release without notice (#37). This runs the plugin's checks
+# against every new public and Catalyst build, and opens an issue when one breaks it.
+on:
+    schedule:
+        - cron: "17 */3 * * *"
+    workflow_dispatch:
+        inputs:
+            asar_url:
+                description: "Optional: a specific obsidian-X.asar.gz URL to test"
+                required: false
+            version:
+                description: "Version of that asar (required with asar_url)"
+                required: false
+    pull_request:
+        paths:
+            - "src/**"
+            - "scripts/obsidian-compat/**"
+            - ".github/workflows/obsidian-builds.yml"
+permissions:
+    contents: read
+    issues: write
+concurrency:
+    group: obsidian-builds-${{ github.ref }}
+    cancel-in-progress: false
+jobs:
+    resolve:
+        runs-on: ubuntu-latest
+        outputs:
+            builds: ${{ steps.builds.outputs.builds }}
+            installer: ${{ steps.builds.outputs.installer }}
+        steps:
+            - id: builds
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  ASAR_URL: ${{ inputs.asar_url }}
+                  VERSION: ${{ inputs.version }}
+              run: |
+                  releases=$(curl -fsSL https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/desktop-releases.json)
+                  installer=$(gh api repos/obsidianmd/obsidian-releases/releases/latest --jq '[.assets[] | select(.name | test("^Obsidian-[0-9.]+\\.AppImage$"))][0].browser_download_url')
+                  builds=$(RELEASES="$releases" node -e '
+                    const r = JSON.parse(process.env.RELEASES);
+                    const out = [];
+                    if (process.env.ASAR_URL) out.push({ channel: "manual", version: process.env.VERSION, url: process.env.ASAR_URL });
+                    else {
+                      out.push({ channel: "public", version: r.latestVersion, url: r.downloadUrl });
+                      if (process.env.GITHUB_EVENT_NAME !== "pull_request" && r.beta && r.beta.latestVersion !== r.latestVersion)
+                        out.push({ channel: "catalyst", version: r.beta.latestVersion, url: r.beta.downloadUrl });
+                    }
+                    console.log(JSON.stringify(out));')
+                  echo "builds=$builds" >> "$GITHUB_OUTPUT"
+                  echo "installer=$installer" >> "$GITHUB_OUTPUT"
+                  echo "Builds: $builds"
+                  echo "Installer: $installer"
+    check:
+        needs: resolve
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        strategy:
+            fail-fast: false
+            matrix:
+                build: ${{ fromJSON(needs.resolve.outputs.builds) }}
+        env:
+            VERSION: ${{ matrix.build.version }}
+            CHANNEL: ${{ matrix.build.channel }}
+        steps:
+            - uses: actions/checkout@v4
+            # Scheduled runs check each Obsidian build once per commit of main.
+            - id: seen
+              if: github.event_name == 'schedule'
+              uses: actions/cache/restore@v4
+              with:
+                  path: .obsidian-checked
+                  key: obsidian-checked-${{ matrix.build.version }}-${{ github.sha }}
+                  lookup-only: true
+            - id: download
+              if: steps.seen.outputs.cache-hit != 'true'
+              env:
+                  URL: ${{ matrix.build.url }}
+              run: |
+                  if curl -fsSL -o obsidian.asar.gz "$URL"; then echo "ok=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "ok=false" >> "$GITHUB_OUTPUT"; echo "Could not download $URL" >&2
+                      # Public builds are always downloadable; only Catalyst ones may need a sign-in.
+                      [ "$CHANNEL" = "catalyst" ] || exit 1
+                  fi
+            - uses: actions/setup-node@v4
+              if: steps.download.outputs.ok == 'true'
+              with:
+                  node-version: "20.x"
+            - name: Lint, typecheck, test and build
+              if: steps.download.outputs.ok == 'true'
+              run: |
+                  npm ci
+                  npm run lint
+                  npm run typecheck
+                  npm test
+                  npm run build
+            - name: Typecheck against the newest obsidian typings
+              if: steps.download.outputs.ok == 'true'
+              run: |
+                  npm install --no-save obsidian@latest
+                  npm run typecheck
+                  npx tsc -noEmit -skipLibCheck
+            - name: Check the internal APIs Custom Views uses
+              if: steps.download.outputs.ok == 'true'
+              run: |
+                  npm run test:compat
+                  node scripts/obsidian-compat/check-internals.mjs obsidian.asar.gz
+            - name: Start Obsidian ${{ matrix.build.version }}
+              if: steps.download.outputs.ok == 'true'
+              env:
+                  INSTALLER: ${{ needs.resolve.outputs.installer }}
+              run: |
+                  sudo apt-get update -qq
+                  sudo apt-get install -y -qq xvfb libgbm1 libnss3 libasound2t64 libgtk-3-0 libxss1 >/dev/null
+                  curl -fsSL -o "$RUNNER_TEMP/Obsidian.AppImage" "$INSTALLER"
+                  scripts/obsidian-compat/run-obsidian.sh "$PWD/obsidian.asar.gz" "$RUNNER_TEMP/Obsidian.AppImage" "$VERSION"
+            - name: Run the plugin in Obsidian
+              if: steps.download.outputs.ok == 'true'
+              run: |
+                  npm install --no-save playwright-core@1.55.0
+                  node scripts/obsidian-compat/e2e.mjs http://127.0.0.1:9222 "$RUNNER_TEMP/obsidian-e2e/screenshots"
+            - name: Keep screenshots and the Obsidian log
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: obsidian-${{ matrix.build.version }}
+                  path: |
+                      ${{ runner.temp }}/obsidian-e2e/screenshots
+                      ${{ runner.temp }}/obsidian-e2e/obsidian.log
+                  if-no-files-found: ignore
+            - name: Open an issue
+              if: (failure() || steps.download.outputs.ok == 'false') && github.event_name == 'schedule'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                  DOWNLOADED: ${{ steps.download.outputs.ok }}
+              run: |
+                  if [ "$DOWNLOADED" = "false" ]; then
+                      title="Obsidian $VERSION ($CHANNEL) could not be checked"
+                      body="The automated check couldn't download Obsidian $VERSION ($CHANNEL). Catalyst builds may need a signed-in download.
+
+                  To check it on a Mac that has it installed:
+
+                  \`\`\`
+                  npm run check:obsidian -- ~/Library/Application\\ Support/obsidian/obsidian-$VERSION.asar
+                  \`\`\`
+
+                  Run: $RUN"
+                  else
+                      title="Obsidian $VERSION ($CHANNEL) breaks Custom Views"
+                      body="The automated check against Obsidian $VERSION ($CHANNEL) failed. See the failing steps, screenshots and Obsidian log in the run: $RUN"
+                  fi
+                  existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+                  if [ -n "$existing" ]; then gh issue comment "$existing" --body "Still failing: $RUN"
+                  else gh issue create --title "$title" --body "$body" --label bug --assignee "${{ github.repository_owner }}"; fi
+            # Report each Obsidian build once per commit, pass or fail; a new commit checks again.
+            - name: Remember this build was checked
+              if: always() && github.event_name == 'schedule' && steps.seen.outputs.cache-hit != 'true'
+              run: mkdir -p .obsidian-checked && echo "$VERSION" > .obsidian-checked/version
+            - if: always() && github.event_name == 'schedule' && steps.seen.outputs.cache-hit != 'true'
+              uses: actions/cache/save@v4
+              with:
+                  path: .obsidian-checked
+                  key: obsidian-checked-${{ matrix.build.version }}-${{ github.sha }}

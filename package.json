@@ -14,6 +14,8 @@
         "test:coverage": "vitest run --coverage",
         "typecheck": "tsc -p tsconfig.browser.json",
         "sync:local": "node scripts/sync-local.mjs",
+        "check:obsidian": "node scripts/obsidian-compat/check-internals.mjs",
+        "test:compat": "node --test scripts/obsidian-compat/internals.test.mjs",
         "test:local-deploy": "node --test scripts/sync-local.test.mjs"
     },
     "keywords": [],
