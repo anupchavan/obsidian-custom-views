@@ -84,6 +84,13 @@ await step("Bases and Canvas core plugins enable", async () => {
 });
 
 await step("plugin loads", async () => {
+	// A fresh vault with community plugins asks whether to trust its author.
+	await until("the vault to settle", () => page.evaluate(() => {
+		const trust = document.querySelector(".modal.mod-trust-folder");
+		if (!trust) return true;
+		[...trust.querySelectorAll("button")].find(b => !b.classList.contains("mod-cancel") && /trust/i.test(b.textContent))?.click();
+		return false;
+	}), 10000);
 	await page.evaluate(async id => {
 		await app.plugins.setEnable(true);
 		await app.plugins.loadManifests();
