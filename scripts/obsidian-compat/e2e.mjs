@@ -33,6 +33,11 @@ const consoleErrors = [];
 page.on("console", msg => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
 page.on("pageerror", error => consoleErrors.push(String(error)));
 
+// Obsidian 1.15 opens Settings, and the modals opened from it, in a window of its own.
+await page.evaluate(() => {
+	globalThis.cvAll = sel => [...new Set([document, activeDocument])].flatMap(d => [...d.querySelectorAll(sel)]);
+	globalThis.cvOne = sel => globalThis.cvAll(sel)[0] ?? null;
+});
 const results = [];
 async function step(name, fn) {
 	try {
@@ -44,11 +49,11 @@ async function step(name, fn) {
 		console.log(`FAIL  ${name}: ${error?.message ?? error}`);
 		console.log(await page.evaluate(() => JSON.stringify({
 			settingsTab: app.setting?.activeTab?.id ?? null,
-			modals: [...document.querySelectorAll(".modal-container")].map(m => ({
+			modals: cvAll(".modal-container").map(m => ({
 				text: m.textContent.replace(/\s+/g, " ").slice(0, 600),
 				classes: [...new Set([...m.querySelectorAll("[class]")].flatMap(el => [...el.classList]))].slice(0, 80),
 			})),
-			settingsContent: document.querySelector(".vertical-tab-content")?.textContent.replace(/\s+/g, " ").slice(0, 600) ?? null,
+			settingsContent: cvOne(".vertical-tab-content")?.textContent.replace(/\s+/g, " ").slice(0, 600) ?? null,
 		}, null, 1)).catch(error => `(no DOM summary: ${error})`));
 		mkdirSync(shots, { recursive: true });
 		await page.screenshot({ path: `${shots}/${name.replace(/\W+/g, "-")}.png` }).catch(() => {});
@@ -68,7 +73,7 @@ const readData = () => page.evaluate(async id => {
 	return JSON.parse(await app.vault.adapter.read(`${dir}/data.json`));
 }, PLUGIN);
 const closeModals = () => page.evaluate(() => {
-	document.querySelectorAll(".modal-container .modal-close-button").forEach(el => el.click());
+	cvAll(".modal-container .modal-close-button").forEach(el => el.click());
 	app.setting?.close?.();
 });
 
@@ -121,27 +126,15 @@ await step("view does not render for a note outside its rules", async () => {
 // #37: the Rules editor in the view's settings modal must persist edits.
 await step("Rules edits in settings save to data.json", async () => {
 	const before = await readData();
-	const opened = await page.evaluate(async id => {
-		const before = { isOpen: app.setting.isOpen, hasFocus: document.hasFocus(), activeTitle: activeWindow.document.title, activeIsWindow: activeWindow === window };
-		app.commands.executeCommandById("app:open-settings");
-		await new Promise(r => setTimeout(r, 300));
-		if (!app.setting.containerEl?.isConnected) app.setting.open();
+	await page.evaluate(id => {
+		app.setting.open();
 		app.setting.openTabById(id);
-		await new Promise(r => setTimeout(r, 300));
-		const after = { settingsConnected: Boolean(app.setting.containerEl?.isConnected), modals: document.querySelectorAll(".modal").length };
 		app.setting.activeTab.openEditModal(app.plugins.plugins[id].settings.views[0]);
-		await new Promise(r => setTimeout(r, 300));
-		after.sameDocument = activeDocument === document;
-		after.settingsParent = app.setting.containerEl?.parentElement?.tagName ?? null;
-		after.settingsDocTitle = app.setting.containerEl?.ownerDocument?.title ?? null;
-		after.windows = app.workspace.floatingSplit?.children?.length ?? 0;
-		return { before, ...after, modalsAfterEdit: document.querySelectorAll(".modal").length, bodyChildren: [...document.body.children].map(el => el.className).slice(-6) };
 	}, PLUGIN);
-	console.log(`      opened: ${JSON.stringify(opened)}`);
 	const select = ".modal-container .cv-native-filter-host .filter-group-header select";
-	await until("the native Rules editor", () => page.evaluate(sel => Boolean(document.querySelector(sel)), select), 15000);
+	await until("the native Rules editor", () => page.evaluate(sel => Boolean(cvOne(sel)), select), 15000);
 	const next = await page.evaluate(sel => {
-		const el = document.querySelector(sel);
+		const el = cvOne(sel);
 		const option = [...el.options].find(o => o.value !== el.value);
 		el.value = option.value;
 		el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -160,13 +153,13 @@ await step("view editor opens with its Rules control", async () => {
 	await page.evaluate(id => {
 		app.setting.open();
 		app.setting.openTabById(id);
-		const rows = document.querySelectorAll(".vertical-tab-content .setting-item [aria-label='View actions']");
+		const rows = cvAll(".vertical-tab-content .setting-item [aria-label='View actions']");
 		if (!rows.length) throw new Error("no view rows in settings");
 		rows[0].click();
 	}, PLUGIN);
 	await until("the view actions menu", () => page.evaluate(() =>
-		[...document.querySelectorAll(".menu .menu-item-title")].some(el => el.textContent === "Open view editor")));
-	await page.evaluate(() => [...document.querySelectorAll(".menu .menu-item-title")].find(el => el.textContent === "Open view editor").click());
+		cvAll(".menu .menu-item-title").some(el => el.textContent === "Open view editor")));
+	await page.evaluate(() => cvAll(".menu .menu-item-title").find(el => el.textContent === "Open view editor").click());
 	await until("the view editor's Rules control", () => page.evaluate(() =>
 		Boolean(document.querySelector(".workspace-leaf.mod-active .cv-editor-filter")?.textContent?.includes("Rules"))), 15000);
 });
