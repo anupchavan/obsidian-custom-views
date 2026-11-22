@@ -13,7 +13,10 @@ export interface NativeQuery {
 	views: NativeViewConfig[];
 	saveFn?: () => void;
 	getViewConfig(name: string): NativeViewConfig;
-	setGlobalFilters(filters: BasesFilter | null): void;
+	/** Before 1.15. */
+	setGlobalFilters?(filters: BasesFilter | null): void;
+	/** 1.15+ sets the global and per-view filters together. */
+	setFilters?(global: BasesFilter | null, viewName: string, view: BasesFilter | null): void;
 }
 export interface NativeBuilder {
 	innerContainerEl: HTMLElement;
@@ -145,7 +148,7 @@ async function discover(app: App): Promise<NativeBasesApi> {
 				controller.ctx = controller.buildBasesContext();
 				builder.updateQuery(value => {
 					if (disposed) return;
-					query.setGlobalFilters(value);
+					setGlobalFilters(query, value);
 					controller.ctx = controller.buildBasesContext();
 					save(value);
 				}, query.getViewConfig("Rules"), query.filters);
@@ -182,6 +185,13 @@ async function discover(app: App): Promise<NativeBasesApi> {
 			return dispose;
 		},
 	};
+}
+
+/** Obsidian 1.15 replaced setGlobalFilters with setFilters; calling the missing one dropped every rule edit. */
+function setGlobalFilters(query: NativeQuery, filters: BasesFilter | null): void {
+	if (typeof query.setGlobalFilters === "function") query.setGlobalFilters(filters);
+	else if (typeof query.setFilters === "function") query.setFilters(filters, "Rules", null);
+	else throw new Error("This Obsidian version does not expose a compatible Bases query.");
 }
 
 function toolbarEl(toolbar: NativeToolbarItem | undefined): HTMLElement | undefined {
