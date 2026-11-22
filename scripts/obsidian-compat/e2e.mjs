@@ -41,6 +41,14 @@ async function step(name, fn) {
 	} catch (error) {
 		results.push({ name, ok: false, error: String(error?.message ?? error) });
 		console.log(`FAIL  ${name}: ${error?.message ?? error}`);
+		console.log(await page.evaluate(() => JSON.stringify({
+			settingsTab: app.setting?.activeTab?.id ?? null,
+			modals: [...document.querySelectorAll(".modal-container")].map(m => ({
+				text: m.textContent.replace(/\s+/g, " ").slice(0, 600),
+				classes: [...new Set([...m.querySelectorAll("[class]")].flatMap(el => [...el.classList]))].slice(0, 80),
+			})),
+			settingsContent: document.querySelector(".vertical-tab-content")?.textContent.replace(/\s+/g, " ").slice(0, 600) ?? null,
+		}, null, 1)).catch(error => `(no DOM summary: ${error})`));
 		mkdirSync(shots, { recursive: true });
 		await page.screenshot({ path: `${shots}/${name.replace(/\W+/g, "-")}.png` }).catch(() => {});
 	}
