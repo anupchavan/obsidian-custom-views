@@ -21,6 +21,9 @@ HTMLElement.prototype.off = function(type, selector, listener, options) {
 	delegatedListeners.set(this, entries.filter(entry => entry.type !== type || entry.selector !== selector || entry.listener !== listener));
 };
 
+// Obsidian's popout-window globals point at the main window outside popouts.
+Object.assign(globalThis, { activeDocument: window.document, activeWindow: window });
+
 globalThis.createEl = (tag, options, callback) => {
 	const element = window.document.createElement(tag);
 	if (typeof options === "string") element.className = options;

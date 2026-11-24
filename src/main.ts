@@ -100,8 +100,8 @@ interface CompartmentEntry {
 }
 
 export default class CustomViewsPlugin extends Plugin {
-	settings: CustomViewsSettings;
-	nativeRules: NativeRuleEngine;
+	settings!: CustomViewsSettings;
+	nativeRules!: NativeRuleEngine;
 	navigation?: AtomicNavigation;
 	private noteViewMenu?: NoteViewMenu;
 	private get settingsWriter() { return getSharedSettingsWriter<CustomViewsSettings>(this.app, settings => this.saveData(settings)); }

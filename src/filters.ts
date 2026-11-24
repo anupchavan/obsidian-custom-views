@@ -100,11 +100,11 @@ const filters: Record<string, FilterFunction> = {
 		const m = inputFormatStr ? moment(valStr, inputFormatStr) : moment(valStr);
 		return m.isValid() ? m.format(formatStr) : val;
 	},
-	date_modify: (val: string, modification: string) => {
-		const parts = modification.trim().split(" ");
+	date_modify: (val: FilterValue, modification: unknown) => {
+		const parts = (typeof modification === "string" ? modification : "").trim().split(" ");
 		const amount = parseInt(parts[0]);
 		const unit = parts[1] as unitOfTime.DurationConstructor;
-		const m = moment(val);
+		const m = moment(val as Parameters<typeof moment>[0]);
 		return m.isValid() ? m.add(amount, unit).format("YYYY-MM-DD") : val;
 	},
 
@@ -112,9 +112,9 @@ const filters: Record<string, FilterFunction> = {
 	upper: knapStringFilter("upper"),
 	lower: knapStringFilter("lower"),
 	title: knapStringFilter("title"),
-	camel: (val: string) => String(val).toLowerCase().replace(/[^a-zA-Z0-9]+(.)/g, (_m: string, chr: string) => chr.toUpperCase()),
-	kebab: (val: string) => splitWords(String(val))?.join('-') || val,
-	snake: (val: string) => splitWords(String(val))?.join('_') || val,
+	camel: (val: FilterValue) => String(val).toLowerCase().replace(/[^a-zA-Z0-9]+(.)/g, (_m: string, chr: string) => chr.toUpperCase()),
+	kebab: (val: FilterValue) => splitWords(String(val))?.join('-') || val,
+	snake: (val: FilterValue) => splitWords(String(val))?.join('_') || val,
 	trim: knapStringFilter("trim"),
 
 	replace: (val: FilterValue, search: unknown, replaceWith?: unknown) => {
@@ -165,8 +165,8 @@ const filters: Record<string, FilterFunction> = {
 	},
 	count: (val: FilterValue) => Array.isArray(val) ? val.length : String(val).length,
 
-	calc: (val: number, opString: string) => {
-		const trimmed = opString.trim();
+	calc: (val: FilterValue, opString: unknown) => {
+		const trimmed = (typeof opString === "string" || typeof opString === "number") ? String(opString).trim() : "";
 		const base = parseFloat(String(val));
 		if (isNaN(base)) return val;
 

@@ -5,7 +5,7 @@ import { panelOrderMenu, reorderHandle } from "../view-editor-layout";
 afterEach(() => vi.restoreAllMocks());
 it("provides native menu actions for touch, bounded by the visible panel order", () => {
  const items: { title: string; disabled: boolean; click: () => void }[] = [];
- vi.spyOn(Menu.prototype, "addItem").mockImplementation(function (callback) {
+ vi.spyOn(Menu.prototype, "addItem").mockImplementation(function (this: Menu, callback) {
   const row = { title: "", disabled: false, click: () => {} };
   const item = {
    setTitle(value: string) { row.title = value; return item; },
