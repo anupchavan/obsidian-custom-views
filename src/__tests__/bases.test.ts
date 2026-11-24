@@ -50,11 +50,11 @@ function makeTFile(overrides: MockTFileOverrides = {}): TFile {
 	return file;
 }
 
-function makePlugin(app: App = makeProviderApp()): Plugin & { registerBasesView: ReturnType<typeof vi.fn> } {
-	return {
-		app,
-		registerBasesView: vi.fn(() => true),
-	} as unknown as Plugin & { registerBasesView: ReturnType<typeof vi.fn> };
+function makePlugin(
+	app: App = makeProviderApp(),
+	registerBasesView: ReturnType<typeof vi.fn> = vi.fn(() => true),
+): Plugin {
+	return { app, registerBasesView } as unknown as Plugin;
 }
 
 function makeMockApp(): App {
@@ -1201,7 +1201,8 @@ describe("EmbeddedBasesProvider", () => {
 		});
 		const cachedRead = vi.fn(async () => "");
 		(app as unknown as { vault: { cachedRead: typeof cachedRead } }).vault.cachedRead = cachedRead;
-		const plugin = makePlugin(app);
+		const registerBasesView = vi.fn(() => true);
+		const plugin = makePlugin(app, registerBasesView);
 		const provider = new EmbeddedBasesProvider(plugin);
 		const file = makeTFile({
 			name: "Dashboard.md",
@@ -1211,7 +1212,7 @@ describe("EmbeddedBasesProvider", () => {
 		});
 
 		expect(provider.register()).toBe(true);
-		expect(plugin.registerBasesView).not.toHaveBeenCalled();
+		expect(registerBasesView).not.toHaveBeenCalled();
 
 		const bases = await provider.getEmbeddedBases({
 			app,

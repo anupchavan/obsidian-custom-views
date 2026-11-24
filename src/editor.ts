@@ -996,7 +996,7 @@ export function createTemplateEditor(
 }
 
 function tooltipParent(root: Document | ShadowRoot | undefined): HTMLElement {
-	if (!root) return document.body;
+	if (!root) return activeDocument.body;
 	return "body" in root ? root.body : root.ownerDocument.body;
 }
 

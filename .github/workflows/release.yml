@@ -17,7 +17,7 @@ jobs:
             id-token: write
             attestations: write
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v7
             - name: Resolve the tag
               id: tag
               env:
@@ -30,9 +30,9 @@ jobs:
                   fi
                   echo "tag=$tag" >> "$GITHUB_OUTPUT"
             - name: Use Node.js
-              uses: actions/setup-node@v3
+              uses: actions/setup-node@v7
               with:
-                  node-version: "20.x"
+                  node-version: "22.x"
             - name: Build plugin
               run: |
                   npm ci
@@ -76,7 +76,7 @@ jobs:
                   git tag "$TAG"
                   git push origin "refs/tags/$TAG"
             - name: Generate artifact attestation
-              uses: actions/attest-build-provenance@v2
+              uses: actions/attest-build-provenance@v4
               with:
                   subject-path: |
                       dist/main.js

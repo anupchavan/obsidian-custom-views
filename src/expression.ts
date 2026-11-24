@@ -1769,7 +1769,7 @@ function findFirstForBlock(template: string): ForBlock | null {
 	if (!opening || opening[1] === "endfor") return null;
 
 	let depth = 1;
-	let closing: RegExpExecArray | null = null;
+	let closing: RegExpExecArray | null;
 
 	while ((closing = tagRegex.exec(template)) !== null) {
 		if (closing[1] === "endfor") {

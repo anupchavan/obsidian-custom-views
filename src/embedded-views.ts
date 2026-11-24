@@ -17,7 +17,7 @@ interface Embed {
 	getMode?(): string;
 	[key: string]: unknown;
 }
-type Factory = (...args: unknown[]) => unknown;
+type Factory = (this: unknown, ...args: unknown[]) => unknown;
 interface Entry { embed: Embed; view: MarkdownView; key?: string; pendingKey?: string; restore: (() => void)[]; finishTransition?: () => void; point?: { x: number; y: number }; scrollTop?: number; generation: number }
 
 /** Observe the host's own Markdown embeds, preserving their editor and mode controls. */
