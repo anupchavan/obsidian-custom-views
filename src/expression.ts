@@ -17,6 +17,7 @@ import { App, TFile } from "obsidian";
 import { moment, type Moment } from "./host-moment";
 import { buildBasesCollection } from "./bases/access";
 import { stripFrontmatter } from "./frontmatter";
+import { formatMarkdownImage } from "./markdown-image";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -730,14 +731,6 @@ function exprToString(val: ExprValue): string {
 	return String(val);
 }
 
-function formatMarkdownImage(src: string, alt: string): string {
-	const needsAngleBrackets = /[\s()<>]/.test(src);
-	const destination = needsAngleBrackets
-		? `<${src.replace(/</g, "%3C").replace(/>/g, "%3E").replace(/\n/g, "%0A")}>`
-		: src;
-	return `![${alt}](${destination})`;
-}
-
 function isExprFile(val: ExprValue): val is ExprFile {
 	return val !== null && typeof val === "object" && !Array.isArray(val) && (val as Record<string, unknown>).__type === "file";
 }
@@ -919,9 +912,9 @@ export const globalFunctions: Record<string, GlobalFn> = {
 
 	// --- HTML / Display ---
 	image: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {
-		const src = exprToString(args[0]);
 		const alt = args.length > 1 ? exprToString(args[1]) : "";
-		return formatMarkdownImage(src, alt);
+		const sources = Array.isArray(args[0]) ? args[0] : [args[0]];
+		return sources.map(src => formatMarkdownImage(exprToString(src), alt)).join("\n");
 	},
 
 	icon: (_ctx: ExprContext, args: ExprValue[]): ExprValue => {

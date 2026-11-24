@@ -77,6 +77,9 @@ describe("built-in filters", () => {
 		["photo.png", 'image:"My Photo"', "![My Photo](photo.png)"],
 		["test 1.png", "image", "![](<test 1.png>)"],
 		[["a.png", "b.png"], "image", "![](a.png)\n![](b.png)"],
+		["[[Alex Morgan.svg]]", "image", "![](<Alex Morgan.svg>)"],
+		["[[photos/a.png#top|Cover]]", "image", "![](photos/a.png)"],
+		[["[[a.png]]", "![[b.png]]"], "image", "![](a.png)\n![](b.png)"],
 		// blockquote
 		["line1\nline2\nline3", "blockquote", "> line1\n> line2\n> line3"],
 		["quote", "blockquote", "> quote"],

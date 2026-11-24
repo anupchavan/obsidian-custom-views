@@ -1,5 +1,6 @@
 import { applyFiltersWithRegistry, standardFilters, type FilterRegistry } from "knap";
 import { moment, type unitOfTime } from "./host-moment";
+import { formatMarkdownImage, formatMarkdownLink } from "./markdown-image";
 
 /** Split a string into lowercase words for kebab/snake/pascal casing */
 const WORD_SPLIT_RE = /[A-Z]{2,}(?=[A-Z][a-z]+[0-9]*|\b)|[A-Z]?[a-z]+[0-9]*|[A-Z]|[0-9]+/g;
@@ -64,21 +65,6 @@ function unescapeHtmlEntitiesOnce(str: string): string {
 function normalizeHtmlName(name: string): string | null {
 	const trimmed = name.trim();
 	return /^[A-Za-z][A-Za-z0-9:-]*$/.test(trimmed) ? trimmed : null;
-}
-
-function formatMarkdownDestination(src: string): string {
-	const needsAngleBrackets = /[\s()<>]/.test(src);
-	return needsAngleBrackets
-		? `<${src.replace(/</g, "%3C").replace(/>/g, "%3E").replace(/\n/g, "%0A")}>`
-		: src;
-}
-
-function formatMarkdownImage(src: string, alt: string): string {
-	return `![${alt}](${formatMarkdownDestination(src)})`;
-}
-
-function formatMarkdownLink(destination: string, label: string): string {
-	return `[${label}](${formatMarkdownDestination(destination)})`;
 }
 
 type FilterValue = string | number | string[] | number[] | boolean | null | undefined;
