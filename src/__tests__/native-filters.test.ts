@@ -227,6 +227,20 @@ describe("native Bases integration", () => {
 		expect(engine.matches(view("throw"), yes)).toBe(false);
 		expect(engine.matches(view(null), no)).toBe(true);
 	});
+	it("compiles a view once for a pass: parses once, ignores the enabled flag, and flags missing Bases", async () => {
+		const s = setup(); const engine = new NativeRuleEngine(s.app);
+		const file = new TFile(); file.path = "match.md";
+		expect(engine.compile(view("rating > 3"))).toBeNull();
+		expect(engine.compile(view(null))).toMatchObject({ all: true });
+		expect(engine.compile({ ...view(null), basesFilters: { and: [] } })).toMatchObject({ all: true });
+		expect(engine.compile({ ...view(null), basesFilters: undefined, rules: { type: "group", operator: "AND", conditions: [] } })).toMatchObject({ all: true });
+		await engine.prepare();
+		const rule = engine.compile({ ...view("rating > 3"), enabled: false })!;
+		const parses = Query.parse.mock.calls.length;
+		for (let i = 0; i < 50; i++) expect(rule.test(file)).toBe(true);
+		expect(Query.parse.mock.calls.length).toBe(parses);
+		expect(engine.compile(view("invalid"))!.test(file)).toBe(false);
+	});
 	it("recovers matching and refreshes views after Bases is enabled without reloading the plugin", async () => {
 		const s = setup(); const ready = vi.fn(); const engine = new NativeRuleEngine(s.app, ready);
 		const registry = (s.app as unknown as { embedRegistry: { embedByExtension: { base?: unknown } } }).embedRegistry.embedByExtension;
