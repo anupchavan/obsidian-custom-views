@@ -214,7 +214,7 @@ export class EditorWorkbench {
 	}
 	private visibleWeight() { return this.state.visible.reduce((sum,key)=>sum+this.state.weights[key],0) || 1; }
 	private sizePanels() { for (const [key,{element,editor}] of this.editors) {element.style.setProperty("--cv-section-grow", String(this.state.weights[key] * 100)); editor.requestMeasure();} }
-	private matches(file:TFile) { return this.plugin.nativeRules.matches({...this.view,enabled:true},file,this.plugin.app.metadataCache.getFileCache(file)?.frontmatter); }
+	private matches(file:TFile) { return this.plugin.nativeRules.matches({...this.view,enabled:true},file); }
 	private refreshNotes(refreshPicker = true) {
 		if (refreshPicker) this.notePicker?.refresh();
 		if(this.note && !this.matches(this.note)) {
