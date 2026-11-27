@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { Component } from "obsidian";
 import type { App, TFile } from "obsidian";
 import { renderTemplate } from "../renderer";
+import { folder } from "./folder";
 
-const file = { name: "Spore Hero.md", basename: "Spore Hero", path: "Games/Spore Hero.md", extension: "md", stat: { size: 1, ctime: 1, mtime: 1 }, parent: { path: "Games" } } as unknown as TFile;
+const file = { name: "Spore Hero.md", basename: "Spore Hero", path: "Games/Spore Hero.md", extension: "md", stat: { size: 1, ctime: 1, mtime: 1 }, parent: folder("Games") } as unknown as TFile;
 
 async function render(template: string, frontmatter: Record<string, unknown>): Promise<string> {
 	const app = {
