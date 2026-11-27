@@ -11,6 +11,8 @@ import {
 	type TokenizeIssue,
 } from "./expression";
 import { filterNames } from "./filters";
+import { compileTemplate } from "./template-engine";
+import { offsetBeforeStripping, stripTemplateBaseBlocks } from "./bases/template-syntax";
 
 export type DiagnosticSeverity = "error" | "warning";
 
@@ -57,6 +59,13 @@ export function analyzeTemplate(source: string, options: TemplateAnalysisOptions
 	scanTags(source, out, sites, variables, skipped);
 	scanPlaceholders(source, out, sites, skipped);
 	for (const site of sites) analyzeSite(site, out, properties, variables);
+	// Knap decides whether the template parses. Its errors matter when the checks above found none.
+	if (!out.some(diagnostic => diagnostic.severity === "error")) {
+		for (const error of compileTemplate(stripTemplateBaseBlocks(source)).errors) {
+			const from = offsetBeforeStripping(source, error.offset);
+			out.push({ from, to: Math.min(from + 1, source.length), severity: "error", message: error.message });
+		}
+	}
 	return out.sort((a, b) => (a.from ?? -1) - (b.from ?? -1));
 }
 

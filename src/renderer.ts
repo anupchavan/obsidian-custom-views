@@ -6,17 +6,20 @@ import { applyFilterChain } from "./filters";
 import {
 	isExpressionMode,
 	evaluateExpression,
-	processLogicBlocks,
-	resolveDeferredMarkdownPlaceholder,
+	evaluateScopedOutput,
+	evaluateTagExpression,
+	isTruthy,
+	readsTemplateVariable,
 } from "./expression";
-import type { ExprContext, ExprValueArray } from "./expression";
+import type { ExprContext, ExprValue, ExprValueArray } from "./expression";
+import { renderTemplateWithKnap, templateParseError, type TemplateHooks, type TemplateSlot } from "./template-engine";
 import { stripFrontmatter } from "./frontmatter";
 import type { ViewConfig } from "./types";
 import { executeCustomViewJavaScript } from "./script-engine";
 import type { CustomViewScriptContext } from "./script-engine";
 import { buildBasesCollection } from "./bases/access";
 import { templateReferencesBases } from "./bases/code-blocks";
-import { stripTemplateBaseBlocks } from "./bases/template-syntax";
+import { offsetBeforeStripping, stripTemplateBaseBlocks } from "./bases/template-syntax";
 import type { BasesDataProvider, TemplateBases } from "./bases/types";
 
 // ---------------------------------------------------------------------------
@@ -418,58 +421,25 @@ export async function renderTemplate(
 		bodyContent,
 		variables: {},
 		bases: bases as unknown as ExprValueArray,
-		deferredMarkdown: {
-			nextId: 0,
-			values: {},
-		},
 	};
 
-	// Process Clipper-style logic blocks first: {% if %}, {% for %}, {% set %}
-	let processedTemplate = renderTemplateContent;
-	if (renderTemplateContent.includes('{%')) {
-		processedTemplate = await processLogicBlocks(renderTemplateContent, exprCtx);
+	const { output: filledTemplate, errors } = await renderTemplateWithKnap(renderTemplateContent, templateHooks(
+		exprCtx, app, file, frontmatter, bodyContent, bases,
+		(value, slot) => {
+			if (value === CONTENT) return `<div id="${contentPlaceholderId}" class="markdown-rendered-content markdown-preview-view markdown-rendered"></div>`;
+			if (value === null || value === undefined) return "";
+			const renderedValue = resultToString(value);
+			if (isInsideHtmlAttribute(renderTemplateContent, slot.offset)) return renderedValue;
+			if (!needsMarkdownRender(renderedValue)) return escapeHtml(renderedValue);
+			const placeholderId = `cv-md-${markdownQueue.length}-${Date.now()}`;
+			markdownQueue.push({ id: placeholderId, content: renderedValue });
+			return `<span id="${placeholderId}"></span>`;
+		},
+	));
+	if (errors.length > 0) {
+		throw templateParseError("Template", template, { ...errors[0], offset: offsetBeforeStripping(template, errors[0].offset) });
 	}
-
-	const matches = collectTemplateMatches(processedTemplate);
-
-	// Resolve all values (potentially async for cross-file chains)
-	const resolvedValues: string[] = [];
-	for (const match of matches) {
-		const { innerExpr, offset } = match;
-
-		// Special content placeholder
-		if (innerExpr === "content" || innerExpr === "file.content") {
-			resolvedValues.push(
-				`<div id="${contentPlaceholderId}" class="markdown-rendered-content markdown-preview-view markdown-rendered"></div>`
-			);
-			continue;
-		}
-
-		const finalValue = await resolveExprValue(innerExpr, exprCtx, app, file, frontmatter, bodyContent, bases);
-
-		if (finalValue === null || finalValue === undefined) {
-			resolvedValues.push("");
-			continue;
-		}
-
-		const isInsideAttribute = isInsideHtmlAttribute(processedTemplate, offset);
-
-		if (isInsideAttribute) {
-			resolvedValues.push(resultToString(finalValue));
-		} else {
-			const renderedValue = resultToString(finalValue);
-			if (needsMarkdownRender(renderedValue)) {
-				const placeholderId = `cv-md-${markdownQueue.length}-${Date.now()}`;
-				markdownQueue.push({ id: placeholderId, content: renderedValue });
-				resolvedValues.push(`<span id="${placeholderId}"></span>`);
-			} else {
-				resolvedValues.push(escapeHtml(renderedValue));
-			}
-		}
-	}
-
 	signal?.throwIfAborted();
-	const filledTemplate = applyReplacements(processedTemplate, matches, resolvedValues);
 
 	// Use DOMParser to safely parse HTML instead of innerHTML
 	const parser = new DOMParser();
@@ -526,7 +496,7 @@ export async function renderTemplate(
 	applyNativeInternalLinkState(app, container, file.path);
 	// Inject CSS from the separate CSS field (with template resolution)
 	if (viewConfig?.css) {
-		const resolvedCss = await resolveTemplateRaw(app, viewConfig.css, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
+		const resolvedCss = await resolveTemplateRaw("CSS", app, viewConfig.css, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
 		if (resolvedCss.trim()) {
 			const styleEl = createDetachedEl(container.ownerDocument, "style");
 			styleEl.textContent = resolvedCss;
@@ -543,7 +513,7 @@ export async function renderTemplate(
 		const scripts = Array.from(container.querySelectorAll("script"));
 		const hasExecutableInlineScripts = scripts.some(hasExecutableInlineScriptCode);
 		const resolvedJs = viewConfig?.js?.trim()
-			? await resolveTemplateRaw(app, viewConfig.js, file, frontmatter, bodyContent, bases, dependencies)
+			? await resolveTemplateRaw("JavaScript", app, viewConfig.js, file, frontmatter, bodyContent, bases, dependencies)
 			: "";
 		const viewJs = resolvedJs.trim();
 
@@ -648,37 +618,6 @@ export function findFirstPipe(str: string): number {
 // ---------------------------------------------------------------------------
 // Shared template resolution helpers
 // ---------------------------------------------------------------------------
-
-/** Template regex for matching {{ expressions }} */
-const TEMPLATE_EXPR_RE = /\{\{((?:[^{}]|\{[^{]|\}[^}])*?)\}\}/g;
-
-/** A matched {{ expression }} in the template string */
-interface TemplateMatch {
-	fullMatch: string;
-	innerExpr: string;
-	offset: number;
-}
-
-/** Collect all {{ expression }} matches in a template string */
-function collectTemplateMatches(template: string): TemplateMatch[] {
-	const matches: TemplateMatch[] = [];
-	let m;
-	while ((m = TEMPLATE_EXPR_RE.exec(template)) !== null) {
-		matches.push({ fullMatch: m[0], innerExpr: m[1].trim(), offset: m.index });
-	}
-	TEMPLATE_EXPR_RE.lastIndex = 0; // reset for reuse
-	return matches;
-}
-
-/** Replace all matched expressions in reverse order (so offsets stay valid) */
-function applyReplacements(template: string, matches: TemplateMatch[], values: string[]): string {
-	let result = template;
-	for (let i = matches.length - 1; i >= 0; i--) {
-		const { fullMatch, offset } = matches[i];
-		result = result.substring(0, offset) + values[i] + result.substring(offset + fullMatch.length);
-	}
-	return result;
-}
 
 async function readCachedSourceContent(app: App, file: TFile): Promise<string> {
 	const stat = file.stat;
@@ -810,11 +749,6 @@ async function resolveExprValue(
 	bodyContent: string,
 	bases: TemplateBases = [],
 ): Promise<unknown> {
-	const deferredMarkdown = resolveDeferredMarkdownPlaceholder(innerExpr, exprCtx);
-	if (deferredMarkdown.found) {
-		return deferredMarkdown.value;
-	}
-
 	const directLookup = parseDirectPropertyLookup(innerExpr);
 	if (directLookup) {
 		const value = await resolvePropertyChain(app, directLookup.segments, file, frontmatter, bodyContent, bases, exprCtx.dependencies);
@@ -958,6 +892,7 @@ function isIdentifierCharacter(ch: string): boolean {
  * Supports cross-file property chaining, expression mode, and logic blocks.
  */
 async function resolveTemplateRaw(
+	field: string,
 	app: App,
 	template: string,
 	file: TFile,
@@ -974,32 +909,43 @@ async function resolveTemplateRaw(
 		bodyContent,
 		variables: {},
 		bases: bases as unknown as ExprValueArray,
-		deferredMarkdown: {
-			nextId: 0,
-			values: {},
-		},
 	};
 
-	let processedTemplate = template;
-	if (template.includes('{%')) {
-		processedTemplate = await processLogicBlocks(template, exprCtx);
-	}
-
-	const matches = collectTemplateMatches(processedTemplate);
-	if (matches.length === 0) return processedTemplate;
-
-	const resolvedValues: string[] = [];
-	for (const match of matches) {
-		if (match.innerExpr === "content" || match.innerExpr === "file.content") {
+	const { output, errors } = await renderTemplateWithKnap(template, templateHooks(
+		exprCtx, app, file, frontmatter, bodyContent, bases,
+		value => {
+			if (value !== CONTENT) return resultToString(value);
 			dependencies?.add(file);
-			resolvedValues.push(bodyContent);
-			continue;
-		}
-		const value = await resolveExprValue(match.innerExpr, exprCtx, app, file, frontmatter, bodyContent, bases);
-		resolvedValues.push(resultToString(value));
-	}
+			return bodyContent;
+		},
+	));
+	if (errors.length > 0) throw templateParseError(field, template, errors[0]);
+	return output;
+}
 
-	return applyReplacements(processedTemplate, matches, resolvedValues);
+/** The note's body, which each caller places in its own way. */
+const CONTENT = Symbol("content");
+
+function templateHooks(
+	exprCtx: ExprContext,
+	app: App,
+	file: TFile,
+	frontmatter: Record<string, unknown> | undefined,
+	bodyContent: string,
+	bases: TemplateBases,
+	output: TemplateHooks["output"],
+): TemplateHooks {
+	return {
+		async evaluate(slot: TemplateSlot, locals) {
+			const ctx: ExprContext = { ...exprCtx, variables: locals as Record<string, ExprValue> };
+			if (slot.kind !== "output") return evaluateTagExpression(slot.kind, slot.source, ctx);
+			if (slot.source === "content" || slot.source === "file.content") return CONTENT;
+			if (readsTemplateVariable(slot.source, ctx.variables)) return evaluateScopedOutput(slot.source, ctx);
+			return resolveExprValue(slot.source, ctx, app, file, frontmatter, bodyContent, bases);
+		},
+		isTruthy: value => isTruthy(value as ExprValue),
+		output,
+	};
 }
 
 async function collectEmbeddedBasesIfNeeded(
